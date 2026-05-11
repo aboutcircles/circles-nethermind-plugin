@@ -65,7 +65,8 @@ This document describes the internal state machine and block processing flow of 
 │                              INITIAL STATE                                    │
 │                                                                               │
 │  1. Check REINDEX_FROM_BLOCK env var (only once per process)                 │
-│     └── If set: DeleteAllGreaterOrEqualBlock(reindexFromBlock)               │
+│     ├── If set without REINDEX_TABLES: require REINDEX_ALL_TABLES=true       │
+│     └── If set with REINDEX_TABLES: backfill selected tables before live     │
 │                                                                               │
 │  2. Calculate effective resume point:                                         │
 │     ├── latestBlock = MAX(blockNumber) from System_Block                     │
@@ -104,6 +105,8 @@ This document describes the internal state machine and block processing flow of 
 │                         NEWHEAD HANDLING                                      │
 │                                                                               │
 │  latestBlock = Database.LatestBlock()                                         │
+│                                                                               │
+│  Selected-table reindex already ran during Initial before live notification. │
 │                                                                               │
 │  Decision:                                                                    │
 │  ┌────────────────────────────────────────────────────────────────────────┐   │

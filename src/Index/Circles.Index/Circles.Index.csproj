@@ -83,6 +83,9 @@
     <ProjectReference Include="..\Circles.Index.CirclesV2.PaymentGateway\Circles.Index.CirclesV2.PaymentGateway.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV2.ScoreGroup\Circles.Index.CirclesV2.ScoreGroup.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
     <ProjectReference Include="..\Circles.Index.CirclesViews\Circles.Index.CirclesViews.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>

@@ -15,6 +15,7 @@ public class GraphFactoryTests
 {
     // Valid 42-char hex addresses (0x + 40 hex) — required for IsValidEthereumAddress checks
     private static readonly string RouterAddr = "0xf1ff000000000000000000000000000000000001";
+    private static readonly string ScoreRouterAddr = "0xf1ff000000000000000000000000000000000009";
     private static readonly string Alice = "0xf1aa000000000000000000000000000000000002";
     private static readonly string Bob = "0xf1bb000000000000000000000000000000000003";
     // Carol available for future multi-hop tests
@@ -810,6 +811,93 @@ public class GraphFactoryTests
         int tokenBId = AddressIdPool.IdOf(TokenB.ToLowerInvariant());
         Assert.That(cg.AvatarNodes.ContainsKey(tokenBId), Is.True,
             "Group-trusted token should be registered as avatar node (DB path)");
+    }
+
+    [Test]
+    public void GraphFactory_GroupSpecificRouterTrust_AllowsScoreGroupCollateral()
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var cg = factory.CreateCapacityGraph(bg, trustLookup);
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var scoreRouterId = AddressIdPool.IdOf(ScoreRouterAddr.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.RouterForGroup(groupId), Is.EqualTo(scoreRouterId));
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.True,
+            "Score group collateral should be gated by the score router trust, not the base router trust.");
+    }
+
+    [Test]
+    public void GraphFactory_ScoreGroupMintLimit_CapsCollateralEdge()
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var cg = factory.CreateCapacityGraph(bg, trustLookup);
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        var edge = cg.Edges.Single(e => e.From == poolId && e.To == groupId && e.Token == tokenAId);
+        Assert.That(edge.InitialCapacity, Is.EqualTo(25_000_000));
+    }
+
+    [Test]
+    public void GraphFactory_GroupRouterRows_DoNotAddUnsupportedGroups()
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddGroupRouter(GroupH, ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var cg = factory.CreateCapacityGraph(bg, trustLookup);
+
+        var groupGId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var groupHId = AddressIdPool.IdOf(GroupH.ToLowerInvariant());
+
+        Assert.That(cg.GroupRouters.ContainsKey(groupGId), Is.True);
+        Assert.That(cg.GroupRouters.ContainsKey(groupHId), Is.False,
+            "A router row must not create a group that was filtered out by LoadGroups.");
+        Assert.That(cg.GroupNodes.Contains(groupHId), Is.False);
     }
 
     #endregion

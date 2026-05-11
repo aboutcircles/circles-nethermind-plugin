@@ -36,6 +36,12 @@ public interface IDatabase : IReadonlyDatabase
     /// </summary>
     Task DeleteAllGreaterOrEqualBlock(long reorgAt);
 
+    /// <summary>
+    /// Deletes data from selected physical tables from the specified block onwards.
+    /// Used for adding/backfilling new event tables without wiping the entire index.
+    /// </summary>
+    Task DeleteTablesGreaterOrEqualBlock(long reorgAt, IReadOnlyCollection<string> tableNames);
+
     Task WriteBatch(string @namespace, string table, IEnumerable<object> data, ISchemaPropertyMap propertyMap);
 
     /// <summary>

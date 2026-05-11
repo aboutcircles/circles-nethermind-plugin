@@ -8,7 +8,9 @@ WITH latest_score_group AS (
 ),
 supported_groups AS (
     SELECT
-        g."group" AS group_address
+        g."group" AS group_address,
+        g."mint",
+        sg.router_address
     FROM "CrcV2_RegisterGroup" g
     LEFT JOIN latest_score_group sg ON sg.group_address = g."group"
     WHERE g."mint" = LOWER(@mintPolicy)
@@ -18,5 +20,9 @@ supported_groups AS (
        )
 )
 SELECT
-    group_address
+    group_address,
+    CASE
+        WHEN router_address IS NOT NULL THEN router_address
+        ELSE LOWER(@standardRouter)
+    END AS router_address
 FROM supported_groups;

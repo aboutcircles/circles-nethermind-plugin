@@ -141,6 +141,12 @@ public class IncrementalLoadGraph : ILoadGraph
         return _trustState.GetGroupTrusts(routerGroups, _maxBlockTimestamp, _avatarState.AvatarSet);
     }
 
+    public IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters()
+        => _inner.LoadGroupRouters();
+
+    public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits()
+        => _inner.LoadScoreGroupMintLimits();
+
     /// <summary>
     /// Delegates to inner LoadGraph — consented flow table is small, fast query.
     /// </summary>

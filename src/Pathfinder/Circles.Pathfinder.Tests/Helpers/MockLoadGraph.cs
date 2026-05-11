@@ -13,6 +13,8 @@ public class MockLoadGraph : ILoadGraph
     private readonly List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> _balances = new();
     private readonly List<string> _groups = new();
     private readonly List<(string GroupAddress, string TrustedToken)> _groupTrusts = new();
+    private readonly List<(string GroupAddress, string RouterAddress)> _groupRouters = new();
+    private readonly List<(string GroupAddress, string CollateralToken, string AvailableLimit)> _scoreGroupMintLimits = new();
     private readonly List<(string Avatar, bool HasConsentedFlow)> _consentedFlags = new();
     private readonly List<string> _registeredAvatars = new();
     private readonly List<(string WrapperAddress, string UnderlyingAvatar)> _wrapperMappings = new();
@@ -106,6 +108,16 @@ public class MockLoadGraph : ILoadGraph
             _trusts.Add((_routerAddress, trustedToken.ToLowerInvariant(), 100));
     }
 
+    public void AddGroupRouter(string groupAddress, string routerAddress)
+    {
+        _groupRouters.Add((groupAddress.ToLowerInvariant(), routerAddress.ToLowerInvariant()));
+    }
+
+    public void AddScoreGroupMintLimit(string groupAddress, string collateralToken, string availableLimit)
+    {
+        _scoreGroupMintLimits.Add((groupAddress.ToLowerInvariant(), collateralToken.ToLowerInvariant(), availableLimit));
+    }
+
     /// <summary>
     /// Add a consented flow flag using integer node ID.
     /// </summary>
@@ -144,6 +156,16 @@ public class MockLoadGraph : ILoadGraph
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
         return _groupTrusts;
+    }
+
+    public IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters()
+    {
+        return _groupRouters;
+    }
+
+    public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits()
+    {
+        return _scoreGroupMintLimits;
     }
 
     public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
@@ -186,6 +208,7 @@ public class MockLoadGraph : ILoadGraph
         _balances.Clear();
         _groups.Clear();
         _groupTrusts.Clear();
+        _scoreGroupMintLimits.Clear();
         _consentedFlags.Clear();
         _registeredAvatars.Clear();
         _wrapperMappings.Clear();

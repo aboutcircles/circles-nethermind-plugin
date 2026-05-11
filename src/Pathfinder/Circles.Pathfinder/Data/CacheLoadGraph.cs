@@ -89,6 +89,20 @@ public sealed class CacheLoadGraph : ILoadGraph
             yield return (row.GroupAddress.ToLowerInvariant(), row.TrustedToken.ToLowerInvariant());
     }
 
+    public IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters()
+    {
+        var rows = _snapshot.GroupRouters ?? [];
+        foreach (var row in rows)
+            yield return (row.GroupAddress.ToLowerInvariant(), row.RouterAddress.ToLowerInvariant());
+    }
+
+    public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits()
+    {
+        var rows = _snapshot.ScoreGroupMintLimits ?? [];
+        foreach (var row in rows)
+            yield return (row.GroupAddress.ToLowerInvariant(), row.CollateralToken.ToLowerInvariant(), row.AvailableLimit);
+    }
+
     public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
     {
         var rows = _snapshot.ConsentedFlow ?? [];

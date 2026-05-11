@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 using FluentAssertions;
+using System.Globalization;
 using System.Net;
 using Npgsql;
 
@@ -217,7 +218,7 @@ public class ControllerTests
         // V1 balance is converted from CRC to Circles (approx 2.1x inflation factor)
         // V2 balance remains 200, V1 100 CRC becomes ~211 Circles
         // Total should be > 300 (would be 300 if no conversion applied)
-        var balance = decimal.Parse(response!.Balance);
+        var balance = decimal.Parse(response!.Balance, CultureInfo.InvariantCulture);
         balance.Should().BeGreaterThan(300m, "V1 CRC should be converted to time-circles with inflation factor > 1");
         balance.Should().BeLessThan(450m, "Converted balance should be within reasonable range (200 V2 + ~211-250 V1)");
     }
@@ -244,7 +245,7 @@ public class ControllerTests
         response.Should().NotBeNull();
         // Raw CRC sum is 150, but CRC→Circles conversion applies ~2.1x inflation factor
         // V2 balance (200) should NOT be included
-        var balance = decimal.Parse(response!.Balance);
+        var balance = decimal.Parse(response!.Balance, CultureInfo.InvariantCulture);
         balance.Should().BeGreaterThan(150m, "V1 CRC should be converted to time-circles with inflation factor > 1");
         balance.Should().BeLessThan(350m, "Converted balance should be within reasonable range (~316 for 150 CRC)");
     }

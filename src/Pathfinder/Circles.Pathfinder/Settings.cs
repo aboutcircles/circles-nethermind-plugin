@@ -140,4 +140,15 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_STANDARD_MINT_POLICY")?.ToLowerInvariant()
         ?? "0xcdfc5135aec0afbf102c108e7f5c8a88c6112842";
 
+    /// <summary>
+    /// Additional mint policies whose groups participate in pathfinding.
+    /// Score groups are included only when an indexed
+    /// CrcV2_ScoreGroup_GroupInitialized event provides their path mint router.
+    /// </summary>
+    public string[] ScoreGroupMintPolicies { get; set; } =
+        Environment.GetEnvironmentVariable("V2_SCORE_GROUP_MINT_POLICIES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToArray()
+        ?? [];
 }

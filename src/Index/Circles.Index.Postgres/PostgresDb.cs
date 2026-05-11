@@ -794,6 +794,47 @@ public class PostgresDb : ReadonlyPostgresDb, IDatabase
         }
     }
 
+    public async Task DeleteTablesGreaterOrEqualBlock(long reorgAt, IReadOnlyCollection<string> tableNames)
+    {
+        if (tableNames.Count == 0)
+            return;
+
+        var knownTables = Schema.Tables.Values
+            .Where(table => !table.Namespace.StartsWith("V_")
+                            && table.Table != DatabaseSchema.PathfinderRequestLog
+                            && table.Table != DatabaseSchema.PathfinderResponseLog)
+            .Select(table => $"{table.Namespace}_{table.Table}")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var requestedTables = tableNames
+            .Select(table => table.Trim())
+            .Where(table => !string.IsNullOrWhiteSpace(table))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var tableName in requestedTables)
+        {
+            if (!knownTables.Contains(tableName))
+                throw new ArgumentException($"Unknown or non-reindexable table '{tableName}'.");
+        }
+
+        await using var connection = await DataSource.OpenConnectionAsync();
+        foreach (var tableName in requestedTables)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"DELETE FROM {QuoteIdentifier(tableName)} WHERE \"blockNumber\" >= @reorgAt;";
+            command.Parameters.AddWithValue("@reorgAt", reorgAt);
+            command.CommandTimeout = 600;
+
+            var rowsDeleted = await command.ExecuteNonQueryAsync();
+            if (rowsDeleted > 0)
+                Console.WriteLine($"Deleted {rowsDeleted} rows from {tableName}");
+        }
+    }
+
+    private static string QuoteIdentifier(string identifier) =>
+        "\"" + identifier.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+
     /// <summary>
     /// Upsert a single (tableName -> blockNumber) mapping.
     /// </summary>

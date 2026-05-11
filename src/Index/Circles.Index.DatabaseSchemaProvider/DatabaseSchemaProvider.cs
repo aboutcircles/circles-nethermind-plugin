@@ -27,6 +27,7 @@ public static class Schemas
         new CirclesV2.NameRegistry.DatabaseSchema(),
         new CirclesV2.OIC.DatabaseSchema(),
         new CirclesV2.PaymentGateway.DatabaseSchema(),
+        new CirclesV2.ScoreGroup.DatabaseSchema(),
         new CirclesV2.StandardTreasury.DatabaseSchema(),
         new CirclesV2.TokenOffers.DatabaseSchema(),
         new CirclesViews.DatabaseSchema(),

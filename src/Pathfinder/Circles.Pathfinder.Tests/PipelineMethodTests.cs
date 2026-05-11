@@ -19,6 +19,7 @@ public class PipelineMethodTests
     private static readonly int D = AddressIdPool.IdOf("0xdd04pipeline_d");
     private static readonly int Group1 = AddressIdPool.IdOf("0xdd05pipeline_group1");
     private static readonly int Router = AddressIdPool.IdOf("0xdd06pipeline_router");
+    private static readonly int ScoreRouter = AddressIdPool.IdOf("0xdd16pipeline_score_router");
 
     private static readonly int TokenA = AddressIdPool.IdOf("0xdd07pipeline_tokenA");
     private static readonly int TokenB = AddressIdPool.IdOf("0xdd08pipeline_tokenB");
@@ -318,6 +319,27 @@ public class PipelineMethodTests
         Assert.That(result[1].From, Is.EqualTo(Router));
         Assert.That(result[1].To, Is.EqualTo(Group1));
         Assert.That(result[1].Flow, Is.EqualTo(500));
+    }
+
+    [Test]
+    public void Router_AvatarToScoreGroup_UsesGroupSpecificRouter()
+    {
+        var graph = MakeGraph(groups: new[] { Group1 });
+        graph.SetRouter(Router);
+        graph.SetGroupRouter(Group1, ScoreRouter);
+
+        var edges = new List<FlowEdge>
+        {
+            new(A, Group1, TokenA, 1000) { Flow = 500 },
+        };
+
+        var result = _pathfinder.InsertRouterInTransfers(edges, graph);
+
+        Assert.That(result, Has.Count.EqualTo(2));
+        Assert.That(result[0].From, Is.EqualTo(A));
+        Assert.That(result[0].To, Is.EqualTo(ScoreRouter));
+        Assert.That(result[1].From, Is.EqualTo(ScoreRouter));
+        Assert.That(result[1].To, Is.EqualTo(Group1));
     }
 
     [Test]
