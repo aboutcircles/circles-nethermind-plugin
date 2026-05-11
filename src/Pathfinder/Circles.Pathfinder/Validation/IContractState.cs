@@ -19,6 +19,13 @@ public interface IContractState
     /// <summary>The StandardRouter contract address (null if not set).</summary>
     string? RouterAddress { get; }
 
+    /// <summary>Is the address one of the path mint router contracts known for this graph?</summary>
+    bool IsRouter(string address)
+    {
+        var router = RouterAddress;
+        return router != null && string.Equals(router, address, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Hub.avatars(address) != address(0) — is the address a registered Circles avatar?
     /// Hub.sol:794-805 checks this for ALL flow vertices; error codes 0x24/0x25.

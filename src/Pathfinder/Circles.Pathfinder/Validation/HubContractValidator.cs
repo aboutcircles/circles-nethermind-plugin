@@ -206,8 +206,6 @@ public static class HubContractValidator
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
-
         // Collect all unique vertex addresses (From and To only — TokenOwner checked by Rule 11)
         var vertices = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -224,7 +222,7 @@ public static class HubContractValidator
         foreach (var vertex in vertices)
         {
             // Router is a contract address — always registered on-chain
-            if (router != null && vertex == router)
+            if (state.IsRouter(vertex))
                 continue;
 
             // Skip malformed addresses (already caught by Rule 2)
@@ -255,9 +253,6 @@ public static class HubContractValidator
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
-        if (router == null) return; // No router means no group minting in this path
-
         // Detect group-mint pattern: an address X is in a group mint flow when:
         //   1. Router→X edge exists where TokenOwner != X (collateral deposit — someone
         //      else's token is being sent to X, not X's own token being forwarded)
@@ -271,7 +266,7 @@ public static class HubContractValidator
         var receivesFromRouter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var step in steps)
         {
-            if (step.From.ToLowerInvariant() == router)
+            if (state.IsRouter(step.From))
             {
                 var to = step.To.ToLowerInvariant();
                 // Only track as collateral deposit when the token being sent is NOT
@@ -285,7 +280,7 @@ public static class HubContractValidator
         foreach (var step in steps)
         {
             var from = step.From.ToLowerInvariant();
-            if (step.TokenOwner.ToLowerInvariant() == from && from != router)
+            if (step.TokenOwner.ToLowerInvariant() == from && !state.IsRouter(from))
                 mintCandidates.Add(from);
         }
 
@@ -318,7 +313,6 @@ public static class HubContractValidator
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
         var checked_ = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (int i = 0; i < steps.Count; i++)
@@ -330,7 +324,7 @@ public static class HubContractValidator
                 continue;
             if (!tokenOwner.StartsWith("0x") || tokenOwner.Length != 42)
                 continue;
-            if (router != null && tokenOwner == router)
+            if (state.IsRouter(tokenOwner))
                 continue;
 
             // ERC20 wrapper tokens have contract addresses that aren't registered avatars.
@@ -375,8 +369,6 @@ public static class HubContractValidator
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
-
         for (int i = 0; i < steps.Count; i++)
         {
             var from = steps[i].From.ToLowerInvariant();
@@ -398,16 +390,16 @@ public static class HubContractValidator
 
             // Router→Group: internal group mint — Hub.sol uses Router as _sender,
             // isPermittedFlow does not apply (Hub.sol:723). Safe to skip.
-            if (router != null && from == router && state.IsGroup(to))
+            if (state.IsRouter(from) && state.IsGroup(to))
                 continue;
 
             // Avatar→Router: Hub.sol:665-676 runs the full isPermittedFlow check.
             // Router must trust the token owner AND, if sender is consented,
             // advancedUsageFlags[Router] must be non-zero — but Router never calls
             // setAdvancedUsageFlag, so consented senders into Router ALWAYS revert.
-            if (router != null && to == router)
+            if (state.IsRouter(to))
             {
-                if (!state.IsTrusted(router, tokenOwner))
+                if (!state.IsTrusted(to, tokenOwner))
                 {
                     violations.Add(new ValidationViolation(
                         "IsPermittedFlow",
@@ -519,8 +511,7 @@ public static class HubContractValidator
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
-        if (router == null) return; // No router means no group minting in this path
+        if (state.RouterAddress == null) return; // No router means no group minting in this path
 
         // Track per-group: cumulative inbound from router, cumulative outbound to avatars
         var groupInbound = new Dictionary<string, BigInteger>();
@@ -536,7 +527,7 @@ public static class HubContractValidator
                 continue;
 
             // Router → Group (collateral deposit)
-            if (from == router && state.IsGroup(to))
+            if (state.IsRouter(from) && state.IsGroup(to))
             {
                 // Ordering check: no outbound should have been seen for this group yet
                 if (groupsWithOutboundSeen.Contains(to))
@@ -551,7 +542,7 @@ public static class HubContractValidator
                 groupInbound[to] = current + flow;
             }
             // Group → Avatar (mint)
-            else if (state.IsGroup(from) && from != router && to != router && !state.IsGroup(to))
+            else if (state.IsGroup(from) && !state.IsRouter(from) && !state.IsRouter(to) && !state.IsGroup(to))
             {
                 groupsWithOutboundSeen.Add(from);
 

@@ -19,6 +19,14 @@ public sealed class CapacityGraphContractState : IContractState
     public string? RouterAddress =>
         _graph.RouterNode.HasValue ? AddressIdPool.StringOf(_graph.RouterNode.Value) : null;
 
+    public bool IsRouter(string address)
+    {
+        var lower = address.ToLowerInvariant();
+        if (!AddressIdPool.TryIdOf(lower, out int id))
+            return false;
+        return _graph.IsRouter(id);
+    }
+
     public bool IsGroup(string address)
     {
         var lower = address.ToLowerInvariant();

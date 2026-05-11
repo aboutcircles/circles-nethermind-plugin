@@ -17,6 +17,7 @@ public class HubContractValidatorTests
     private const string Carol = "0x0000000000000000000000000000000000000003";
     private const string Dave = "0x0000000000000000000000000000000000000004";
     private const string Router = "0x0000000000000000000000000000000000000099";
+    private const string ScoreRouter = "0x0000000000000000000000000000000000000098";
     private const string GroupA = "0x00000000000000000000000000000000000000a1";
     private const string GroupB = "0x00000000000000000000000000000000000000a2";
 
@@ -35,6 +36,7 @@ public class HubContractValidatorTests
     private class MockContractState : IContractState
     {
         public string? Router { get; set; }
+        public HashSet<string> Routers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Groups { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Consented { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<(string Truster, string CirclesId)> Trusts { get; set; } = new();
@@ -43,6 +45,9 @@ public class HubContractValidatorTests
         public bool RegisterAll { get; set; } = true; // Default: all considered registered
 
         public string? RouterAddress => Router;
+        public bool IsRouter(string address) =>
+            (Router != null && string.Equals(Router, address, StringComparison.OrdinalIgnoreCase))
+            || Routers.Contains(address);
         public bool IsGroup(string address) => Groups.Contains(address);
         public bool HasAdvancedUsageFlags(string address) => Consented.Contains(address);
         public bool IsRegistered(string address) => RegisterAll || Registered.Contains(address);
@@ -476,6 +481,30 @@ public class HubContractValidatorTests
         var violations = new List<ValidationViolation>();
         HubContractValidator.ValidateCollateralBeforeMint(steps, state, violations);
         Assert.That(violations, Is.Empty);
+    }
+
+    [Test]
+    public void Rule6_GroupSpecificScoreRouterCountsAsCollateral()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            Routers = { ScoreRouter },
+            TrustAll = true,
+            Groups = { GroupA },
+        };
+        var steps = new[]
+        {
+            Step(Alice, ScoreRouter, Alice, "100"),
+            Step(ScoreRouter, GroupA, Alice, "100"),
+            Step(GroupA, Bob, GroupA, "100"),
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateCollateralBeforeMint(steps, state, violations);
+
+        Assert.That(violations, Is.Empty,
+            "A group-specific score router must satisfy the same collateral-before-mint rule as the base router.");
     }
 
     // ═══════════════════════════════════════════
