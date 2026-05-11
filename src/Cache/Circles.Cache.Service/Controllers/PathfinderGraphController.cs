@@ -4,6 +4,7 @@ using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
 using Circles.Common;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
 namespace Circles.Cache.Service.Controllers;
@@ -60,6 +61,7 @@ public class PathfinderGraphController : ControllerBase
     {
     }
 
+    [ActivatorUtilitiesConstructor]
     public PathfinderGraphController(
         CacheContainer caches,
         CacheServiceState state,
