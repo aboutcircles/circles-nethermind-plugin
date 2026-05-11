@@ -477,10 +477,10 @@ public class PathfinderGraphController : ControllerBase
             """;
 
         using var command = new NpgsqlCommand(sql, connection);
-            command.Parameters.AddWithValue("lastBlock", lastBlock);
-            command.Parameters.AddWithValue("groups", scoreGroups);
-            command.Parameters.AddWithValue("scoreMintPolicies", ScoreGroupMintPolicies.ToArray());
-            command.CommandTimeout = 60;
+        command.Parameters.AddWithValue("lastBlock", lastBlock);
+        command.Parameters.AddWithValue("groups", scoreGroups);
+        command.Parameters.AddWithValue("scoreMintPolicies", ScoreGroupMintPolicies.ToArray());
+        command.CommandTimeout = 60;
 
         var result = new Dictionary<string, (string Treasury, string Policy)>();
         using var reader = command.ExecuteReader();
