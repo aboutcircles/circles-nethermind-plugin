@@ -207,6 +207,28 @@ See the [Circles SDK](https://github.com/aboutcircles/circles-sdk) for helper fu
 
 ---
 
+## Score-Group Mint Along Path
+
+Score-group minting uses the same pathfinder surface as other V2 paths. Internally
+the graph can route different groups through different router contracts and can
+cap score-group collateral edges by the mint policy's currently available
+capacity.
+
+The cache-backed graph endpoint may include two optional sections:
+
+- `groupRouters`: group address to router address mapping.
+- `scoreGroupMintLimits`: available capacity per group and collateral token.
+
+These sections are needed when the pathfinder builds its graph from the cache
+service instead of direct Postgres queries. They prevent two classes of invalid
+paths: using the wrong router for a group and routing more collateral into a
+score group than the mint policy can accept.
+
+See [Score-Group Mint Along Path](score-group-mint-along-path.md) for
+configuration, router-selection rules, and custom mint policy notes.
+
+---
+
 ## Network Snapshot
 
 The Pathfinder service provides a `/snapshot` endpoint that returns the complete trust graph and balance data. This is useful for clients that want to cache the network state locally.

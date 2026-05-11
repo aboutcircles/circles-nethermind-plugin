@@ -72,20 +72,26 @@ public class Settings
             : WriteMode.Auto;
 
     /// <summary>
-    /// The block number to reindex ALL tables from.
-    /// Set via REINDEX_FROM_BLOCK environment variable.
-    ///
-    /// Example: REINDEX_FROM_BLOCK=12000000
-    ///
-    /// This deletes data from ALL tables from the specified block onwards,
-    /// reinitializes caches, and resyncs from that block.
-    ///
-    /// IMPORTANT: Remove this env var after reindexing completes to avoid re-deleting data on restart.
-    ///
-    /// Note: Partial table reindexing is NOT supported. All tables must be at the same block height
-    /// for data consistency. The old TABLE_START_BLOCKS env var is deprecated.
+    /// The block number to reindex from. Without REINDEX_TABLES this reindexes ALL tables only
+    /// when REINDEX_ALL_TABLES=true is also set.
+    /// With REINDEX_TABLES this deletes and backfills only the named physical tables.
+    /// Example: REINDEX_FROM_BLOCK=38900000 REINDEX_TABLES=CrcV2_ScoreGroup_HistoricalSupply,CrcV2_ScoreGroup_PersonalMinted
+    /// IMPORTANT: Remove these env vars after reindexing completes to avoid re-running on restart.
     /// </summary>
     public readonly long? ReindexFromBlock;
+
+    public readonly bool ReindexAllTables =
+        string.Equals(Environment.GetEnvironmentVariable("REINDEX_ALL_TABLES"), "true", StringComparison.OrdinalIgnoreCase);
+
+    public readonly bool ReindexAllowPartialDependencies =
+        string.Equals(Environment.GetEnvironmentVariable("REINDEX_ALLOW_PARTIAL_DEPENDENCIES"), "true", StringComparison.OrdinalIgnoreCase);
+
+    public readonly string[] ReindexTables =
+        Environment.GetEnvironmentVariable("REINDEX_TABLES")?.Split(',')
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToArray()
+        ?? [];
 
     public Settings()
     {
@@ -228,6 +234,13 @@ public class Settings
     public readonly string BaseGroupRouter =
         Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.ToLowerInvariant()
         ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+
+    public readonly string[] ScoreGroupMintPolicies =
+        Environment.GetEnvironmentVariable("V2_SCORE_GROUP_MINT_POLICIES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToArray()
+        ?? [];
 
     public readonly string BaseGroupDeployer =
         Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")?.ToLowerInvariant()

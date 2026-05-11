@@ -16,7 +16,9 @@ public record PathfinderGraphSnapshot(
     IReadOnlyList<PathfinderGraphConsentedFlowRow>? ConsentedFlow,
     IReadOnlyList<string>? Avatars,
     IReadOnlyList<string>? Organizations = null,
-    IReadOnlyList<PathfinderGraphWrapperMappingRow>? WrapperMappings = null
+    IReadOnlyList<PathfinderGraphWrapperMappingRow>? WrapperMappings = null,
+    IReadOnlyList<PathfinderGraphGroupRouterRow>? GroupRouters = null,
+    IReadOnlyList<PathfinderGraphScoreGroupMintLimitRow>? ScoreGroupMintLimits = null
 );
 
 public record PathfinderGraphBalanceRow(
@@ -35,6 +37,17 @@ public record PathfinderGraphTrustRow(
 );
 
 public record PathfinderGraphGroupRow(string GroupAddress);
+
+public record PathfinderGraphGroupRouterRow(
+    string GroupAddress,
+    string RouterAddress
+);
+
+public record PathfinderGraphScoreGroupMintLimitRow(
+    string GroupAddress,
+    string CollateralToken,
+    string AvailableLimit
+);
 
 public record PathfinderGraphGroupTrustRow(
     string GroupAddress,
@@ -74,6 +87,12 @@ internal sealed class PathfinderGraphSnapshotDto
     [JsonPropertyName("groups")]
     public List<PathfinderGraphGroupRow>? Groups { get; set; }
 
+    [JsonPropertyName("groupRouters")]
+    public List<PathfinderGraphGroupRouterRow>? GroupRouters { get; set; }
+
+    [JsonPropertyName("scoreGroupMintLimits")]
+    public List<PathfinderGraphScoreGroupMintLimitRow>? ScoreGroupMintLimits { get; set; }
+
     [JsonPropertyName("groupTrusts")]
     public List<PathfinderGraphGroupTrustRow>? GroupTrusts { get; set; }
 
@@ -100,5 +119,7 @@ internal sealed class PathfinderGraphSnapshotDto
         ConsentedFlow,
         Avatars,
         Organizations,
-        WrapperMappings);
+        WrapperMappings,
+        GroupRouters,
+        ScoreGroupMintLimits);
 }

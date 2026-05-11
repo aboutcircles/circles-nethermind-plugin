@@ -672,6 +672,19 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         {
             foreach (var groupId in cached.GroupNodes)
                 capacityGraph.AddGroup(groupId);
+            if (cached.GroupRouters != null)
+            {
+                foreach (var (groupId, groupRouterId) in cached.GroupRouters)
+                {
+                    if (cached.GroupNodes.Contains(groupId))
+                        capacityGraph.SetGroupRouter(groupId, groupRouterId);
+                }
+            }
+            if (cached.ScoreGroupMintLimits != null)
+            {
+                foreach (var (key, limit) in cached.ScoreGroupMintLimits)
+                    capacityGraph.ScoreGroupMintLimits[key] = limit;
+            }
             foreach (var orgId in cached.OrganizationNodes)
                 capacityGraph.OrganizationNodes.Add(orgId);
             foreach (var (groupId, tokens) in cached.GroupTrustedTokens)
@@ -687,10 +700,32 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         // Load groups from DB
         var groups = loadGraph.LoadGroups().ToList();
+        var loadedGroupIds = new HashSet<int>();
         foreach (var groupAddress in groups)
         {
             int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
             capacityGraph.AddGroup(groupId);
+            loadedGroupIds.Add(groupId);
+        }
+
+        foreach (var (groupAddress, groupRouterAddress) in loadGraph.LoadGroupRouters())
+        {
+            int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
+            if (!loadedGroupIds.Contains(groupId))
+                continue;
+
+            int groupRouterId = AddressIdPool.IdOf(groupRouterAddress.ToLowerInvariant());
+            capacityGraph.SetGroupRouter(groupId, groupRouterId);
+        }
+
+        foreach (var (groupAddress, collateralToken, availableLimit) in loadGraph.LoadScoreGroupMintLimits())
+        {
+            if (!UInt256.TryParse(availableLimit, out var parsedLimit))
+                continue;
+
+            int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
+            int tokenId = AddressIdPool.IdOf(collateralToken.ToLowerInvariant());
+            capacityGraph.ScoreGroupMintLimits[(groupId, tokenId)] = CirclesConverter.TruncateToInt64(parsedLimit);
         }
 
         // Load organizations from DB (needed for canary source-type filtering)
@@ -869,20 +904,18 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         // checks trustMarkers[router][token] for every Avatar→Router edge
         // in operateFlowMatrix, so tokens not trusted by the Router would
         // revert on-chain even though the pathfinder found a valid flow.
-        HashSet<int>? routerTrusts = null;
-        if (g.RouterNode.HasValue)
-        {
-            accountTrusts.TryGetValue(g.RouterNode.Value, out routerTrusts);
-            if (routerTrusts == null)
-                _logger.LogWarning("Router node is set but has no trust entries in accountTrusts — all group collateral edges will be blocked");
-        }
-
         int routerFilteredCount = 0;
         int totalGroupTokenEdges = 0;
         foreach (var groupId in g.GroupNodes)
         {
             if (g.GroupTrustedTokens.TryGetValue(groupId, out var trustedTokens))
             {
+                var groupRouter = g.RouterForGroup(groupId);
+                accountTrusts.TryGetValue(groupRouter, out var routerTrusts);
+                if (routerTrusts == null)
+                    _logger.LogWarning("Router node {Router} has no trust entries in accountTrusts — group collateral edges for {Group} will be blocked",
+                        AddressIdPool.StringOf(groupRouter), AddressIdPool.StringOf(groupId));
+
                 foreach (var token in trustedTokens)
                 {
                     totalGroupTokenEdges++;
@@ -893,6 +926,12 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                     if (routerTrusts == null || !routerTrusts.Contains(token))
                     {
                         routerFilteredCount++;
+                        continue;
+                    }
+
+                    if (g.ScoreGroupMintLimits.TryGetValue((groupId, token), out var availableLimit) &&
+                        availableLimit <= 0)
+                    {
                         continue;
                     }
 
@@ -914,7 +953,13 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
             foreach (var a in acceptors)
             {
-                g.AddCapacityEdge(pool, a, token, long.MaxValue);
+                var capacity = g.ScoreGroupMintLimits.TryGetValue((a, token), out var availableLimit)
+                    ? availableLimit
+                    : long.MaxValue;
+                if (capacity <= 0)
+                    continue;
+
+                g.AddCapacityEdge(pool, a, token, capacity);
             }
         }
 

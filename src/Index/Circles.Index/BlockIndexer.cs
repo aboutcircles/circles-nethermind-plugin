@@ -51,11 +51,16 @@ public record BlockWithReceipts(Block Block, TxReceipt[] Receipts);
 public class ImportFlow(
     IBlockTree blockTree,
     IReceiptFinder receiptFinder,
-    Context context)
+    Context context,
+    ISet<(string Namespace, string Table)>? tableFilter = null,
+    bool writeBlocks = true)
 {
     private static readonly IndexPerformanceMetrics Metrics = new();
 
     private readonly InsertBuffer<BlockWithEventCounts> _blockBuffer = new();
+    private readonly HashSet<(string Namespace, string Table)>? _tableFilter =
+        tableFilter == null ? null : new HashSet<(string Namespace, string Table)>(tableFilter);
+    private readonly bool _writeBlocks = writeBlocks;
     private long _blocksSinceLastInfoLog = 0;
     private DateTime _lastFlushTime = DateTime.UtcNow;
     private DateTime _lastFlushLogTime = DateTime.UtcNow;
@@ -83,16 +88,24 @@ public class ImportFlow(
 
         foreach (var indexEvent in allEvents)
         {
+            if (!context.Database.Schema.EventDtoTableMap.Map.TryGetValue(indexEvent.GetType(), out var tableName))
+                continue;
+
+            if (_tableFilter != null && !_tableFilter.Contains(tableName))
+                continue;
+
             await context.Sink.AddEvent(indexEvent);
-            var tableName = context.Database.Schema.EventDtoTableMap.Map[indexEvent.GetType()];
             var tableNameString = $"{tableName.Namespace}_{tableName.Table}";
             eventCounts[tableNameString] = eventCounts.GetValueOrDefault(tableNameString) + 1;
         }
 
         var block = data.Item1.Block;
-        await AddBlock(new BlockWithEventCounts(
-            new SimpleBlock(block.Number, block.Timestamp, block.Hash?.ToString()),
-            eventCounts));
+        if (_writeBlocks)
+        {
+            await AddBlock(new BlockWithEventCounts(
+                new SimpleBlock(block.Number, block.Timestamp, block.Hash?.ToString()),
+                eventCounts));
+        }
         Metrics.LogBlockWithReceipts(data.Item1);
     }
 

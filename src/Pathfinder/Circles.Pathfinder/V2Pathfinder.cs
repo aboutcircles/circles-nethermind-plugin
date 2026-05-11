@@ -377,8 +377,7 @@ public class V2Pathfinder
 
         {
             int groupMints = ctx.Edges.Count(e => ctx.Graph.IsGroup(e.From));
-            int routerNode = ctx.Graph.RouterNode ?? -1;
-            int collateralEdges = ctx.Edges.Count(e => e.From == routerNode && ctx.Graph.IsGroup(e.To));
+            int collateralEdges = ctx.Edges.Count(e => ctx.Graph.IsRouter(e.From) && ctx.Graph.IsGroup(e.To));
             _logger.LogInformation("[{ReqId}] MintSort: groups={Groups}, collateral={Collateral}, total={Total}",
                 ctx.ReqId, groupMints, collateralEdges, ctx.Edges.Count);
         }
@@ -567,7 +566,6 @@ public class V2Pathfinder
             return transfers;
 
         var result = new List<FlowEdge>();
-        int routerId = capacityGraph.RouterNode.Value;
 
         foreach (var transfer in transfers)
         {
@@ -577,6 +575,8 @@ public class V2Pathfinder
                 !capacityGraph.IsRouter(transfer.From) &&
                 capacityGraph.IsGroup(transfer.To))
             {
+                var routerId = capacityGraph.RouterForGroup(transfer.To);
+
                 // Split into Avatar → Router → Group
                 // Avatar → Router (same token)
                 result.Add(new FlowEdge(transfer.From, routerId, transfer.Token, transfer.InitialCapacity)

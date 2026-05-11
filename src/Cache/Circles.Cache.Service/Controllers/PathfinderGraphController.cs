@@ -4,6 +4,7 @@ using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
 using Circles.Common;
 using Microsoft.AspNetCore.Mvc;
+using Npgsql;
 
 namespace Circles.Cache.Service.Controllers;
 
@@ -18,6 +19,7 @@ public class PathfinderGraphController : ControllerBase
 {
     private readonly CacheContainer _caches;
     private readonly CacheServiceState _state;
+    private readonly NpgsqlDataSource? _dataSource;
     private readonly ILogger<PathfinderGraphController> _logger;
 
     /// <summary>
@@ -29,6 +31,21 @@ public class PathfinderGraphController : ControllerBase
         Environment.GetEnvironmentVariable("V2_STANDARD_MINT_POLICY")?.Trim().ToLowerInvariant()
         ?? "0xcdfc5135aec0afbf102c108e7f5c8a88c6112842";
 
+    private static readonly HashSet<string> ScoreGroupMintPolicies =
+        (Environment.GetEnvironmentVariable("V2_SCORE_GROUP_MINT_POLICIES") ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => x.ToLowerInvariant())
+            .ToHashSet();
+
+    private static readonly string BaseGroupRouter =
+        Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.Trim().ToLowerInvariant()
+        ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+
+    private static readonly double DemurrageSafetyMargin =
+        Environment.GetEnvironmentVariable("PATHFINDER_DEMURRAGE_SAFETY_MARGIN") != null
+            ? double.Parse(Environment.GetEnvironmentVariable("PATHFINDER_DEMURRAGE_SAFETY_MARGIN")!, CultureInfo.InvariantCulture)
+            : 0.999999;
+
     private const int SchemaVersion = 1;
 
     /// <summary>V2 Hub epoch on gnosis mainnet: 2020-10-15 00:00 UTC (same as V1).</summary>
@@ -39,9 +56,19 @@ public class PathfinderGraphController : ControllerBase
         CacheContainer caches,
         CacheServiceState state,
         ILogger<PathfinderGraphController> logger)
+        : this(caches, state, null, logger)
+    {
+    }
+
+    public PathfinderGraphController(
+        CacheContainer caches,
+        CacheServiceState state,
+        NpgsqlDataSource? dataSource,
+        ILogger<PathfinderGraphController> logger)
     {
         _caches = caches;
         _state = state;
+        _dataSource = dataSource;
         _logger = logger;
     }
 
@@ -79,8 +106,14 @@ public class PathfinderGraphController : ControllerBase
             // Pre-compute shared lookups once per request
             var registrations = new CacheRegistrationSet(_caches);
             var wrapperLookup = new CacheWrapperLookup(_caches);
-            var routerGroups = sections.Contains("trust") || sections.Contains("groups") || sections.Contains("grouptrusts")
-                ? GetRouterFilteredGroups()
+            var needsRouterGroups = sections.Contains("trust") ||
+                                    sections.Contains("groups") ||
+                                    sections.Contains("grouprouters") ||
+                                    sections.Contains("grouptrusts") ||
+                                    sections.Contains("scoregroupmintlimits");
+            var indexedScoreGroupRouters = needsRouterGroups ? LoadIndexedScoreGroupRouters(lastBlock) : [];
+            var routerGroups = needsRouterGroups
+                ? GetRouterFilteredGroups(indexedScoreGroupRouters)
                 : null;
             var avatarToWrappers = sections.Contains("trust")
                 ? BuildAvatarToWrappersIndex()
@@ -93,11 +126,15 @@ public class PathfinderGraphController : ControllerBase
                 Balances: sections.Contains("balances") ? BuildBalances(registrations, wrapperLookup) : null,
                 Trust: sections.Contains("trust") ? BuildTrust(registrations, routerGroups!, avatarToWrappers!) : null,
                 Groups: sections.Contains("groups") ? BuildGroups(routerGroups!) : null,
+                GroupRouters: sections.Contains("grouprouters") ? BuildGroupRouters(routerGroups!, indexedScoreGroupRouters) : null,
                 GroupTrusts: sections.Contains("grouptrusts") ? BuildGroupTrusts(registrations, routerGroups!) : null,
                 ConsentedFlow: sections.Contains("consentedflow") ? BuildConsentedFlow(registrations) : null,
                 Avatars: sections.Contains("avatars") ? BuildAvatars() : null,
                 Organizations: sections.Contains("organizations") ? BuildOrganizations() : null,
-                WrapperMappings: sections.Contains("wrappermappings") ? BuildWrapperMappings(registrations) : null
+                WrapperMappings: sections.Contains("wrappermappings") ? BuildWrapperMappings(registrations) : null,
+                ScoreGroupMintLimits: sections.Contains("scoregroupmintlimits")
+                    ? BuildScoreGroupMintLimits(registrations, routerGroups!, indexedScoreGroupRouters, lastBlock)
+                    : null
             );
 
             _logger.LogDebug(
@@ -124,7 +161,7 @@ public class PathfinderGraphController : ControllerBase
     private static HashSet<string> ParseInclude(string? include)
     {
         if (string.IsNullOrWhiteSpace(include))
-            return new HashSet<string> { "balances", "trust", "groups", "grouptrusts", "consentedflow", "avatars", "organizations", "wrappermappings" };
+            return new HashSet<string> { "balances", "trust", "groups", "grouprouters", "grouptrusts", "scoregroupmintlimits", "consentedflow", "avatars", "organizations", "wrappermappings" };
 
         return new HashSet<string>(
             include.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -280,6 +317,281 @@ public class PathfinderGraphController : ControllerBase
         return groups;
     }
 
+    private List<PathfinderGroupRouterRow> BuildGroupRouters(
+        HashSet<string> routerGroups,
+        IReadOnlyDictionary<string, string> indexedScoreGroupRouters)
+    {
+        var groupRouters = new List<PathfinderGroupRouterRow>(routerGroups.Count);
+        foreach (var groupAddr in routerGroups)
+        {
+            if (!_caches.Groups.ReadOnlyDictionary.TryGetValue(groupAddr, out var group))
+                continue;
+
+            var isScoreGroup = ScoreGroupMintPolicies.Contains(group.Mint.ToLowerInvariant());
+            string routerAddress;
+            if (isScoreGroup)
+            {
+                if (!indexedScoreGroupRouters.TryGetValue(groupAddr, out routerAddress!))
+                    continue;
+            }
+            else
+            {
+                routerAddress = BaseGroupRouter;
+            }
+
+            groupRouters.Add(new PathfinderGroupRouterRow(
+                GroupAddress: groupAddr,
+                RouterAddress: routerAddress
+            ));
+        }
+
+        return groupRouters;
+    }
+
+    private List<PathfinderScoreGroupMintLimitRow> BuildScoreGroupMintLimits(
+        IRegistrationSet registrations,
+        HashSet<string> routerGroups,
+        IReadOnlyDictionary<string, string> indexedScoreGroupRouters,
+        long lastBlock)
+    {
+        if (ScoreGroupMintPolicies.Count == 0)
+            return [];
+        if (_dataSource == null)
+            return [];
+
+        var scoreRouterGroups = new HashSet<string>(
+            routerGroups.Where(groupAddr =>
+                indexedScoreGroupRouters.ContainsKey(groupAddr) &&
+                _caches.Groups.ReadOnlyDictionary.TryGetValue(groupAddr, out var group) &&
+                ScoreGroupMintPolicies.Contains(group.Mint.ToLowerInvariant())));
+        if (scoreRouterGroups.Count == 0)
+            return [];
+
+        IReadOnlyList<ScoreGroupMintLimitRow> rows;
+        try
+        {
+            using var connection = _dataSource.OpenConnection();
+            var groupMetadata = LoadScoreGroupMetadata(connection, scoreRouterGroups, lastBlock);
+            var baseRows = BuildScoreGroupMintLimitBaseRows(registrations, scoreRouterGroups, groupMetadata);
+            rows = ScoreGroupMintLimitReader.ReadFromBaseRows(
+                connection,
+                ScoreGroupMintPolicies.ToArray(),
+                baseRows,
+                targetTimestamp: null,
+                safetyMargin: DemurrageSafetyMargin,
+                commandTimeoutSeconds: 60,
+                maxBlock: lastBlock);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            _logger.LogWarning(
+                ex,
+                "Score-group mint limit tables are not available yet; omitting score-group mint limits from pathfinder graph snapshot");
+            return [];
+        }
+
+        return rows
+            .Select(row => new PathfinderScoreGroupMintLimitRow(
+                row.GroupAddress,
+                row.CollateralToken,
+                row.AvailableLimit))
+            .ToList();
+    }
+
+    private Dictionary<string, string> LoadIndexedScoreGroupRouters(long lastBlock)
+    {
+        if (_dataSource == null || ScoreGroupMintPolicies.Count == 0)
+            return [];
+
+        const string sql = """
+            SELECT DISTINCT ON ("group")
+                "group",
+                LOWER("pathMintRouter")
+            FROM "CrcV2_ScoreGroup_GroupInitialized"
+            WHERE "blockNumber" <= @lastBlock
+              AND LOWER("emitter") = ANY(@scoreMintPolicies)
+            ORDER BY "group", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC;
+            """;
+
+        try
+        {
+            using var connection = _dataSource.OpenConnection();
+            using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("lastBlock", lastBlock);
+            command.Parameters.AddWithValue("scoreMintPolicies", ScoreGroupMintPolicies.ToArray());
+            command.CommandTimeout = 60;
+
+            var result = new Dictionary<string, string>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                result[reader.GetString(0).ToLowerInvariant()] = reader.GetString(1).ToLowerInvariant();
+            }
+
+            return result;
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            _logger.LogWarning(
+                ex,
+                "Score-group router table is not available yet; score groups will be omitted from the pathfinder graph snapshot");
+            return [];
+        }
+    }
+
+    private static Dictionary<string, (string Treasury, string Policy)> LoadScoreGroupMetadata(
+        NpgsqlConnection connection,
+        HashSet<string> routerGroups,
+        long lastBlock)
+    {
+        var scoreGroups = routerGroups.ToArray();
+        if (scoreGroups.Length == 0)
+            return [];
+
+        const string sql = """
+            WITH latest_score_group AS (
+                SELECT DISTINCT ON ("group")
+                    "group" AS group_address,
+                    LOWER("emitter") AS policy
+                FROM "CrcV2_ScoreGroup_GroupInitialized"
+                WHERE "blockNumber" <= @lastBlock
+                  AND LOWER("emitter") = ANY(@scoreMintPolicies)
+                ORDER BY "group", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+            ),
+            latest_register_group AS (
+                SELECT DISTINCT ON ("group")
+                    "group" AS group_address,
+                    LOWER("treasury") AS treasury,
+                    LOWER("mint") AS mint
+                FROM "CrcV2_RegisterGroup"
+                WHERE "blockNumber" <= @lastBlock
+                  AND "group" = ANY(@groups)
+                ORDER BY "group", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+            )
+            SELECT
+                rg.group_address,
+                rg.treasury,
+                COALESCE(lsg.policy, rg.mint) AS policy
+            FROM latest_register_group rg
+            LEFT JOIN latest_score_group lsg ON lsg.group_address = rg.group_address;
+            """;
+
+        using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("lastBlock", lastBlock);
+        command.Parameters.AddWithValue("groups", scoreGroups);
+        command.Parameters.AddWithValue("scoreMintPolicies", ScoreGroupMintPolicies.ToArray());
+        command.CommandTimeout = 60;
+
+        var result = new Dictionary<string, (string Treasury, string Policy)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result[reader.GetString(0).ToLowerInvariant()] = (
+                reader.GetString(1).ToLowerInvariant(),
+                reader.GetString(2).ToLowerInvariant());
+        }
+
+        return result;
+    }
+
+    private List<ScoreGroupMintLimitBaseRow> BuildScoreGroupMintLimitBaseRows(
+        IRegistrationSet registrations,
+        HashSet<string> routerGroups,
+        Dictionary<string, (string Treasury, string Policy)> groupMetadata)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var groupTokens = new Dictionary<string, HashSet<string>>();
+        var trustedTokens = new HashSet<string>();
+
+        foreach (var kvp in _caches.V2TrustRelations.ReadOnlyDictionary)
+        {
+            var separatorIndex = kvp.Key.IndexOf(':');
+            if (separatorIndex < 0)
+                continue;
+
+            var truster = kvp.Key[..separatorIndex];
+            var trustee = kvp.Key[(separatorIndex + 1)..];
+            if (!groupMetadata.ContainsKey(truster))
+                continue;
+
+            if (!CirclesInvariants.IsValidGroupTrustEdge(truster, trustee, kvp.Value, now, registrations, routerGroups))
+                continue;
+
+            if (!groupTokens.TryGetValue(truster, out var tokens))
+            {
+                tokens = new HashSet<string>();
+                groupTokens[truster] = tokens;
+            }
+
+            tokens.Add(trustee);
+            trustedTokens.Add(trustee);
+        }
+
+        var tokenSupply = new Dictionary<string, BigInteger>();
+        var accountTokenBalances = new Dictionary<(string Account, string Token), BigInteger>();
+
+        foreach (var kvp in _caches.V2BalancesByAccountAndToken.ReadOnlyDictionary)
+        {
+            var separatorIndex = kvp.Key.IndexOf(':');
+            if (separatorIndex < 0)
+                continue;
+
+            var account = kvp.Key[..separatorIndex];
+            var token = kvp.Key[(separatorIndex + 1)..];
+            if (!trustedTokens.Contains(token))
+                continue;
+
+            var demurragedBalance = DemurrageCachedV2Balance(kvp.Key, kvp.Value);
+            if (demurragedBalance <= BigInteger.Zero)
+                continue;
+
+            tokenSupply[token] = tokenSupply.GetValueOrDefault(token) + demurragedBalance;
+            accountTokenBalances[(account, token)] = demurragedBalance;
+        }
+
+        var rows = new List<ScoreGroupMintLimitBaseRow>();
+        foreach (var (group, tokens) in groupTokens)
+        {
+            if (!groupMetadata.TryGetValue(group, out var metadata))
+                continue;
+
+            foreach (var token in tokens)
+            {
+                accountTokenBalances.TryGetValue((metadata.Treasury, token), out var treasuryBalance);
+                tokenSupply.TryGetValue(token, out var currentSupply);
+
+                rows.Add(new ScoreGroupMintLimitBaseRow(
+                    group,
+                    token,
+                    metadata.Policy,
+                    treasuryBalance,
+                    currentSupply));
+            }
+        }
+
+        return rows;
+    }
+
+    private BigInteger DemurrageCachedV2Balance(string balanceKey, decimal balance)
+    {
+        if (balance <= 0)
+            return BigInteger.Zero;
+
+        if (!_caches.V2LastActivity.TryGetValue(balanceKey, out var lastActivity) ||
+            lastActivity < V2InflationDayZero)
+        {
+            return BigInteger.Zero;
+        }
+
+        var attoBalance = CirclesConverter.CirclesToAttoCircles(balance);
+        var targetDay = CirclesConverter.DayFromTimestamp(DateTimeOffset.UtcNow, V2InflationDayZero);
+        var lastActivityDay = (ulong)(lastActivity - V2InflationDayZero) / (ulong)SecondsPerDay;
+        var daysDelta = targetDay > lastActivityDay ? targetDay - lastActivityDay : 0;
+        return daysDelta == 0
+            ? attoBalance
+            : CirclesConverter.InflationaryToDemurrage(attoBalance, daysDelta);
+    }
+
     /// <summary>
     /// Builds group trust rows — trust edges where truster is a router-filtered group.
     /// </summary>
@@ -425,14 +737,16 @@ public class PathfinderGraphController : ControllerBase
     }
 
     /// <summary>
-    /// Returns the set of group addresses that use the standard treasury.
+    /// Returns the set of group addresses supported by the pathfinder.
     /// </summary>
-    private HashSet<string> GetRouterFilteredGroups()
+    private HashSet<string> GetRouterFilteredGroups(IReadOnlyDictionary<string, string> indexedScoreGroupRouters)
     {
         var result = new HashSet<string>();
         foreach (var kvp in _caches.Groups.ReadOnlyDictionary)
         {
-            if (kvp.Value.Mint.Equals(StandardTreasuryMint, StringComparison.OrdinalIgnoreCase))
+            var mint = kvp.Value.Mint.ToLowerInvariant();
+            if (mint == StandardTreasuryMint ||
+                (ScoreGroupMintPolicies.Contains(mint) && indexedScoreGroupRouters.ContainsKey(kvp.Key)))
             {
                 result.Add(kvp.Key);
             }

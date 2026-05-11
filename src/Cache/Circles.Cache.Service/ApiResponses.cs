@@ -173,6 +173,8 @@ public record PathfinderGraphResponse(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<PathfinderGroupRow>? Groups,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderGroupRouterRow>? GroupRouters,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<PathfinderGroupTrustRow>? GroupTrusts,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<PathfinderConsentedFlowRow>? ConsentedFlow,
@@ -181,7 +183,9 @@ public record PathfinderGraphResponse(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<string>? Organizations,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<PathfinderWrapperMappingRow>? WrapperMappings
+    IReadOnlyList<PathfinderWrapperMappingRow>? WrapperMappings,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderScoreGroupMintLimitRow>? ScoreGroupMintLimits
 );
 
 public record PathfinderBalanceRow(
@@ -200,6 +204,17 @@ public record PathfinderTrustRow(
 );
 
 public record PathfinderGroupRow(string GroupAddress);
+
+public record PathfinderGroupRouterRow(
+    string GroupAddress,
+    string RouterAddress
+);
+
+public record PathfinderScoreGroupMintLimitRow(
+    string GroupAddress,
+    string CollateralToken,
+    string AvailableLimit
+);
 
 public record PathfinderGroupTrustRow(
     string GroupAddress,
