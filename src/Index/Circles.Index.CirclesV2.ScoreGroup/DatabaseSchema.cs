@@ -63,25 +63,31 @@ public record RouterMinted(
 
 public class DatabaseSchema : BaseDatabaseSchema
 {
-    public static readonly EventSchema GroupInitialized = EventSchema.FromSolidity(
+    public static readonly EventSchema GroupInitialized = WithEmitterColumn(EventSchema.FromSolidity(
         "CrcV2_ScoreGroup",
-        "event GroupInitialized(address indexed group,address indexed merkleTreeManager,address pathMintRouter)");
+        "event GroupInitialized(address indexed group,address indexed merkleTreeManager,address pathMintRouter)"));
 
-    public static readonly EventSchema MerkleRootUpdated = EventSchema.FromSolidity(
+    public static readonly EventSchema MerkleRootUpdated = WithEmitterColumn(EventSchema.FromSolidity(
         "CrcV2_ScoreGroup",
-        "event MerkleRootUpdated(address indexed group,bytes32 newMerkleRoot)");
+        "event MerkleRootUpdated(address indexed group,bytes32 newMerkleRoot)"));
 
-    public static readonly EventSchema HistoricalSupply = EventSchema.FromSolidity(
+    public static readonly EventSchema HistoricalSupply = WithEmitterColumn(EventSchema.FromSolidity(
         "CrcV2_ScoreGroup",
-        "event HistoricalSupply(uint256 indexed collateral,uint256 supply,uint256 day)");
+        "event HistoricalSupply(uint256 indexed collateral,uint256 supply,uint256 day)"));
 
-    public static readonly EventSchema PersonalMinted = EventSchema.FromSolidity(
+    public static readonly EventSchema PersonalMinted = WithEmitterColumn(EventSchema.FromSolidity(
         "CrcV2_ScoreGroup",
-        "event PersonalMinted(address indexed group,uint256 indexed collateral,uint256 amount,uint256 score,uint256 mintedAmountOnToday,uint256 day)");
+        "event PersonalMinted(address indexed group,uint256 indexed collateral,uint256 amount,uint256 score,uint256 mintedAmountOnToday,uint256 day)"));
 
-    public static readonly EventSchema RouterMinted = EventSchema.FromSolidity(
+    public static readonly EventSchema RouterMinted = WithEmitterColumn(EventSchema.FromSolidity(
         "CrcV2_ScoreGroup",
-        "event RouterMinted(address indexed group,uint256 indexed collateral,uint256 amount,uint256 currentAvailableLimit)");
+        "event RouterMinted(address indexed group,uint256 indexed collateral,uint256 amount,uint256 currentAvailableLimit)"));
+
+    private static EventSchema WithEmitterColumn(EventSchema schema)
+    {
+        schema.Columns.Insert(5, new EventFieldSchema("emitter", ValueTypes.Address, true));
+        return schema;
+    }
 
     public DatabaseSchema()
     {
