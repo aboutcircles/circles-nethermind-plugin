@@ -1,3 +1,4 @@
+using System.Numerics;
 using Circles.Common;
 using Nethermind.Int256;
 
@@ -121,9 +122,9 @@ public class DatabaseSchema : BaseDatabaseSchema
             databaseFieldMap:
             [
                 ("emitter", e => e.Emitter),
-                ("collateral", e => e.Collateral),
-                ("supply", e => e.Supply),
-                ("day", e => e.Day)
+                ("collateral", e => (BigInteger)e.Collateral),
+                ("supply", e => (BigInteger)e.Supply),
+                ("day", e => (BigInteger)e.Day)
             ]);
 
         AddMappings<PersonalMinted>(
@@ -134,11 +135,11 @@ public class DatabaseSchema : BaseDatabaseSchema
             [
                 ("emitter", e => e.Emitter),
                 ("group", e => e.Group),
-                ("collateral", e => e.Collateral),
-                ("amount", e => e.Amount),
-                ("score", e => e.Score),
-                ("mintedAmountOnToday", e => e.MintedAmountOnToday),
-                ("day", e => e.Day)
+                ("collateral", e => (BigInteger)e.Collateral),
+                ("amount", e => (BigInteger)e.Amount),
+                ("score", e => (BigInteger)e.Score),
+                ("mintedAmountOnToday", e => (BigInteger)e.MintedAmountOnToday),
+                ("day", e => (BigInteger)e.Day)
             ]);
 
         AddMappings<RouterMinted>(
@@ -149,9 +150,9 @@ public class DatabaseSchema : BaseDatabaseSchema
             [
                 ("emitter", e => e.Emitter),
                 ("group", e => e.Group),
-                ("collateral", e => e.Collateral),
-                ("amount", e => e.Amount),
-                ("currentAvailableLimit", e => e.CurrentAvailableLimit)
+                ("collateral", e => (BigInteger)e.Collateral),
+                ("amount", e => (BigInteger)e.Amount),
+                ("currentAvailableLimit", e => (BigInteger)e.CurrentAvailableLimit)
             ]);
     }
 }
