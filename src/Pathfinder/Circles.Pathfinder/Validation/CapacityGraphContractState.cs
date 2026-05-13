@@ -135,26 +135,17 @@ public sealed class CapacityGraphContractState : IContractState
     }
 
     /// <summary>
-    /// True when the address is a known score-group mint router for some group in this graph.
-    /// Detected by membership in OperatorApprovals (populated only for score routers) or
-    /// by being the routing endpoint of a group that has per-collateral mint limits.
+    /// True when the address is a known score-group mint router. Backed by the
+    /// CapacityGraph.ScoreRouterIds set, which is populated from
+    /// CrcV2_ScoreGroup.GroupInitialized.pathMintRouter — the contract-level source of
+    /// truth. Freshly-initialized groups with no mint-limit rows or operator approvals
+    /// yet are still classified correctly (both lag the initialize event in practice).
     /// </summary>
     public bool IsScoreRouter(string address)
     {
         var lower = address.ToLowerInvariant();
         if (!AddressIdPool.TryIdOf(lower, out int id))
             return false;
-
-        if (_graph.OperatorApprovals.ContainsKey(id))
-            return true;
-
-        foreach (var (groupId, routerId) in _graph.GroupRouters)
-        {
-            if (routerId != id) continue;
-            if (_graph.GroupTrustedTokens.TryGetValue(groupId, out var tokens) &&
-                tokens.Any(t => _graph.ScoreGroupMintLimits.ContainsKey((groupId, t))))
-                return true;
-        }
-        return false;
+        return _graph.ScoreRouterIds.Contains(id);
     }
 }

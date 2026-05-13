@@ -63,4 +63,44 @@ public class CapacityGraphContractStateTests
 
         Assert.That(state.IsApprovedForAll(ScoreRouter, Alice), Is.True);
     }
+
+    [Test]
+    public void IsScoreRouter_AddressInScoreRouterIds_ReturnsTrue()
+    {
+        int routerId = AddressIdPool.IdOf(ScoreRouter);
+        var g = new CapacityGraph();
+        g.ScoreRouterIds.Add(routerId);
+
+        var state = new CapacityGraphContractState(g);
+
+        Assert.That(state.IsScoreRouter(ScoreRouter), Is.True);
+    }
+
+    [Test]
+    public void IsScoreRouter_AddressNotInScoreRouterIds_ReturnsFalse_EvenWithOperatorApprovals()
+    {
+        // C2: the legacy heuristic returned true when an address had an OperatorApprovals
+        // entry — incidental, not source-of-truth. Post-C2, only ScoreRouterIds (loaded
+        // from CrcV2_ScoreGroup.GroupInitialized) classifies score routers.
+        int routerId = AddressIdPool.IdOf(ScoreRouter);
+        int aliceId = AddressIdPool.IdOf(Alice);
+        var g = new CapacityGraph();
+        g.AddAvatar(aliceId);
+        g.OperatorApprovals[routerId] = new HashSet<int> { aliceId };
+        // intentionally do NOT add to ScoreRouterIds
+
+        var state = new CapacityGraphContractState(g);
+
+        Assert.That(state.IsScoreRouter(ScoreRouter), Is.False,
+            "OperatorApprovals membership alone must no longer classify a router as a score router.");
+    }
+
+    [Test]
+    public void IsScoreRouter_UnknownAddress_ReturnsFalse()
+    {
+        var g = new CapacityGraph();
+        var state = new CapacityGraphContractState(g);
+
+        Assert.That(state.IsScoreRouter(ScoreRouter), Is.False);
+    }
 }

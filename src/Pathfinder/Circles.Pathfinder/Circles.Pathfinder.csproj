@@ -29,6 +29,7 @@
         <None Remove="Data\Queries\groupTrustQuery.sql" />
         <None Remove="Data\Queries\groupTrustQuery.fallback.sql" />
         <None Remove="Data\Queries\groupRouterQuery.sql" />
+        <None Remove="Data\Queries\scoreRoutersQuery.sql" />
         <None Remove="Data\Queries\consentedFlowQuery.sql" />
         <None Remove="Data\Queries\balanceFullStateQuery.sql" />
         <None Remove="Data\Queries\trustFullStateQuery.sql" />
@@ -50,6 +51,7 @@
         <EmbeddedResource Include="Data\Queries\groupTrustQuery.sql" />
         <EmbeddedResource Include="Data\Queries\groupTrustQuery.fallback.sql" />
         <EmbeddedResource Include="Data\Queries\groupRouterQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\scoreRoutersQuery.sql" />
         <EmbeddedResource Include="Data\Queries\consentedFlowQuery.sql" />
         <EmbeddedResource Include="Data\Queries\balanceFullStateQuery.sql" />
         <EmbeddedResource Include="Data\Queries\trustFullStateQuery.sql" />

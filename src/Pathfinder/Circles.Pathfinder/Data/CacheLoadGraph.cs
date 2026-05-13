@@ -103,6 +103,27 @@ public sealed class CacheLoadGraph : ILoadGraph
             yield return (row.GroupAddress.ToLowerInvariant(), row.CollateralToken.ToLowerInvariant(), row.AvailableLimit);
     }
 
+    public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
+    {
+        var rows = _snapshot.OperatorApprovals ?? [];
+        if (rows.Count == 0)
+            yield break;
+        var filter = new HashSet<string>(accounts.Select(a => a.ToLowerInvariant()));
+        foreach (var row in rows)
+        {
+            var account = row.Account.ToLowerInvariant();
+            if (filter.Contains(account))
+                yield return (account, row.Operator.ToLowerInvariant());
+        }
+    }
+
+    public IEnumerable<string> LoadScoreRouters()
+    {
+        var rows = _snapshot.ScoreRouters ?? [];
+        foreach (var row in rows)
+            yield return row.ToLowerInvariant();
+    }
+
     public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
     {
         var rows = _snapshot.ConsentedFlow ?? [];

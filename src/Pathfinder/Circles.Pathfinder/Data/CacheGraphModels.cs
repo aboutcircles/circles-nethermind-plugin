@@ -18,7 +18,14 @@ public record PathfinderGraphSnapshot(
     IReadOnlyList<string>? Organizations = null,
     IReadOnlyList<PathfinderGraphWrapperMappingRow>? WrapperMappings = null,
     IReadOnlyList<PathfinderGraphGroupRouterRow>? GroupRouters = null,
-    IReadOnlyList<PathfinderGraphScoreGroupMintLimitRow>? ScoreGroupMintLimits = null
+    IReadOnlyList<PathfinderGraphScoreGroupMintLimitRow>? ScoreGroupMintLimits = null,
+    IReadOnlyList<PathfinderGraphOperatorApprovalRow>? OperatorApprovals = null,
+    IReadOnlyList<string>? ScoreRouters = null
+);
+
+public record PathfinderGraphOperatorApprovalRow(
+    string Account,
+    string Operator
 );
 
 public record PathfinderGraphBalanceRow(
@@ -108,6 +115,12 @@ internal sealed class PathfinderGraphSnapshotDto
     [JsonPropertyName("wrapperMappings")]
     public List<PathfinderGraphWrapperMappingRow>? WrapperMappings { get; set; }
 
+    [JsonPropertyName("operatorApprovals")]
+    public List<PathfinderGraphOperatorApprovalRow>? OperatorApprovals { get; set; }
+
+    [JsonPropertyName("scoreRouters")]
+    public List<string>? ScoreRouters { get; set; }
+
     public PathfinderGraphSnapshot ToModel() => new(
         SchemaVersion,
         LastProcessedBlock,
@@ -121,5 +134,7 @@ internal sealed class PathfinderGraphSnapshotDto
         Organizations,
         WrapperMappings,
         GroupRouters,
-        ScoreGroupMintLimits);
+        ScoreGroupMintLimits,
+        OperatorApprovals,
+        ScoreRouters);
 }
