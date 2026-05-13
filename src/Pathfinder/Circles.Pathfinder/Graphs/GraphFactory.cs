@@ -952,13 +952,17 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 // Router→Group hop. The pathfinder treats the path source as that operator.
                 // When sourceId is provided but unapproved, skip every collateral edge
                 // through this group's router — the resulting path would revert on-chain.
+                // When sourceId is null (base snapshot), the gate cannot be evaluated and
+                // the edges are inherently source-dependent — strip them unconditionally so
+                // the shared snapshot can't emit reverting paths. Per-request filtered
+                // builds reconstruct these edges with proper source context.
                 // A group is a score group iff it has at least one per-collateral mint-limit row.
                 bool isScoreGroup = trustedTokens.Any(t => g.ScoreGroupMintLimits.ContainsKey((groupId, t)));
-                bool requireApproval = sourceId.HasValue && isScoreGroup;
                 bool operatorApproved =
-                    !requireApproval
-                    || (g.OperatorApprovals.TryGetValue(groupRouter, out var approvedOps)
-                        && approvedOps.Contains(sourceId!.Value));
+                    !isScoreGroup
+                    || (sourceId.HasValue
+                        && g.OperatorApprovals.TryGetValue(groupRouter, out var approvedOps)
+                        && approvedOps.Contains(sourceId.Value));
 
                 foreach (var token in trustedTokens)
                 {
