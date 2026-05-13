@@ -22,6 +22,7 @@ namespace Circles.Pathfinder.Data
         IReadOnlyList<(string GroupAddress, string TrustedToken)> GroupTrusts,
         IReadOnlyList<(string GroupAddress, string RouterAddress)> GroupRouters,
         IReadOnlyList<(string GroupAddress, string CollateralToken, string AvailableLimit)> ScoreGroupMintLimits,
+        IReadOnlyList<string> ScoreRouters,
         IReadOnlyList<(string Avatar, bool HasConsentedFlow)> ConsentedFlags,
         IReadOnlyList<string> RegisteredAvatars,
         IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar)> WrapperMappings
@@ -39,6 +40,15 @@ namespace Circles.Pathfinder.Data
         IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts();
         IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters() => [];
         IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits() => [];
+
+        /// <summary>
+        /// Returns distinct ScoreGroupMintRouter addresses, taken from the
+        /// CrcV2_ScoreGroup.GroupInitialized event's pathMintRouter field. The event is
+        /// emitted exactly once per (policy, group) pair on initializeGroup and the
+        /// pathMintRouter is immutable thereafter, so each row's router is the canonical
+        /// score-router for its group. Empty by default for legacy mocks.
+        /// </summary>
+        IEnumerable<string> LoadScoreRouters() => [];
 
         /// <summary>
         /// Returns currently-active ERC-1155 operator approvals from the Hub for the given owner
@@ -328,13 +338,14 @@ namespace Circles.Pathfinder.Data
             var groupTrusts = LoadGroupTrustsInternal(connection, tx, scoreGroupTablesAvailable);
             var groupRouters = LoadGroupRoutersInternal(connection, tx, scoreGroupTablesAvailable);
             var scoreGroupMintLimits = LoadScoreGroupMintLimitsInternal(connection, tx, scoreGroupTablesAvailable);
+            var scoreRouters = LoadScoreRoutersInternal(connection, tx, scoreGroupTablesAvailable);
             var consentedFlags = LoadConsentedFlowFlagsInternal(connection, tx);
             var registeredAvatars = LoadRegisteredAvatarsInternal(connection, tx);
             var wrapperMappings = LoadWrapperMappingsInternal(connection, tx);
 
             tx.Commit();
 
-            return new LoadAllResult(balances, trust, groups, organizations, groupTrusts, groupRouters, scoreGroupMintLimits, consentedFlags, registeredAvatars, wrapperMappings);
+            return new LoadAllResult(balances, trust, groups, organizations, groupTrusts, groupRouters, scoreGroupMintLimits, scoreRouters, consentedFlags, registeredAvatars, wrapperMappings);
         }
 
         private List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
@@ -573,6 +584,54 @@ namespace Circles.Pathfinder.Data
                 results.Add((reader.GetString(0), reader.GetString(1)));
             }
 
+            return results;
+        }
+
+        public IEnumerable<string> LoadScoreRouters()
+        {
+            if (_settings.ScoreGroupMintPolicies.Length == 0)
+                return [];
+            if (!ScoreGroupTablesAvailable())
+                return [];
+
+            var query = LoadQueryFromResource("scoreRoutersQuery.sql");
+            var results = new List<string>(128);
+
+            var sw = Stopwatch.StartNew();
+            using var connection = _dataSource.OpenConnection();
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("scoreMintPolicies", _settings.ScoreGroupMintPolicies);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                results.Add(reader.GetString(0));
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("score_routers", sw.Elapsed);
+            return results;
+        }
+
+        private List<string> LoadScoreRoutersInternal(
+            NpgsqlConnection connection,
+            NpgsqlTransaction tx,
+            bool scoreGroupTablesAvailable)
+        {
+            if (_settings.ScoreGroupMintPolicies.Length == 0 || !scoreGroupTablesAvailable)
+                return new List<string>(0);
+
+            var query = LoadQueryFromResource("scoreRoutersQuery.sql");
+            var results = new List<string>(128);
+
+            var sw = Stopwatch.StartNew();
+            using var command = new NpgsqlCommand(query, connection, tx);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("scoreMintPolicies", _settings.ScoreGroupMintPolicies);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                results.Add(reader.GetString(0));
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("score_routers", sw.Elapsed);
             return results;
         }
 

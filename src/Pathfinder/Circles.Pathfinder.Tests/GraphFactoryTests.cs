@@ -857,6 +857,7 @@ public class GraphFactoryTests
         mock.AddGroup(GroupG);
         mock.AddGroupTrust(GroupG, TokenA);
         mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
         mock.AddTrust(ScoreRouterAddr, TokenA);
         mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
         mock.AddOperatorApproval(ScoreRouterAddr, Alice);
@@ -888,6 +889,7 @@ public class GraphFactoryTests
         mock.AddGroup(GroupG);
         mock.AddGroupTrust(GroupG, TokenA);
         mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
         mock.AddTrust(ScoreRouterAddr, TokenA);
         mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
         if (approveAlice)
@@ -977,7 +979,8 @@ public class GraphFactoryTests
             WrapperToAvatar: new Dictionary<int, int>(),
             GroupRouters: new Dictionary<int, int> { [groupId] = routerId },
             ScoreGroupMintLimits: new Dictionary<(int, int), long> { [(groupId, tokenAId)] = 25_000_000L },
-            OperatorApprovals: new Dictionary<int, HashSet<int>> { [routerId] = new() { aliceId } });
+            OperatorApprovals: new Dictionary<int, HashSet<int>> { [routerId] = new() { aliceId } },
+            ScoreRouterIds: new HashSet<int> { routerId });
 
         var cg = factory.CreateCapacityGraph(bg, trustLookup,
             new FlowRequest { Source = Alice, Sink = Bob }, cached);
@@ -1015,7 +1018,8 @@ public class GraphFactoryTests
             WrapperToAvatar: new Dictionary<int, int>(),
             GroupRouters: new Dictionary<int, int> { [groupId] = routerId },
             ScoreGroupMintLimits: new Dictionary<(int, int), long> { [(groupId, tokenAId)] = 25_000_000L },
-            OperatorApprovals: null);
+            OperatorApprovals: null,
+            ScoreRouterIds: new HashSet<int> { routerId });
 
         var cg = factory.CreateCapacityGraph(bg, trustLookup,
             new FlowRequest { Source = Alice, Sink = Bob }, cached);
@@ -1024,6 +1028,82 @@ public class GraphFactoryTests
             "Null OperatorApprovals in cache leaves the per-request graph empty — production must populate the field at NetworkStateUpdaterService.cs lines 221/471/702.");
         Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.False,
             "With null cached approvals, even approved users lose score-router edges (C1 fail-CLOSED).");
+    }
+
+    /// <summary>
+    /// C2 regression: freshly-initialized score groups have an indexed GroupInitialized
+    /// event (and therefore a pathMintRouter) BEFORE any mint-limit row or operator
+    /// approval exists. The router must already be recognized as a score router so the
+    /// gate fires fail-CLOSED on unapproved sources; otherwise the user attempts a mint
+    /// path the contract immediately reverts.
+    /// </summary>
+    [Test]
+    public void GraphFactory_FreshlyInitializedScoreGroup_NoMintLimitYet_GateFiresClosed()
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        // intentionally NO AddScoreGroupMintLimit, NO AddOperatorApproval — mirrors
+        // the post-initialize / pre-first-mint window the C2 fix targets.
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob });
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.False,
+            "Freshly-initialized score router must be recognized (via ScoreRouterIds) and the gate must fail-CLOSED when no approval is present.");
+    }
+
+    /// <summary>
+    /// C2: a group with a custom router that is NOT a score-group router (no entry in
+    /// GroupInitialized) keeps its collateral edge — the operator-approval gate doesn't
+    /// apply. Pins the boundary between score and non-score groups.
+    /// </summary>
+    [Test]
+    public void GraphFactory_NonScoreGroupWithCustomRouter_EdgeKept()
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        // No AddScoreRouter: this router is not in CrcV2_ScoreGroup_GroupInitialized.
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob });
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.True,
+            "Non-score groups must not be subject to the score-router operator-approval gate.");
     }
 
     [Test]

@@ -691,6 +691,11 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 foreach (var (cachedRouterId, operators) in cached.OperatorApprovals)
                     capacityGraph.OperatorApprovals[cachedRouterId] = new HashSet<int>(operators);
             }
+            if (cached.ScoreRouterIds != null)
+            {
+                foreach (var scoreRouterId in cached.ScoreRouterIds)
+                    capacityGraph.ScoreRouterIds.Add(scoreRouterId);
+            }
             foreach (var orgId in cached.OrganizationNodes)
                 capacityGraph.OrganizationNodes.Add(orgId);
             foreach (var (groupId, tokens) in cached.GroupTrustedTokens)
@@ -732,6 +737,18 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
             int tokenId = AddressIdPool.IdOf(collateralToken.ToLowerInvariant());
             capacityGraph.ScoreGroupMintLimits[(groupId, tokenId)] = CirclesConverter.TruncateToInt64(parsedLimit);
+        }
+
+        // Load the canonical score-router set from CrcV2_ScoreGroup.GroupInitialized.
+        // The pathMintRouter field is immutable post-init, so this is the source of truth
+        // for "is this address a score router" — independent of whether mint-limit rows
+        // or operator approvals exist yet (both lag the initialize event).
+        foreach (var scoreRouterAddress in loadGraph.LoadScoreRouters())
+        {
+            if (string.IsNullOrWhiteSpace(scoreRouterAddress))
+                continue;
+            int scoreRouterId = AddressIdPool.IdOf(scoreRouterAddress.ToLowerInvariant());
+            capacityGraph.ScoreRouterIds.Add(scoreRouterId);
         }
 
         // Load ERC-1155 operator approvals granted BY the known group routers.
@@ -956,10 +973,12 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 // the edges are inherently source-dependent — strip them unconditionally so
                 // the shared snapshot can't emit reverting paths. Per-request filtered
                 // builds reconstruct these edges with proper source context.
-                // A group is a score group iff it has at least one per-collateral mint-limit row.
-                bool isScoreGroup = trustedTokens.Any(t => g.ScoreGroupMintLimits.ContainsKey((groupId, t)));
+                // Membership in ScoreRouterIds is the canonical signal — derived from
+                // CrcV2_ScoreGroup.GroupInitialized.pathMintRouter — so freshly-initialized
+                // groups with no mint-limit rows yet are still recognized and gated.
+                bool isScoreRouter = g.ScoreRouterIds.Contains(groupRouter);
                 bool operatorApproved =
-                    !isScoreGroup
+                    !isScoreRouter
                     || (sourceId.HasValue
                         && g.OperatorApprovals.TryGetValue(groupRouter, out var approvedOps)
                         && approvedOps.Contains(sourceId.Value));

@@ -148,6 +148,19 @@ public class IncrementalLoadGraph : ILoadGraph
         => _inner.LoadScoreGroupMintLimits();
 
     /// <summary>
+    /// Score-router set + ERC-1155 operator approvals are sourced from index tables that
+    /// the in-memory state doesn't shadow, so delegate to the inner DB-backed loader.
+    /// Without these overrides every base-snapshot build would inherit the
+    /// ILoadGraph default-empty implementations and silently disable the score-router
+    /// approval gate in production.
+    /// </summary>
+    public IEnumerable<string> LoadScoreRouters()
+        => _inner.LoadScoreRouters();
+
+    public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
+        => _inner.LoadOperatorApprovals(accounts);
+
+    /// <summary>
     /// Delegates to inner LoadGraph — consented flow table is small, fast query.
     /// </summary>
     public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()

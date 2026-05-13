@@ -16,7 +16,8 @@ public sealed record CachedGroupData(
     Dictionary<int, int> WrapperToAvatar,
     Dictionary<int, int>? GroupRouters = null,
     Dictionary<(int GroupAddress, int CollateralToken), long>? ScoreGroupMintLimits = null,
-    Dictionary<int, HashSet<int>>? OperatorApprovals = null);
+    Dictionary<int, HashSet<int>>? OperatorApprovals = null,
+    HashSet<int>? ScoreRouterIds = null);
 
 public class CapacityGraph : IGraph<CapacityEdge>
 {
@@ -43,6 +44,15 @@ public class CapacityGraph : IGraph<CapacityEdge>
     /// (the operator) is not in this set for that router.
     /// </summary>
     public Dictionary<int, HashSet<int>> OperatorApprovals { get; } = new();
+
+    /// <summary>
+    /// Score-group mint routers, keyed by address ID. Source of truth: the
+    /// CrcV2_ScoreGroup.GroupInitialized event's pathMintRouter field (immutable
+    /// post-init). Used by IsScoreRouter and by AddTokenPoolOutEdges to recognize a
+    /// freshly-initialized score group even when no mint-limit rows or operator
+    /// approvals exist yet — both of which lag the initialize event in practice.
+    /// </summary>
+    public HashSet<int> ScoreRouterIds { get; } = new();
 
     // Track which tokens each group trusts
     public Dictionary<int, HashSet<int>> GroupTrustedTokens { get; } = new Dictionary<int, HashSet<int>>();
