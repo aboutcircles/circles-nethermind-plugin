@@ -15,7 +15,8 @@ public sealed record CachedGroupData(
     HashSet<int> RegisteredAvatarIds,
     Dictionary<int, int> WrapperToAvatar,
     Dictionary<int, int>? GroupRouters = null,
-    Dictionary<(int GroupAddress, int CollateralToken), long>? ScoreGroupMintLimits = null);
+    Dictionary<(int GroupAddress, int CollateralToken), long>? ScoreGroupMintLimits = null,
+    Dictionary<int, HashSet<int>>? OperatorApprovals = null);
 
 public class CapacityGraph : IGraph<CapacityEdge>
 {
@@ -33,6 +34,15 @@ public class CapacityGraph : IGraph<CapacityEdge>
     public HashSet<int> RouterNodes { get; } = new HashSet<int>();
     public Dictionary<int, int> GroupRouters { get; } = new Dictionary<int, int>();
     public Dictionary<(int GroupAddress, int CollateralToken), long> ScoreGroupMintLimits { get; } = new();
+
+    /// <summary>
+    /// ERC-1155 operator approvals from Hub.ApprovalForAll, keyed by the account (typically a
+    /// ScoreGroupMintRouter) that granted the approval. The value set contains the operator
+    /// node IDs that the account currently approves. Used to gate Avatar→Router edges:
+    /// Hub.operateFlowMatrix reverts if the path includes a Router→Group hop and the caller
+    /// (the operator) is not in this set for that router.
+    /// </summary>
+    public Dictionary<int, HashSet<int>> OperatorApprovals { get; } = new();
 
     // Track which tokens each group trusts
     public Dictionary<int, HashSet<int>> GroupTrustedTokens { get; } = new Dictionary<int, HashSet<int>>();

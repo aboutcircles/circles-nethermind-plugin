@@ -110,4 +110,51 @@ public sealed class CapacityGraphContractState : IContractState
             return null;
         return AddressIdPool.StringOf(avatarId);
     }
+
+    /// <summary>
+    /// Hub.isApprovedForAll(account, operator). Permissive when no approval data is loaded —
+    /// the GraphFactory only populates OperatorApprovals when a score-group policy is
+    /// configured, so absence here means the rule is not applicable in this build.
+    /// </summary>
+    public bool IsApprovedForAll(string account, string @operator)
+    {
+        if (_graph.OperatorApprovals.Count == 0)
+            return true;
+
+        var accountLower = account.ToLowerInvariant();
+        var operatorLower = @operator.ToLowerInvariant();
+
+        if (!AddressIdPool.TryIdOf(accountLower, out int accountId))
+            return true;
+
+        if (!AddressIdPool.TryIdOf(operatorLower, out int operatorId))
+            return false;
+
+        return _graph.OperatorApprovals.TryGetValue(accountId, out var approvedOps)
+               && approvedOps.Contains(operatorId);
+    }
+
+    /// <summary>
+    /// True when the address is a known score-group mint router for some group in this graph.
+    /// Detected by membership in OperatorApprovals (populated only for score routers) or
+    /// by being the routing endpoint of a group that has per-collateral mint limits.
+    /// </summary>
+    public bool IsScoreRouter(string address)
+    {
+        var lower = address.ToLowerInvariant();
+        if (!AddressIdPool.TryIdOf(lower, out int id))
+            return false;
+
+        if (_graph.OperatorApprovals.ContainsKey(id))
+            return true;
+
+        foreach (var (groupId, routerId) in _graph.GroupRouters)
+        {
+            if (routerId != id) continue;
+            if (_graph.GroupTrustedTokens.TryGetValue(groupId, out var tokens) &&
+                tokens.Any(t => _graph.ScoreGroupMintLimits.ContainsKey((groupId, t))))
+                return true;
+        }
+        return false;
+    }
 }
