@@ -847,6 +847,10 @@ public class GraphFactoryTests
     [Test]
     public void GraphFactory_ScoreGroupMintLimit_CapsCollateralEdge()
     {
+        // Score-group collateral edges are source-dependent (gated by Hub.isApprovedForAll
+        // on the score router); they are reconstructed per-request from the filtered path,
+        // not from the base snapshot. The test exercises the production path with Alice
+        // as an approved operator of the score router.
         var mock = new HelperMock();
         mock.AddRegisteredAvatar(Alice);
         mock.AddRegisteredAvatar(TokenA);
@@ -855,6 +859,7 @@ public class GraphFactoryTests
         mock.AddGroupRouter(GroupG, ScoreRouterAddr);
         mock.AddTrust(ScoreRouterAddr, TokenA);
         mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
+        mock.AddOperatorApproval(ScoreRouterAddr, Alice);
         mock.AddBalance(
             AddressIdPool.IdOf(Alice.ToLowerInvariant()),
             AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
@@ -864,7 +869,8 @@ public class GraphFactoryTests
         var bg = factory.V2BalanceGraph();
         var tg = factory.V2TrustGraph();
         var trustLookup = GraphFactory.BuildTrustLookup(tg);
-        var cg = factory.CreateCapacityGraph(bg, trustLookup);
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob });
 
         var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
         var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
@@ -872,6 +878,152 @@ public class GraphFactoryTests
 
         var edge = cg.Edges.Single(e => e.From == poolId && e.To == groupId && e.Token == tokenAId);
         Assert.That(edge.InitialCapacity, Is.EqualTo(25_000_000));
+    }
+
+    private static HelperMock BuildScoreGroupMock(bool approveAlice)
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
+        if (approveAlice)
+            mock.AddOperatorApproval(ScoreRouterAddr, Alice);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+        return mock;
+    }
+
+    /// <summary>
+    /// Base snapshot is source-agnostic; score-router collateral edges are inherently
+    /// source-dependent (gated by Hub.isApprovedForAll on the router). Including them in
+    /// the shared snapshot causes pathfinder to emit reverting paths when the snapshot is
+    /// served directly to a request with a source. Strip them unconditionally.
+    /// </summary>
+    [Test]
+    public void GraphFactory_BaseSnapshot_StripsScoreRouterEdges_WhenSourceUnknown()
+    {
+        var mock = BuildScoreGroupMock(approveAlice: true);
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var cg = factory.CreateBaseCapacityGraph(bg, trustLookup);
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.False,
+            "Score-group collateral edges must not appear in the source-agnostic base snapshot.");
+    }
+
+    /// <summary>
+    /// Filtered request with a source that the score router has NOT approved must drop the
+    /// score-group collateral edge — emitting it would produce a path that reverts at
+    /// Hub.operateFlowMatrix's isApprovedForAll check.
+    /// </summary>
+    [Test]
+    public void GraphFactory_FilteredRequest_StripsScoreRouterEdges_ForUnapprovedSource()
+    {
+        var mock = BuildScoreGroupMock(approveAlice: false);
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob });
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.False,
+            "Unapproved source must not see score-group collateral edges.");
+    }
+
+    /// <summary>
+    /// C1 regression: when CachedGroupData carries a non-null OperatorApprovals dict, the
+    /// cached-rehydration path in LoadGroupsAndTrackRouter must hydrate the per-request
+    /// graph's OperatorApprovals so the score-router gate at AddTokenPoolOutEdges sees the
+    /// approval. Failure mode if the cache plumbing breaks: filtered requests fail-CLOSED
+    /// → maxFlow=0 for approved users.
+    /// </summary>
+    [Test]
+    public void GraphFactory_CachedGroupData_OperatorApprovals_Hydrated_PreservesApprovedRouterEdges()
+    {
+        var mock = BuildScoreGroupMock(approveAlice: true);
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+        int tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        int groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        int routerId = AddressIdPool.IdOf(ScoreRouterAddr.ToLowerInvariant());
+        int poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        var cached = new CachedGroupData(
+            GroupNodes: new HashSet<int> { groupId },
+            OrganizationNodes: new HashSet<int>(),
+            GroupTrustedTokens: new Dictionary<int, HashSet<int>> { [groupId] = new() { tokenAId } },
+            ConsentedAvatars: new HashSet<int>(),
+            RegisteredAvatarIds: new HashSet<int> { aliceId, tokenAId, groupId },
+            WrapperToAvatar: new Dictionary<int, int>(),
+            GroupRouters: new Dictionary<int, int> { [groupId] = routerId },
+            ScoreGroupMintLimits: new Dictionary<(int, int), long> { [(groupId, tokenAId)] = 25_000_000L },
+            OperatorApprovals: new Dictionary<int, HashSet<int>> { [routerId] = new() { aliceId } });
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob }, cached);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.True,
+            "Cached OperatorApprovals must hydrate the per-request graph so approved sources retain the score-router edge.");
+    }
+
+    /// <summary>
+    /// C1 regression: when CachedGroupData.OperatorApprovals is null (the pre-fix bug shape
+    /// at NetworkStateUpdaterService.cs lines 221/471/702), the cached path returns early
+    /// without loading approvals from DB. Approved users then lose their score-router edges
+    /// → maxFlow=0. This test pins the failure mode so it can't silently regress.
+    /// </summary>
+    [Test]
+    public void GraphFactory_CachedGroupData_NullOperatorApprovals_DropsApprovedRouterEdges_C1Regression()
+    {
+        var mock = BuildScoreGroupMock(approveAlice: true);
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+        int tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        int groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        int routerId = AddressIdPool.IdOf(ScoreRouterAddr.ToLowerInvariant());
+        int poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        var cached = new CachedGroupData(
+            GroupNodes: new HashSet<int> { groupId },
+            OrganizationNodes: new HashSet<int>(),
+            GroupTrustedTokens: new Dictionary<int, HashSet<int>> { [groupId] = new() { tokenAId } },
+            ConsentedAvatars: new HashSet<int>(),
+            RegisteredAvatarIds: new HashSet<int> { aliceId, tokenAId, groupId },
+            WrapperToAvatar: new Dictionary<int, int>(),
+            GroupRouters: new Dictionary<int, int> { [groupId] = routerId },
+            ScoreGroupMintLimits: new Dictionary<(int, int), long> { [(groupId, tokenAId)] = 25_000_000L },
+            OperatorApprovals: null);
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob }, cached);
+
+        Assert.That(cg.OperatorApprovals.Count, Is.EqualTo(0),
+            "Null OperatorApprovals in cache leaves the per-request graph empty — production must populate the field at NetworkStateUpdaterService.cs lines 221/471/702.");
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.False,
+            "With null cached approvals, even approved users lose score-router edges (C1 fail-CLOSED).");
     }
 
     [Test]

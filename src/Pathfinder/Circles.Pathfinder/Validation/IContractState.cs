@@ -44,4 +44,20 @@ public interface IContractState
     /// Returns null if the address is not a wrapper.
     /// </summary>
     string? ResolveWrapperToAvatar(string wrapperAddress);
+
+    /// <summary>
+    /// Hub.isApprovedForAll(account, operator) — has the account granted ERC-1155 operator
+    /// rights to the given operator? Required for any Hub.operateFlowMatrix call whose
+    /// path contains a from-vertex other than the operator/sender.
+    /// Returns true (permissive) if no approval data is loaded — keeps unrelated
+    /// validation paths from regressing when approvals are not yet indexed.
+    /// </summary>
+    bool IsApprovedForAll(string account, string @operator) => true;
+
+    /// <summary>
+    /// True when this address is a score-group mint router (per-group, set via
+    /// ScoreGroupMintRouter at OffchainScoreBasedMintPolicy.initializeGroup).
+    /// Used to scope the approveCRC rule so it only fires for score-router edges.
+    /// </summary>
+    bool IsScoreRouter(string address) => false;
 }

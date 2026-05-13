@@ -226,7 +226,8 @@ public class NetworkStateUpdaterService : BackgroundService
             new HashSet<int>(cap.RegisteredAvatarIds),
             new Dictionary<int, int>(cap.WrapperToAvatar),
             new Dictionary<int, int>(cap.GroupRouters),
-            new Dictionary<(int GroupAddress, int CollateralToken), long>(cap.ScoreGroupMintLimits));
+            new Dictionary<(int GroupAddress, int CollateralToken), long>(cap.ScoreGroupMintLimits),
+            cap.OperatorApprovals.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)));
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
 
@@ -476,7 +477,8 @@ public class NetworkStateUpdaterService : BackgroundService
             new HashSet<int>(cap.RegisteredAvatarIds),
             new Dictionary<int, int>(cap.WrapperToAvatar),
             new Dictionary<int, int>(cap.GroupRouters),
-            new Dictionary<(int GroupAddress, int CollateralToken), long>(cap.ScoreGroupMintLimits));
+            new Dictionary<(int GroupAddress, int CollateralToken), long>(cap.ScoreGroupMintLimits),
+            cap.OperatorApprovals.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)));
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
 
@@ -707,7 +709,8 @@ public class NetworkStateUpdaterService : BackgroundService
             new HashSet<int>(cap.RegisteredAvatarIds),
             new Dictionary<int, int>(cap.WrapperToAvatar),
             new Dictionary<int, int>(cap.GroupRouters),
-            new Dictionary<(int GroupAddress, int CollateralToken), long>(cap.ScoreGroupMintLimits));
+            new Dictionary<(int GroupAddress, int CollateralToken), long>(cap.ScoreGroupMintLimits),
+            cap.OperatorApprovals.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)));
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
 

@@ -15,6 +15,7 @@ public class MockLoadGraph : ILoadGraph
     private readonly List<(string GroupAddress, string TrustedToken)> _groupTrusts = new();
     private readonly List<(string GroupAddress, string RouterAddress)> _groupRouters = new();
     private readonly List<(string GroupAddress, string CollateralToken, string AvailableLimit)> _scoreGroupMintLimits = new();
+    private readonly List<(string Account, string Operator)> _operatorApprovals = new();
     private readonly List<(string Avatar, bool HasConsentedFlow)> _consentedFlags = new();
     private readonly List<string> _registeredAvatars = new();
     private readonly List<(string WrapperAddress, string UnderlyingAvatar)> _wrapperMappings = new();
@@ -119,6 +120,17 @@ public class MockLoadGraph : ILoadGraph
     }
 
     /// <summary>
+    /// Record an ERC-1155 ApprovalForAll. `account` is the ERC-1155 owner who called
+    /// setApprovalForAll, `operator` is the address it approved. For score-router paths,
+    /// `account` is the router and `operator` is the avatar approved to move tokens via
+    /// the router (mirrors ScoreGroupMintRouter.setApprovalForCRC).
+    /// </summary>
+    public void AddOperatorApproval(string account, string @operator)
+    {
+        _operatorApprovals.Add((account.ToLowerInvariant(), @operator.ToLowerInvariant()));
+    }
+
+    /// <summary>
     /// Add a consented flow flag using integer node ID.
     /// </summary>
     public void AddConsentedAvatar(int avatarId, bool hasConsentedFlow = true)
@@ -168,6 +180,12 @@ public class MockLoadGraph : ILoadGraph
         return _scoreGroupMintLimits;
     }
 
+    public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
+    {
+        var filter = new HashSet<string>(accounts.Select(a => a.ToLowerInvariant()));
+        return _operatorApprovals.Where(row => filter.Contains(row.Account)).ToList();
+    }
+
     public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
     {
         return _consentedFlags;
@@ -209,6 +227,7 @@ public class MockLoadGraph : ILoadGraph
         _groups.Clear();
         _groupTrusts.Clear();
         _scoreGroupMintLimits.Clear();
+        _operatorApprovals.Clear();
         _consentedFlags.Clear();
         _registeredAvatars.Clear();
         _wrapperMappings.Clear();

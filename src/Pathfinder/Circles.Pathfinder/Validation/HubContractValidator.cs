@@ -36,7 +36,7 @@ public static class HubContractValidator
         ValidateAvatarRegistration(filtered, source, sink, state, violations);
         ValidateGroupRegistration(filtered, state, violations);
         ValidateTokenIdValidity(filtered, state, violations);
-        ValidateIsPermittedFlow(filtered, state, violations);
+        ValidateIsPermittedFlow(filtered, source, state, violations);
         ValidateFlowConservation(filtered, source, sink, violations);
         ValidateCollateralBeforeMint(filtered, state, violations);
         ValidateNoDuplicateEdges(filtered, violations);
@@ -368,7 +368,15 @@ public static class HubContractValidator
         IReadOnlyList<TransferPathStep> steps,
         IContractState state,
         List<ValidationViolation> violations)
+        => ValidateIsPermittedFlow(steps, source: string.Empty, state, violations);
+
+    internal static void ValidateIsPermittedFlow(
+        IReadOnlyList<TransferPathStep> steps,
+        string source,
+        IContractState state,
+        List<ValidationViolation> violations)
     {
+        var sourceLower = source.ToLowerInvariant();
         for (int i = 0; i < steps.Count; i++)
         {
             var from = steps[i].From.ToLowerInvariant();
@@ -414,6 +422,18 @@ public static class HubContractValidator
                     violations.Add(new ValidationViolation(
                         "IsPermittedFlow",
                         $"Edge {i}: Avatar→Router — consented sender '{from}' cannot route through Router (Router has no advancedUsageFlags)",
+                        i, "error"));
+                }
+
+                // ScoreGroupMintRouter requires ERC-1155 operator approval from Router→source
+                // (the path's source acts as msg.sender in operateFlowMatrix). Without it the
+                // Router→Group hop reverts on safeBatchTransferFrom. We surface this as a
+                // distinct rule so the SDK can offer "tap to approve" instead of a revert.
+                if (state.IsScoreRouter(to) && !state.IsApprovedForAll(to, sourceLower))
+                {
+                    violations.Add(new ValidationViolation(
+                        "ApproveCRCRequired",
+                        $"Edge {i}: Avatar→Router — score router '{to}' has not approved source '{sourceLower}' as ERC-1155 operator; call ScoreGroupMintRouter.setApprovalForCRC([source]) once before retrying",
                         i, "error"));
                 }
                 continue;

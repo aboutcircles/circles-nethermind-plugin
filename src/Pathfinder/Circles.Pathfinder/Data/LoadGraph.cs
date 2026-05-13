@@ -40,6 +40,15 @@ namespace Circles.Pathfinder.Data
         IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters() => [];
         IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits() => [];
 
+        /// <summary>
+        /// Returns currently-active ERC-1155 operator approvals from the Hub for the given owner
+        /// accounts. Used by the pathfinder to gate Avatar→Router edges: routing through a
+        /// ScoreGroupMintRouter requires the Router to have approved the operator
+        /// (msg.sender of operateFlowMatrix) via Hub.setApprovalForAll. Without it, the
+        /// underlying ERC-1155 transfer in the Router→Group hop reverts.
+        /// </summary>
+        IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts) => [];
+
         IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags();
 
         IEnumerable<string> LoadRegisteredAvatars();
@@ -585,6 +594,50 @@ namespace Circles.Pathfinder.Data
             sw.Stop();
             OnQueryCompleted?.Invoke("score_group_mint_limits", sw.Elapsed);
             return rows.Select(row => (row.GroupAddress, row.CollateralToken, row.AvailableLimit)).ToList();
+        }
+
+        public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
+        {
+            var accountSet = accounts
+                .Where(a => !string.IsNullOrWhiteSpace(a))
+                .Select(a => a.ToLowerInvariant())
+                .Distinct()
+                .ToArray();
+
+            if (accountSet.Length == 0)
+                return [];
+
+            var sw = Stopwatch.StartNew();
+            using var connection = _dataSource.OpenConnection();
+            using var command = new NpgsqlCommand(
+                """
+                SELECT account, operator FROM (
+                    SELECT DISTINCT ON (LOWER("account"), LOWER("operator"))
+                        LOWER("account") AS account,
+                        LOWER("operator") AS operator,
+                        "approved" AS approved
+                    FROM "CrcV2_ApprovalForAll"
+                    WHERE LOWER("account") = ANY(@accounts)
+                    ORDER BY LOWER("account"), LOWER("operator"),
+                             "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+                ) latest
+                WHERE approved = true;
+                """,
+                connection);
+
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("accounts", accountSet);
+
+            var results = new List<(string, string)>(64);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                results.Add((reader.GetString(0), reader.GetString(1)));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("operator_approvals", sw.Elapsed);
+            return results;
         }
 
         private List<(string GroupAddress, string CollateralToken, string AvailableLimit)>

@@ -137,7 +137,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         var (totalGroupTokenEdges, routerFilteredCount) = AddTokenPoolOutEdges(
             capacityGraph, trustLookup,
             virtualSink: null, virtualSinkTrustedTokens: new HashSet<int>(),
-            sinkId: null, new HashSet<int>(), new HashSet<int>());
+            sinkId: null, sourceId: null, new HashSet<int>(), new HashSet<int>());
         capacityGraph.TotalGroupTokenEdges = totalGroupTokenEdges;
         capacityGraph.RouterFilteredEdges = routerFilteredCount;
 
@@ -479,6 +479,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             virtualSinkAddress,
             virtualSinkTrustedTokens,
             sinkId,
+            sourceId,
             toTokensFilter,
             excludedToTokensFilter);
         capacityGraph.TotalGroupTokenEdges = totalGroupTokenEdges;
@@ -685,6 +686,11 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 foreach (var (key, limit) in cached.ScoreGroupMintLimits)
                     capacityGraph.ScoreGroupMintLimits[key] = limit;
             }
+            if (cached.OperatorApprovals != null)
+            {
+                foreach (var (cachedRouterId, operators) in cached.OperatorApprovals)
+                    capacityGraph.OperatorApprovals[cachedRouterId] = new HashSet<int>(operators);
+            }
             foreach (var orgId in cached.OrganizationNodes)
                 capacityGraph.OrganizationNodes.Add(orgId);
             foreach (var (groupId, tokens) in cached.GroupTrustedTokens)
@@ -726,6 +732,29 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
             int tokenId = AddressIdPool.IdOf(collateralToken.ToLowerInvariant());
             capacityGraph.ScoreGroupMintLimits[(groupId, tokenId)] = CirclesConverter.TruncateToInt64(parsedLimit);
+        }
+
+        // Load ERC-1155 operator approvals granted BY the known group routers.
+        // These gate Avatar→Router edges: Hub.operateFlowMatrix reverts if the caller
+        // (operator/msg.sender) is not approved by the Router that holds tokens on the path.
+        var routerAddresses = capacityGraph.GroupRouters.Values
+            .Select(AddressIdPool.StringOf)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .ToList();
+        if (routerAddresses.Count > 0)
+        {
+            foreach (var (account, op) in loadGraph.LoadOperatorApprovals(routerAddresses))
+            {
+                int approvingRouterId = AddressIdPool.IdOf(account.ToLowerInvariant());
+                int operatorId = AddressIdPool.IdOf(op.ToLowerInvariant());
+                if (!capacityGraph.OperatorApprovals.TryGetValue(approvingRouterId, out var approved))
+                {
+                    approved = new HashSet<int>();
+                    capacityGraph.OperatorApprovals[approvingRouterId] = approved;
+                }
+                approved.Add(operatorId);
+            }
         }
 
         // Load organizations from DB (needed for canary source-type filtering)
@@ -873,6 +902,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         int? virtualSink,
         HashSet<int> virtualSinkTrustedTokens,
         int? sinkId,
+        int? sourceId,
         HashSet<int> toTokensFilter,
         HashSet<int> excludedToTokensFilter)
     {
@@ -906,6 +936,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         // revert on-chain even though the pathfinder found a valid flow.
         int routerFilteredCount = 0;
         int totalGroupTokenEdges = 0;
+        int approvalFilteredCount = 0;
         foreach (var groupId in g.GroupNodes)
         {
             if (g.GroupTrustedTokens.TryGetValue(groupId, out var trustedTokens))
@@ -915,6 +946,23 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 if (routerTrusts == null)
                     _logger.LogWarning("Router node {Router} has no trust entries in accountTrusts — group collateral edges for {Group} will be blocked",
                         AddressIdPool.StringOf(groupRouter), AddressIdPool.StringOf(groupId));
+
+                // Score-group routers require ERC-1155 approval from the Router for the
+                // operator (msg.sender of operateFlowMatrix) before Hub will execute the
+                // Router→Group hop. The pathfinder treats the path source as that operator.
+                // When sourceId is provided but unapproved, skip every collateral edge
+                // through this group's router — the resulting path would revert on-chain.
+                // When sourceId is null (base snapshot), the gate cannot be evaluated and
+                // the edges are inherently source-dependent — strip them unconditionally so
+                // the shared snapshot can't emit reverting paths. Per-request filtered
+                // builds reconstruct these edges with proper source context.
+                // A group is a score group iff it has at least one per-collateral mint-limit row.
+                bool isScoreGroup = trustedTokens.Any(t => g.ScoreGroupMintLimits.ContainsKey((groupId, t)));
+                bool operatorApproved =
+                    !isScoreGroup
+                    || (sourceId.HasValue
+                        && g.OperatorApprovals.TryGetValue(groupRouter, out var approvedOps)
+                        && approvedOps.Contains(sourceId.Value));
 
                 foreach (var token in trustedTokens)
                 {
@@ -935,6 +983,13 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                         continue;
                     }
 
+                    // approveCRC gate (ERC-1155 operator approval Router→source).
+                    if (!operatorApproved)
+                    {
+                        approvalFilteredCount++;
+                        continue;
+                    }
+
                     if (!tokenToAvatars.TryGetValue(token, out var list))
                         tokenToAvatars[token] = list = new List<int>();
                     if (!list.Contains(groupId))
@@ -945,6 +1000,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         if (routerFilteredCount > 0)
             _logger.LogInformation("Filtered {Count} group collateral edges where Router does not trust the token", routerFilteredCount);
+        if (approvalFilteredCount > 0)
+            _logger.LogInformation("Filtered {Count} group collateral edges where source is not an approved operator of the score router", approvalFilteredCount);
 
         foreach (var (token, acceptors) in tokenToAvatars)
         {
