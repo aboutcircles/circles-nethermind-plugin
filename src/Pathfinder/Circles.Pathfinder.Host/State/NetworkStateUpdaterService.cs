@@ -42,6 +42,20 @@ public class NetworkStateUpdaterService : BackgroundService
     private CacheLoadGraph? _cacheLoadGraph;
     private string? _cacheGraphEtag;
 
+    // C3: log score-policy posture on each transition so an operator can read the log
+    // and reconstruct boot → indexer-catchup → healthy progression without a metric
+    // dashboard. Initial state is NotLogged so the first observation always emits one
+    // log batch; subsequent identical observations are suppressed.
+    private ScorePolicyDiagnosticState _scorePolicyState = ScorePolicyDiagnosticState.NotLogged;
+
+    private enum ScorePolicyDiagnosticState
+    {
+        NotLogged,
+        FailOpenNoRouters,      // policy configured but no GroupInitialized event indexed yet
+        FailClosedNoApprovals,  // routers indexed but no ApprovalForAll events indexed yet
+        Healthy                  // routers + approvals both present
+    }
+
     public NetworkStateUpdaterService(NetworkState networkState,
         Circles.Pathfinder.Host.Settings settings,
         ILogger<NetworkStateUpdaterService> log,
@@ -145,6 +159,7 @@ public class NetworkStateUpdaterService : BackgroundService
                     GraphUpdateMetrics.ConsentedAvatarCount.Set(currentSnap.Base.ConsentedAvatars.Count);
                     GraphUpdateMetrics.RouterTrustCoverageTotal.Set(currentSnap.Base.TotalGroupTokenEdges);
                     GraphUpdateMetrics.RouterTrustFilteredCount.Set(currentSnap.Base.RouterFilteredEdges);
+                    TryLogScorePolicyDiagnostic(currentSnap.Base);
                 }
 
                 GraphUpdateMetrics.AddressPoolSize.Set(AddressIdPool.Count);
@@ -661,6 +676,7 @@ public class NetworkStateUpdaterService : BackgroundService
                 GraphUpdateMetrics.ConsentedAvatarCount.Set(currentSnap.Base.ConsentedAvatars.Count);
                 GraphUpdateMetrics.RouterTrustCoverageTotal.Set(currentSnap.Base.TotalGroupTokenEdges);
                 GraphUpdateMetrics.RouterTrustFilteredCount.Set(currentSnap.Base.RouterFilteredEdges);
+                TryLogScorePolicyDiagnostic(currentSnap.Base);
             }
             GraphUpdateMetrics.AddressPoolSize.Set(AddressIdPool.Count);
 
@@ -852,6 +868,57 @@ public class NetworkStateUpdaterService : BackgroundService
         {
             GraphUpdateMetrics.MatViewRefreshErrors.WithLabels(viewName).Inc();
             _log.LogWarning(ex, "Failed to refresh materialized view {View} — stale data until next refresh", viewName);
+        }
+    }
+
+    /// <summary>
+    /// C3 observability: log the score-policy posture on each transition so an operator
+    /// can read the log and reconstruct boot → catchup → healthy progression. Fires when
+    /// either local <c>ScoreGroupMintPolicies</c> is configured OR the cache has
+    /// materialized at least one score router (the cache producer can ship routers
+    /// independently of local config under <c>USE_CACHE_GRAPH_SOURCE</c>; either signal
+    /// means the gate is live). No-op when both are empty — gate stays legacy fail-OPEN
+    /// and there's nothing to surface. INFO on every transition; WARN only when the
+    /// posture is non-Healthy (so chronic indexer lag stays loud, but a node that boots
+    /// healthy logs exactly one info line).
+    /// </summary>
+    private void TryLogScorePolicyDiagnostic(CapacityGraph baseGraph)
+    {
+        var policiesConfigured = _settings.ScoreGroupMintPolicies.Length > 0;
+        var routersIndexed = baseGraph.ScoreRouterIds.Count > 0;
+        if (!policiesConfigured && !routersIndexed)
+            return;
+
+        ScorePolicyDiagnosticState newState =
+            !routersIndexed                            ? ScorePolicyDiagnosticState.FailOpenNoRouters
+            : baseGraph.OperatorApprovals.Count == 0   ? ScorePolicyDiagnosticState.FailClosedNoApprovals
+            :                                            ScorePolicyDiagnosticState.Healthy;
+
+        if (newState == _scorePolicyState) return;
+        var previousState = _scorePolicyState;
+        _scorePolicyState = newState;
+
+        _log.LogInformation(
+            "Score-policy posture {NewState} (was {PreviousState}): {PolicyCount} policies configured, {RouterCount} routers indexed, {ApprovalCount} operator approvals indexed",
+            newState, previousState,
+            _settings.ScoreGroupMintPolicies.Length,
+            baseGraph.ScoreRouterIds.Count,
+            baseGraph.OperatorApprovals.Count);
+
+        if (newState == ScorePolicyDiagnosticState.FailOpenNoRouters)
+        {
+            _log.LogWarning(
+                "Score-policy gate FAIL-OPEN: ScoreRouterIds empty — no CrcV2_ScoreGroup.GroupInitialized events indexed yet. " +
+                "Either no score groups exist OR the indexer is behind. " +
+                "ApproveCRCRequired will not fire until at least one router is indexed.");
+        }
+        else if (newState == ScorePolicyDiagnosticState.FailClosedNoApprovals)
+        {
+            _log.LogWarning(
+                "Score-policy gate FAIL-CLOSED: {RouterCount} routers indexed but OperatorApprovals empty — " +
+                "indexer likely behind on approval events. " +
+                "ApproveCRCRequired will drop all router edges until approvals catch up.",
+                baseGraph.ScoreRouterIds.Count);
         }
     }
 

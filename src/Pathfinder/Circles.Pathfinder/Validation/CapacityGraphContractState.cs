@@ -112,20 +112,31 @@ public sealed class CapacityGraphContractState : IContractState
     }
 
     /// <summary>
-    /// Hub.isApprovedForAll(account, operator). Permissive when no approval data is loaded —
-    /// the GraphFactory only populates OperatorApprovals when a score-group policy is
-    /// configured, so absence here means the rule is not applicable in this build.
+    /// Hub.isApprovedForAll(account, operator). Fail-closed when ScoreRouterIds is non-empty —
+    /// at least one CrcV2_ScoreGroup.GroupInitialized event has been indexed, so a score
+    /// policy is live and missing approval data must be treated as "not indexed yet", not
+    /// "no approvals exist". Legacy permissive behavior is preserved only when no score
+    /// routers are known to the cache (no policy active or indexer hasn't caught up — the
+    /// policy isn't in force regardless).
+    ///
+    /// DB-source mode: LoadGraph.LoadScoreRouters early-returns on empty ScoreGroupMintPolicies,
+    /// so ScoreRouterIds.Count &gt; 0 implies a policy is configured locally.
+    /// Cache-source mode: CacheLoadGraph.LoadScoreRouters yields whatever the upstream cache
+    /// producer ships, independent of local config. The gate therefore trusts the materialized
+    /// cache: if routers are present, treat the policy as in force regardless of local env.
     /// </summary>
     public bool IsApprovedForAll(string account, string @operator)
     {
+        var scoreRoutersActive = _graph.ScoreRouterIds.Count > 0;
+
         if (_graph.OperatorApprovals.Count == 0)
-            return true;
+            return !scoreRoutersActive;
 
         var accountLower = account.ToLowerInvariant();
         var operatorLower = @operator.ToLowerInvariant();
 
         if (!AddressIdPool.TryIdOf(accountLower, out int accountId))
-            return true;
+            return !scoreRoutersActive;
 
         if (!AddressIdPool.TryIdOf(operatorLower, out int operatorId))
             return false;
