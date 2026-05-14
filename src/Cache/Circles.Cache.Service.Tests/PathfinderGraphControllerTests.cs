@@ -106,6 +106,38 @@ public class PathfinderGraphControllerTests
         response.Groups.Should().NotBeNull();
         response.GroupTrusts.Should().NotBeNull();
         response.ConsentedFlow.Should().NotBeNull();
+        // C3 fail-closed gate inputs — must be in the default snapshot so
+        // CapacityGraphContractState.IsApprovedForAll has the data it needs.
+        response.ScoreRouters.Should().NotBeNull();
+        response.OperatorApprovals.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void GetGraph_ScoreRouters_AreEmpty_WhenNoDataSourceConfigured()
+    {
+        // Unit test constructor passes _dataSource = null. Builder must no-op gracefully:
+        // emit empty list (section requested), not null and not throw.
+        var controller = CreateController();
+
+        var result = controller.GetGraph(include: "scorerouters,operatorapprovals");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.ScoreRouters.Should().NotBeNull().And.BeEmpty();
+        response.OperatorApprovals.Should().NotBeNull().And.BeEmpty();
+        response.Trust.Should().BeNull();
+        response.Groups.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetGraph_ScoreRouters_OmittedWhenNotInInclude()
+    {
+        var controller = CreateController();
+
+        var result = controller.GetGraph(include: "balances");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.ScoreRouters.Should().BeNull();
+        response.OperatorApprovals.Should().BeNull();
     }
 
     [Fact]

@@ -120,6 +120,14 @@ public class PathfinderGraphController : ControllerBase
             var avatarToWrappers = sections.Contains("trust")
                 ? BuildAvatarToWrappersIndex()
                 : null;
+            // All historical distinct routers across all score-group policies (matches DB-source
+            // scoreRoutersQuery.sql, NOT just the per-group-latest in indexedScoreGroupRouters).
+            // If a group re-initialises with a new router, both old and new must appear so the
+            // C3 gate can resolve approvals for either; deriving from indexedScoreGroupRouters
+            // alone would drop retired routers and silently fail-OPEN their approvals.
+            var allScoreRouters = sections.Contains("scorerouters") || sections.Contains("operatorapprovals")
+                ? LoadAllScoreRouters(lastBlock)
+                : [];
 
             var response = new PathfinderGraphResponse(
                 SchemaVersion: SchemaVersion,
@@ -136,11 +144,17 @@ public class PathfinderGraphController : ControllerBase
                 WrapperMappings: sections.Contains("wrappermappings") ? BuildWrapperMappings(registrations) : null,
                 ScoreGroupMintLimits: sections.Contains("scoregroupmintlimits")
                     ? BuildScoreGroupMintLimits(registrations, routerGroups!, indexedScoreGroupRouters, lastBlock)
+                    : null,
+                ScoreRouters: sections.Contains("scorerouters")
+                    ? allScoreRouters
+                    : null,
+                OperatorApprovals: sections.Contains("operatorapprovals")
+                    ? BuildOperatorApprovals(allScoreRouters, lastBlock)
                     : null
             );
 
             _logger.LogDebug(
-                "Pathfinder graph snapshot: block={Block}, balances={Balances}, trust={Trust}, groups={Groups}, groupTrusts={GroupTrusts}, consent={Consent}, avatars={Avatars}, orgs={Orgs}, wrappers={Wrappers}",
+                "Pathfinder graph snapshot: block={Block}, balances={Balances}, trust={Trust}, groups={Groups}, groupTrusts={GroupTrusts}, consent={Consent}, avatars={Avatars}, orgs={Orgs}, wrappers={Wrappers}, scoreRouters={ScoreRouters}, operatorApprovals={OperatorApprovals}",
                 lastBlock,
                 response.Balances?.Count ?? 0,
                 response.Trust?.Count ?? 0,
@@ -149,7 +163,9 @@ public class PathfinderGraphController : ControllerBase
                 response.ConsentedFlow?.Count ?? 0,
                 response.Avatars?.Count ?? 0,
                 response.Organizations?.Count ?? 0,
-                response.WrapperMappings?.Count ?? 0);
+                response.WrapperMappings?.Count ?? 0,
+                response.ScoreRouters?.Count ?? 0,
+                response.OperatorApprovals?.Count ?? 0);
 
             return Ok(response);
         }
@@ -163,7 +179,7 @@ public class PathfinderGraphController : ControllerBase
     private static HashSet<string> ParseInclude(string? include)
     {
         if (string.IsNullOrWhiteSpace(include))
-            return new HashSet<string> { "balances", "trust", "groups", "grouprouters", "grouptrusts", "scoregroupmintlimits", "consentedflow", "avatars", "organizations", "wrappermappings" };
+            return new HashSet<string> { "balances", "trust", "groups", "grouprouters", "grouptrusts", "scoregroupmintlimits", "consentedflow", "avatars", "organizations", "wrappermappings", "scorerouters", "operatorapprovals" };
 
         return new HashSet<string>(
             include.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -398,6 +414,106 @@ public class PathfinderGraphController : ControllerBase
                 row.CollateralToken,
                 row.AvailableLimit))
             .ToList();
+    }
+
+    /// <summary>
+    /// All distinct score-router addresses ever emitted by CrcV2_ScoreGroup_GroupInitialized
+    /// across the configured score-group mint policies, bounded by lastBlock for snapshot reproducibility.
+    /// Mirrors the DB-source scoreRoutersQuery.sql so cache-source and DB-source feed the same
+    /// router universe into the C3 fail-closed gate, including retired routers from re-initialisations.
+    /// </summary>
+    private List<string> LoadAllScoreRouters(long lastBlock)
+    {
+        if (_dataSource == null || ScoreGroupMintPolicies.Count == 0)
+            return [];
+
+        const string sql = """
+            SELECT DISTINCT LOWER("pathMintRouter") AS router
+            FROM "CrcV2_ScoreGroup_GroupInitialized"
+            WHERE "blockNumber" <= @lastBlock
+              AND LOWER("emitter") = ANY(@scoreMintPolicies);
+            """;
+
+        try
+        {
+            using var connection = _dataSource.OpenConnection();
+            using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("lastBlock", lastBlock);
+            command.Parameters.AddWithValue("scoreMintPolicies", ScoreGroupMintPolicies.ToArray());
+            command.CommandTimeout = 60;
+
+            var result = new List<string>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var router = reader.GetString(0);
+                if (!string.IsNullOrEmpty(router))
+                    result.Add(router);
+            }
+            return result;
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            _logger.LogWarning(
+                ex,
+                "Score-group router table is not available yet; score routers omitted from the pathfinder graph snapshot");
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Operator-approval pairs filtered to score-router accounts only. Matches the DB-source
+    /// CrcV2_ApprovalForAll DISTINCT-ON-(account, operator) projection used by LoadGraph.LoadOperatorApprovals,
+    /// bounded by lastBlock to keep snapshots reproducible.
+    /// </summary>
+    private List<PathfinderOperatorApprovalRow> BuildOperatorApprovals(
+        IReadOnlyList<string> scoreRouters,
+        long lastBlock)
+    {
+        if (_dataSource == null || scoreRouters.Count == 0)
+            return [];
+
+        const string sql = """
+            SELECT account, operator FROM (
+                SELECT DISTINCT ON (LOWER("account"), LOWER("operator"))
+                    LOWER("account") AS account,
+                    LOWER("operator") AS operator,
+                    "approved" AS approved
+                FROM "CrcV2_ApprovalForAll"
+                WHERE "blockNumber" <= @lastBlock
+                  AND LOWER("account") = ANY(@accounts)
+                ORDER BY LOWER("account"), LOWER("operator"),
+                         "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+            ) latest
+            WHERE approved = true;
+            """;
+
+        try
+        {
+            using var connection = _dataSource.OpenConnection();
+            using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("lastBlock", lastBlock);
+            command.Parameters.AddWithValue("accounts", scoreRouters.ToArray());
+            command.CommandTimeout = 60;
+
+            var result = new List<PathfinderOperatorApprovalRow>(64);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                result.Add(new PathfinderOperatorApprovalRow(
+                    Account: reader.GetString(0),
+                    Operator: reader.GetString(1)));
+            }
+
+            return result;
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            _logger.LogWarning(
+                ex,
+                "CrcV2_ApprovalForAll table is not available yet; operator approvals omitted from the pathfinder graph snapshot");
+            return [];
+        }
     }
 
     private Dictionary<string, string> LoadIndexedScoreGroupRouters(long lastBlock)
