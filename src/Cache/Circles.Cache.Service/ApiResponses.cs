@@ -185,7 +185,11 @@ public record PathfinderGraphResponse(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<PathfinderWrapperMappingRow>? WrapperMappings,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<PathfinderScoreGroupMintLimitRow>? ScoreGroupMintLimits
+    IReadOnlyList<PathfinderScoreGroupMintLimitRow>? ScoreGroupMintLimits,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? ScoreRouters,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderOperatorApprovalRow>? OperatorApprovals
 );
 
 public record PathfinderBalanceRow(
@@ -229,4 +233,9 @@ public record PathfinderConsentedFlowRow(
 public record PathfinderWrapperMappingRow(
     string WrapperAddress,
     string UnderlyingAvatar
+);
+
+public record PathfinderOperatorApprovalRow(
+    string Account,
+    string Operator
 );
