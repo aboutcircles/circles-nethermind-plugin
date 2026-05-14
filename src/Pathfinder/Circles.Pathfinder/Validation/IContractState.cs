@@ -60,4 +60,22 @@ public interface IContractState
     /// Used to scope the approveCRC rule so it only fires for score-router edges.
     /// </summary>
     bool IsScoreRouter(string address) => false;
+
+    /// <summary>
+    /// circles_getScoreGroupMintLimits view: cached `availableLimit` per
+    /// (group, collateral) tuple, mirroring OffchainScoreBasedMintPolicy.sol's
+    /// router-branch math: `historicalSupplyOnToday(collateral)
+    /// + getMintedAmountOnToday(group, collateral) − HUB.balanceOf(treasury, collateral)`.
+    ///
+    /// The mapping is keyed on (group, collateral) only — there is no per-intermediary
+    /// accounting on-chain — so under the typical "intermediary mints with own token"
+    /// pattern, each (group, intermediary-token) row IS effectively per-intermediary;
+    /// only in the rare case of two intermediaries supplying the same third-party
+    /// collateral do they share a row.
+    ///
+    /// Returns null when no entry is cached. Rule 12 fails-closed on null when the
+    /// edge looks like a score-router→group hop, preventing chain-reverting paths
+    /// from leaking through during indexer drift.
+    /// </summary>
+    long? GetScoreGroupMintLimit(string group, string collateral) => null;
 }
