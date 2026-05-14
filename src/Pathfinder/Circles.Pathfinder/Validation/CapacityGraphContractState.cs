@@ -159,4 +159,27 @@ public sealed class CapacityGraphContractState : IContractState
             return false;
         return _graph.ScoreRouterIds.Contains(id);
     }
+
+    /// <summary>
+    /// Read the cached availableLimit for (group, collateral) from
+    /// CapacityGraph.ScoreGroupMintLimits, sourced via
+    /// circles_getScoreGroupMintLimits → LoadGraph.LoadScoreGroupMintLimits.
+    /// Returns null when the tuple has no cached entry (state-snapshot drift,
+    /// non-score group, or unknown address) — Rule 12 maps null → fail-closed
+    /// for score-router→group edges.
+    /// </summary>
+    public long? GetScoreGroupMintLimit(string group, string collateral)
+    {
+        var groupLower = group.ToLowerInvariant();
+        var collateralLower = collateral.ToLowerInvariant();
+
+        if (!AddressIdPool.TryIdOf(groupLower, out int groupId))
+            return null;
+        if (!AddressIdPool.TryIdOf(collateralLower, out int collateralId))
+            return null;
+
+        return _graph.ScoreGroupMintLimits.TryGetValue((groupId, collateralId), out var limit)
+            ? limit
+            : null;
+    }
 }
