@@ -80,24 +80,31 @@ public class MaxFlowResponse
     public string? ReqId { get; set; }
 
     /// <summary>
-    /// Canary: number of Hub.sol rule violations detected by HubContractValidator.
-    /// Non-zero means the pathfinder produced output that would revert on-chain.
-    /// Not serialized — used internally for metrics.
+    /// Number of Hub.sol rule violations detected by HubContractValidator. When non-zero,
+    /// the pathfinder produced output that would have reverted on-chain and the response's
+    /// transfers have been replaced with the empty path by the safety net. Serialized only
+    /// when non-zero so callers can self-diagnose path rejections without log access.
     /// </summary>
-    [JsonIgnore]
+    [JsonPropertyName("validationErrors")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public int ValidationErrors { get; set; }
 
     /// <summary>
-    /// Canary: rule names of validation violations, for per-rule metric labeling.
-    /// Not serialized — used internally for metrics.
+    /// Hub.sol rule names of each detected violation (duplicates are removed by
+    /// HubContractValidator before assignment). Serialized when not null. The producer is
+    /// expected to leave this null when there are zero violations rather than assigning
+    /// an empty list; an empty list would appear on the wire as `[]`.
     /// </summary>
-    [JsonIgnore]
+    [JsonPropertyName("validationViolationRules")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? ValidationViolationRules { get; set; }
 
     /// <summary>
-    /// Canary: true if HubContractValidator threw an exception (validator bug, not pathfinder bug).
+    /// True if HubContractValidator threw an unexpected exception (validator bug, not
+    /// pathfinder bug). Serialized only when true.
     /// </summary>
-    [JsonIgnore]
+    [JsonPropertyName("validatorException")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool ValidatorException { get; set; }
 
     /// <summary>
