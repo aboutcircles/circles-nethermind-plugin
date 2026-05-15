@@ -196,11 +196,13 @@ internal sealed class FindPathHandler(
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
 
-                // Path audit: when HubContractValidator detected Hub.sol rule violations,
-                // the produced path would revert on-chain. Record metrics, log, then replace
-                // the broken transfers with the canonical empty response so the wallet can't
-                // submit a doomed tx. The API contract still returns MaxFlowResponse — never errors.
-                if (mfr.ValidationErrors > 0)
+                // Path audit: when HubContractValidator detected Hub.sol rule violations OR
+                // threw an unexpected exception, the produced path is unsafe (would either
+                // revert on-chain or could not be vouched for). Record metrics, log, then
+                // replace the broken transfers with the canonical empty response so the
+                // wallet can't submit a doomed tx. The API contract still returns
+                // MaxFlowResponse — never errors.
+                if (mfr.ValidationErrors > 0 || mfr.ValidatorException)
                 {
                     FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
@@ -208,12 +210,14 @@ internal sealed class FindPathHandler(
                         foreach (var rule in mfr.ValidationViolationRules)
                             FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule).Inc();
                     }
+                    if (mfr.ValidatorException)
+                        FindPathMetrics.PathAuditViolationsTotal.WithLabels("ValidatorException").Inc();
 
                     log.LogError(
-                        "Path audit: Hub.sol rule violations detected — replacing path with empty response. " +
-                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}",
+                        "Path audit: validator rejected response — replacing path with empty response. " +
+                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}, ValidatorException={ValidatorException}",
                         safeSource, safeSink, mfr.GraphBlock,
-                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
+                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors, mfr.ValidatorException);
 
                     FindPathMetrics.PathAuditBlockedTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
@@ -221,11 +225,14 @@ internal sealed class FindPathHandler(
                         foreach (var rule in mfr.ValidationViolationRules)
                             FindPathMetrics.PathAuditBlockedTotal.WithLabels(rule).Inc();
                     }
+                    if (mfr.ValidatorException)
+                        FindPathMetrics.PathAuditBlockedTotal.WithLabels("ValidatorException").Inc();
 
                     var emptyResponse = new MaxFlowResponse("0", new List<TransferPathStep>(), null)
                     {
                         ReqId = mfr.ReqId,
                         GraphBlock = mfr.GraphBlock,
+                        ConsentDroppedPaths = mfr.ConsentDroppedPaths,
                         ValidationErrors = mfr.ValidationErrors,
                         ValidationViolationRules = mfr.ValidationViolationRules,
                         ValidatorException = mfr.ValidatorException
@@ -408,8 +415,9 @@ internal sealed class FindPathHandler(
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
 
-                // Track Hub.sol rule violations (same as live path) — and replace with empty.
-                if (mfr.ValidationErrors > 0)
+                // Track Hub.sol rule violations or validator exceptions (same as live path)
+                // — and replace with empty.
+                if (mfr.ValidationErrors > 0 || mfr.ValidatorException)
                 {
                     FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
@@ -417,12 +425,14 @@ internal sealed class FindPathHandler(
                         foreach (var rule in mfr.ValidationViolationRules)
                             FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule).Inc();
                     }
+                    if (mfr.ValidatorException)
+                        FindPathMetrics.PathAuditViolationsTotal.WithLabels("ValidatorException").Inc();
 
                     log.LogError(
-                        "Historical path audit: Hub.sol rule violations — replacing path with empty response. " +
-                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}",
+                        "Historical path audit: validator rejected response — replacing path with empty response. " +
+                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}, ValidatorException={ValidatorException}",
                         safeSource, safeSink, blockNumber,
-                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
+                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors, mfr.ValidatorException);
 
                     FindPathMetrics.PathAuditBlockedTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
@@ -430,11 +440,14 @@ internal sealed class FindPathHandler(
                         foreach (var rule in mfr.ValidationViolationRules)
                             FindPathMetrics.PathAuditBlockedTotal.WithLabels(rule).Inc();
                     }
+                    if (mfr.ValidatorException)
+                        FindPathMetrics.PathAuditBlockedTotal.WithLabels("ValidatorException").Inc();
 
                     var emptyResponse = new MaxFlowResponse("0", new List<TransferPathStep>(), null)
                     {
                         ReqId = mfr.ReqId,
                         GraphBlock = mfr.GraphBlock,
+                        ConsentDroppedPaths = mfr.ConsentDroppedPaths,
                         ValidationErrors = mfr.ValidationErrors,
                         ValidationViolationRules = mfr.ValidationViolationRules,
                         ValidatorException = mfr.ValidatorException
