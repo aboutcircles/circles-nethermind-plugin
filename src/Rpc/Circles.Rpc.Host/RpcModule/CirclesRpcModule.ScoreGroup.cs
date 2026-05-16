@@ -33,18 +33,17 @@ public partial class CirclesRpcModule : ICirclesRpcModule
             policies,
             targetTimestamp: null,
             safetyMargin: 1.0,
-            commandTimeoutSeconds: _settings.DatabaseQueryTimeoutSeconds);
+            commandTimeoutSeconds: _settings.DatabaseQueryTimeoutSeconds,
+            groupAddressFilter: group,
+            collateralTokenFilter: collateralFilter);
 
-        var filtered = rows
-            .Where(row => string.Equals(row.GroupAddress, group, StringComparison.OrdinalIgnoreCase))
-            .Where(row => collateralFilter == null
-                          || string.Equals(row.CollateralToken, collateralFilter, StringComparison.OrdinalIgnoreCase))
+        var rpcRows = rows
             .Select(row => new ScoreGroupMintLimitRpcRow(
                 row.GroupAddress,
                 row.CollateralToken,
                 row.AvailableLimit))
             .ToArray();
 
-        return new ScoreGroupMintLimitsResponse(group, filtered);
+        return new ScoreGroupMintLimitsResponse(group, rpcRows);
     }
 }
