@@ -194,7 +194,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Alice) }; // Alice sends Alice-token to Bob
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty);
     }
 
@@ -204,7 +204,7 @@ public class HubContractValidatorTests
         var state = new MockContractState { Router = Router }; // No trusts, TrustAll=false
         var steps = new[] { Step(Alice, Bob, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations.Count, Is.EqualTo(1));
         Assert.That(violations[0].Rule, Is.EqualTo("IsPermittedFlow"));
     }
@@ -220,7 +220,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Carol) }; // Consented: checks From trusts To
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty);
     }
 
@@ -235,7 +235,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Carol) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations.Any(v => v.Message.Contains("advancedUsageFlags")), Is.True);
     }
 
@@ -250,7 +250,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Carol) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations.Any(v => v.Message.Contains("does not trust")), Is.True);
     }
 
@@ -264,7 +264,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Router, GroupA, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty, "Router→Group should bypass isPermittedFlow (internal group mint)");
     }
 
@@ -278,7 +278,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Router, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty, "Avatar→Router should pass when Router trusts tokenOwner");
     }
 
@@ -292,7 +292,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Router, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Has.Count.EqualTo(1));
         Assert.That(violations[0].Message, Does.Contain("Avatar→Router"));
         Assert.That(violations[0].Message, Does.Contain("does not trust token owner"));
@@ -310,7 +310,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Router, Alice, Bob) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty, "Router→NonGroup should use standard validation and pass when trusted");
     }
 
@@ -324,7 +324,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Router, Alice, Bob) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Has.Count.EqualTo(1), "Router→NonGroup with no trust should fail standard validation");
     }
 
