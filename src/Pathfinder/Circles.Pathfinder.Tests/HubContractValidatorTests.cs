@@ -51,6 +51,11 @@ public class HubContractValidatorTests
         public Dictionary<(string Group, string Collateral), long> ScoreGroupMintLimits { get; set; }
             = new();
 
+        // (account, operator) tuples lowercased. When the set is non-empty the mock switches to
+        // strict mode: returns true only for explicit entries. Empty set falls back to the
+        // interface default (true) so tests that don't care about approvals don't have to seed.
+        public HashSet<(string Account, string Operator)> Approvals { get; set; } = new();
+
         public string? RouterAddress => Router;
         public bool IsRouter(string address) =>
             (Router != null && string.Equals(Router, address, StringComparison.OrdinalIgnoreCase))
@@ -76,6 +81,12 @@ public class HubContractValidatorTests
                 (group.ToLowerInvariant(), collateral.ToLowerInvariant()), out var limit)
                 ? limit
                 : null;
+        }
+
+        public bool IsApprovedForAll(string account, string @operator)
+        {
+            if (Approvals.Count == 0) return true;
+            return Approvals.Contains((account.ToLowerInvariant(), @operator.ToLowerInvariant()));
         }
     }
 
@@ -326,6 +337,65 @@ public class HubContractValidatorTests
         var violations = new List<ValidationViolation>();
         HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Has.Count.EqualTo(1), "Router→NonGroup with no trust should fail standard validation");
+    }
+
+    // ═══════════════════════════════════════════
+    // Rule: ApproveCRCRequired (Avatar→ScoreRouter requires ERC-1155 operator approval)
+    // ═══════════════════════════════════════════
+
+    [Test]
+    public void ApproveCRCRequired_ScoreRouterEdge_WithApproval_DoesNotEmit()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            Trusts = { (ScoreRouter.ToLowerInvariant(), Alice.ToLowerInvariant()) },
+            Approvals = { (ScoreRouter.ToLowerInvariant(), Alice.ToLowerInvariant()) },
+        };
+        var steps = new[] { Step(Alice, ScoreRouter, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: Alice, state, violations);
+        Assert.That(violations.Any(v => v.Rule == "ApproveCRCRequired"), Is.False,
+            "ApproveCRCRequired must not fire when ScoreRouter has approved source");
+    }
+
+    [Test]
+    public void ApproveCRCRequired_ScoreRouterEdge_WithoutApproval_Emits()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            Trusts = { (ScoreRouter.ToLowerInvariant(), Alice.ToLowerInvariant()) },
+            // Approvals seeded with a dummy unrelated entry so the set is non-empty
+            // and the mock switches to strict mode (instead of the permissive default).
+            Approvals = { (Router, Carol.ToLowerInvariant()) },
+        };
+        var steps = new[] { Step(Alice, ScoreRouter, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: Alice, state, violations);
+        var violation = violations.SingleOrDefault(v => v.Rule == "ApproveCRCRequired");
+        Assert.That(violation, Is.Not.Null, "ApproveCRCRequired must fire when ScoreRouter has no approval for source");
+        Assert.That(violation!.Message, Does.Contain("setApprovalForCRC"),
+            "Message should guide the SDK to call setApprovalForCRC");
+    }
+
+    [Test]
+    public void ApproveCRCRequired_NonScoreRouterEdge_NoEmission_EvenWithoutApproval()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            // Router is the standard router but NOT a score router.
+            Trusts = { (Router, Alice.ToLowerInvariant()) },
+            Approvals = { (Router, Carol.ToLowerInvariant()) }, // strict mode, Alice not approved
+        };
+        var steps = new[] { Step(Alice, Router, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: Alice, state, violations);
+        Assert.That(violations.Any(v => v.Rule == "ApproveCRCRequired"), Is.False,
+            "ApproveCRCRequired is scoped to score-router edges; standard routers must not trip it");
     }
 
     // ═══════════════════════════════════════════
