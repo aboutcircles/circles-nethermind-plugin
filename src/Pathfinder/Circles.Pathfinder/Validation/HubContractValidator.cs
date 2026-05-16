@@ -368,12 +368,6 @@ public static class HubContractValidator
     // ────────────────────────────────────────────
     internal static void ValidateIsPermittedFlow(
         IReadOnlyList<TransferPathStep> steps,
-        IContractState state,
-        List<ValidationViolation> violations)
-        => ValidateIsPermittedFlow(steps, source: string.Empty, state, violations);
-
-    internal static void ValidateIsPermittedFlow(
-        IReadOnlyList<TransferPathStep> steps,
         string source,
         IContractState state,
         List<ValidationViolation> violations)

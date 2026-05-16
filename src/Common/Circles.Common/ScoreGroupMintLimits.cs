@@ -41,6 +41,7 @@ public static class ScoreGroupMintLimitReader
             WHERE (@maxBlock::bigint IS NULL OR g."blockNumber" <= @maxBlock)
               AND LOWER(g."mint") = ANY(@scoreMintPolicies)
               AND lsg.group_address IS NOT NULL
+              AND (@groupAddressFilter::text IS NULL OR g."group" = @groupAddressFilter)
         ),
         group_tokens AS (
             SELECT
@@ -51,6 +52,7 @@ public static class ScoreGroupMintLimitReader
             FROM score_groups sg
             INNER JOIN "V_CrcV2_TrustRelations" t ON t.truster = sg.group_address
             INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = t.trustee
+            WHERE (@collateralTokenFilter::text IS NULL OR t.trustee = @collateralTokenFilter)
         ),
         token_supply AS (
             SELECT
@@ -107,7 +109,9 @@ public static class ScoreGroupMintLimitReader
         double safetyMargin,
         int commandTimeoutSeconds,
         long? maxBlock = null,
-        NpgsqlTransaction? transaction = null)
+        NpgsqlTransaction? transaction = null,
+        string? groupAddressFilter = null,
+        string? collateralTokenFilter = null)
     {
         var policies = scoreMintPolicies
             .Select(x => x.Trim().ToLowerInvariant())
@@ -118,7 +122,14 @@ public static class ScoreGroupMintLimitReader
         if (policies.Length == 0)
             return [];
 
-        var baseRows = ReadBaseRows(connection, policies, commandTimeoutSeconds, maxBlock, transaction);
+        var baseRows = ReadBaseRows(
+            connection,
+            policies,
+            commandTimeoutSeconds,
+            maxBlock,
+            transaction,
+            NormalizeFilter(groupAddressFilter),
+            NormalizeFilter(collateralTokenFilter));
         return ReadFromBaseRows(
             connection,
             policies,
@@ -128,6 +139,14 @@ public static class ScoreGroupMintLimitReader
             commandTimeoutSeconds,
             maxBlock,
             transaction);
+    }
+
+    internal static string? NormalizeFilter(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return value.Trim().ToLowerInvariant();
     }
 
     public static IReadOnlyList<ScoreGroupMintLimitRow> ReadFromBaseRows(
@@ -193,13 +212,17 @@ public static class ScoreGroupMintLimitReader
         string[] policies,
         int commandTimeoutSeconds,
         long? maxBlock,
-        NpgsqlTransaction? transaction)
+        NpgsqlTransaction? transaction,
+        string? groupAddressFilter = null,
+        string? collateralTokenFilter = null)
     {
         var rows = new List<ScoreGroupMintLimitBaseRow>();
         using var command = new NpgsqlCommand(BaseRowsSql, connection, transaction);
         command.CommandTimeout = commandTimeoutSeconds;
         command.Parameters.AddWithValue("scoreMintPolicies", policies);
         AddMaxBlockParameter(command, maxBlock);
+        AddTextFilterParameter(command, "groupAddressFilter", groupAddressFilter);
+        AddTextFilterParameter(command, "collateralTokenFilter", collateralTokenFilter);
 
         using var reader = command.ExecuteReader();
         while (reader.Read())
@@ -294,5 +317,11 @@ public static class ScoreGroupMintLimitReader
     {
         var parameter = command.Parameters.Add("maxBlock", NpgsqlDbType.Bigint);
         parameter.Value = (object?)maxBlock ?? DBNull.Value;
+    }
+
+    private static void AddTextFilterParameter(NpgsqlCommand command, string name, string? value)
+    {
+        var parameter = command.Parameters.Add(name, NpgsqlDbType.Text);
+        parameter.Value = (object?)value ?? DBNull.Value;
     }
 }

@@ -51,6 +51,12 @@ public class HubContractValidatorTests
         public Dictionary<(string Group, string Collateral), long> ScoreGroupMintLimits { get; set; }
             = new();
 
+        // (account, operator) tuples lowercased. Membership grants approval — but only when
+        // StrictApprovals is true. Default behavior is permissive (returns true regardless),
+        // matching the IContractState default so existing tests don't have to seed anything.
+        public HashSet<(string Account, string Operator)> Approvals { get; set; } = new();
+        public bool StrictApprovals { get; set; }
+
         public string? RouterAddress => Router;
         public bool IsRouter(string address) =>
             (Router != null && string.Equals(Router, address, StringComparison.OrdinalIgnoreCase))
@@ -76,6 +82,12 @@ public class HubContractValidatorTests
                 (group.ToLowerInvariant(), collateral.ToLowerInvariant()), out var limit)
                 ? limit
                 : null;
+        }
+
+        public bool IsApprovedForAll(string account, string @operator)
+        {
+            if (!StrictApprovals) return true;
+            return Approvals.Contains((account.ToLowerInvariant(), @operator.ToLowerInvariant()));
         }
     }
 
@@ -194,7 +206,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Alice) }; // Alice sends Alice-token to Bob
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty);
     }
 
@@ -204,7 +216,7 @@ public class HubContractValidatorTests
         var state = new MockContractState { Router = Router }; // No trusts, TrustAll=false
         var steps = new[] { Step(Alice, Bob, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations.Count, Is.EqualTo(1));
         Assert.That(violations[0].Rule, Is.EqualTo("IsPermittedFlow"));
     }
@@ -220,7 +232,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Carol) }; // Consented: checks From trusts To
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty);
     }
 
@@ -235,7 +247,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Carol) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations.Any(v => v.Message.Contains("advancedUsageFlags")), Is.True);
     }
 
@@ -250,7 +262,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Carol) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations.Any(v => v.Message.Contains("does not trust")), Is.True);
     }
 
@@ -264,7 +276,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Router, GroupA, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty, "Router→Group should bypass isPermittedFlow (internal group mint)");
     }
 
@@ -278,7 +290,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Router, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty, "Avatar→Router should pass when Router trusts tokenOwner");
     }
 
@@ -292,7 +304,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Router, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Has.Count.EqualTo(1));
         Assert.That(violations[0].Message, Does.Contain("Avatar→Router"));
         Assert.That(violations[0].Message, Does.Contain("does not trust token owner"));
@@ -310,7 +322,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Router, Alice, Bob) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty, "Router→NonGroup should use standard validation and pass when trusted");
     }
 
@@ -324,8 +336,65 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Router, Alice, Bob) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Has.Count.EqualTo(1), "Router→NonGroup with no trust should fail standard validation");
+    }
+
+    // ═══════════════════════════════════════════
+    // Rule: ApproveCRCRequired (Avatar→ScoreRouter requires ERC-1155 operator approval)
+    // ═══════════════════════════════════════════
+
+    [Test]
+    public void ApproveCRCRequired_ScoreRouterEdge_WithApproval_DoesNotEmit()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            Trusts = { (ScoreRouter.ToLowerInvariant(), Alice.ToLowerInvariant()) },
+            Approvals = { (ScoreRouter.ToLowerInvariant(), Alice.ToLowerInvariant()) },
+        };
+        var steps = new[] { Step(Alice, ScoreRouter, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: Alice, state, violations);
+        Assert.That(violations.Any(v => v.Rule == "ApproveCRCRequired"), Is.False,
+            "ApproveCRCRequired must not fire when ScoreRouter has approved source");
+    }
+
+    [Test]
+    public void ApproveCRCRequired_ScoreRouterEdge_WithoutApproval_Emits()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            Trusts = { (ScoreRouter.ToLowerInvariant(), Alice.ToLowerInvariant()) },
+            StrictApprovals = true,
+        };
+        var steps = new[] { Step(Alice, ScoreRouter, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: Alice, state, violations);
+        var violation = violations.SingleOrDefault(v => v.Rule == "ApproveCRCRequired");
+        Assert.That(violation, Is.Not.Null, "ApproveCRCRequired must fire when ScoreRouter has no approval for source");
+        Assert.That(violation!.Message, Does.Contain("setApprovalForCRC"),
+            "Message should guide the SDK to call setApprovalForCRC");
+    }
+
+    [Test]
+    public void ApproveCRCRequired_NonScoreRouterEdge_NoEmission_EvenWithoutApproval()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            // Router is the standard router but NOT a score router.
+            Trusts = { (Router, Alice.ToLowerInvariant()) },
+            StrictApprovals = true, // Alice not in Approvals → unapproved, but Router is not a score router.
+        };
+        var steps = new[] { Step(Alice, Router, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: Alice, state, violations);
+        Assert.That(violations.Any(v => v.Rule == "ApproveCRCRequired"), Is.False,
+            "ApproveCRCRequired is scoped to score-router edges; standard routers must not trip it");
     }
 
     // ═══════════════════════════════════════════
