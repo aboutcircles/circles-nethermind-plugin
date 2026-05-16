@@ -51,10 +51,11 @@ public class HubContractValidatorTests
         public Dictionary<(string Group, string Collateral), long> ScoreGroupMintLimits { get; set; }
             = new();
 
-        // (account, operator) tuples lowercased. When the set is non-empty the mock switches to
-        // strict mode: returns true only for explicit entries. Empty set falls back to the
-        // interface default (true) so tests that don't care about approvals don't have to seed.
+        // (account, operator) tuples lowercased. Membership grants approval — but only when
+        // StrictApprovals is true. Default behavior is permissive (returns true regardless),
+        // matching the IContractState default so existing tests don't have to seed anything.
         public HashSet<(string Account, string Operator)> Approvals { get; set; } = new();
+        public bool StrictApprovals { get; set; }
 
         public string? RouterAddress => Router;
         public bool IsRouter(string address) =>
@@ -85,7 +86,7 @@ public class HubContractValidatorTests
 
         public bool IsApprovedForAll(string account, string @operator)
         {
-            if (Approvals.Count == 0) return true;
+            if (!StrictApprovals) return true;
             return Approvals.Contains((account.ToLowerInvariant(), @operator.ToLowerInvariant()));
         }
     }
@@ -368,9 +369,7 @@ public class HubContractValidatorTests
             Router = Router,
             ScoreRouters = { ScoreRouter },
             Trusts = { (ScoreRouter.ToLowerInvariant(), Alice.ToLowerInvariant()) },
-            // Approvals seeded with a dummy unrelated entry so the set is non-empty
-            // and the mock switches to strict mode (instead of the permissive default).
-            Approvals = { (Router, Carol.ToLowerInvariant()) },
+            StrictApprovals = true,
         };
         var steps = new[] { Step(Alice, ScoreRouter, Alice) };
         var violations = new List<ValidationViolation>();
@@ -389,7 +388,7 @@ public class HubContractValidatorTests
             Router = Router,
             // Router is the standard router but NOT a score router.
             Trusts = { (Router, Alice.ToLowerInvariant()) },
-            Approvals = { (Router, Carol.ToLowerInvariant()) }, // strict mode, Alice not approved
+            StrictApprovals = true, // Alice not in Approvals → unapproved, but Router is not a score router.
         };
         var steps = new[] { Step(Alice, Router, Alice) };
         var violations = new List<ValidationViolation>();
