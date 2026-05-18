@@ -39,22 +39,16 @@ public class PathfinderGraphController : ControllerBase
             .ToHashSet();
 
     /// <summary>
-    /// Score-group treasury "aggregator" → sub-treasury address list. Mirrors the
-    /// <c>SCORE_TREASURY_SUBTREASURIES</c> env parsed by <see cref="Settings"/>; this
-    /// controller reads env directly because the Cache service does not consume
-    /// <c>Circles.Common.Settings</c>. Format: <c>agg:sub1,sub2;agg:sub3,sub4</c>.
+    /// Score-group treasury "aggregator" → sub-treasury address list. Same env
+    /// (<c>SCORE_TREASURY_SUBTREASURIES</c>) and validated parser as the pathfinder
+    /// and indexer; the Cache service reads it directly because it does not link
+    /// <c>Circles.Common.Settings</c>, but routes through the same validator so
+    /// malformed-env operator-typos fail-fast everywhere uniformly.
     /// </summary>
     private static readonly Dictionary<string, string[]> ScoreTreasurySubTreasuries =
-        (Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES") ?? "")
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(entry => entry.Split(':', 2))
-            .Where(parts => parts.Length == 2)
-            .ToDictionary(
-                parts => parts[0].Trim().ToLowerInvariant(),
-                parts => parts[1]
-                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .Select(addr => addr.ToLowerInvariant())
-                    .ToArray());
+        Circles.Common.EnvParsers.ParseAggregatorMap(
+            "SCORE_TREASURY_SUBTREASURIES",
+            Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES"));
 
     private static readonly string BaseGroupRouter =
         Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.Trim().ToLowerInvariant()
@@ -727,13 +721,25 @@ public class PathfinderGraphController : ControllerBase
         if (balance <= 0)
             return BigInteger.Zero;
 
+        var attoBalance = CirclesConverter.CirclesToAttoCircles(balance);
+
         if (!_caches.V2LastActivity.TryGetValue(balanceKey, out var lastActivity) ||
             lastActivity < V2InflationDayZero)
         {
-            return BigInteger.Zero;
+            // Cache anomaly: a positive balance is recorded but the
+            // last-activity cache has no entry. Returning zero here silently
+            // erases the balance from any downstream sum — including the
+            // score-group treasury sum below, where missing balance means
+            // the mint-cap formula over-approves. Fall back to the
+            // un-demurraged inflationary balance (an upper bound, since
+            // demurrage only ever decreases the value); biases treasury
+            // sums HIGH, biases the mint cap LOW, which is the safer side.
+            _logger.LogWarning(
+                "DemurrageCachedV2Balance: V2LastActivity missing for key {Key}; using un-demurraged inflationary balance as conservative upper bound",
+                balanceKey);
+            return attoBalance;
         }
 
-        var attoBalance = CirclesConverter.CirclesToAttoCircles(balance);
         var targetDay = CirclesConverter.DayFromTimestamp(DateTimeOffset.UtcNow, V2InflationDayZero);
         var lastActivityDay = (ulong)(lastActivity - V2InflationDayZero) / (ulong)SecondsPerDay;
         var daysDelta = targetDay > lastActivityDay ? targetDay - lastActivityDay : 0;

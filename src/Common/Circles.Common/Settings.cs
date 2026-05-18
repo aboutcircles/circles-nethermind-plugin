@@ -256,18 +256,9 @@ public class Settings
     /// base groups stay correct).
     /// </summary>
     public readonly Dictionary<string, string[]> ScoreTreasurySubTreasuries =
-        Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES")?.Split(';')
-            .Select(entry => entry.Trim())
-            .Where(entry => !string.IsNullOrEmpty(entry))
-            .Select(entry => entry.Split(':', 2))
-            .Where(parts => parts.Length == 2)
-            .ToDictionary(
-                parts => parts[0].Trim().ToLowerInvariant(),
-                parts => parts[1].Split(',')
-                    .Select(addr => addr.Trim().ToLowerInvariant())
-                    .Where(addr => !string.IsNullOrWhiteSpace(addr))
-                    .ToArray())
-        ?? new Dictionary<string, string[]>();
+        EnvParsers.ParseAggregatorMap(
+            "SCORE_TREASURY_SUBTREASURIES",
+            Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES"));
 
     public readonly string BaseGroupDeployer =
         Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")?.ToLowerInvariant()

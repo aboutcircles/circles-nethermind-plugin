@@ -44,15 +44,15 @@ public static class ScoreGroupMintLimitReader
         ),
         score_groups AS (
             SELECT
-                g."group" AS group_address,
+                LOWER(g."group") AS group_address,
                 LOWER(g."treasury") AS treasury,
                 LOWER(COALESCE(lsg.policy, g."mint")) AS policy
             FROM "CrcV2_RegisterGroup" g
-            LEFT JOIN latest_score_group lsg ON lsg.group_address = g."group"
+            LEFT JOIN latest_score_group lsg ON LOWER(lsg.group_address) = LOWER(g."group")
             WHERE (@maxBlock::bigint IS NULL OR g."blockNumber" <= @maxBlock)
               AND LOWER(g."mint") = ANY(@scoreMintPolicies)
               AND lsg.group_address IS NOT NULL
-              AND (@groupAddressFilter::text IS NULL OR g."group" = @groupAddressFilter)
+              AND (@groupAddressFilter::text IS NULL OR LOWER(g."group") = @groupAddressFilter)
         ),
         treasury_overrides AS (
             SELECT
@@ -125,16 +125,16 @@ public static class ScoreGroupMintLimitReader
         """;
 
     private const string PersonalSql = """
-        SELECT DISTINCT ON (LOWER("emitter"), "group", "collateral")
+        SELECT DISTINCT ON (LOWER("emitter"), LOWER("group"), "collateral")
             LOWER("emitter") AS policy,
-            "group" AS group_address,
+            LOWER("group") AS group_address,
             "collateral"::text AS collateral,
             "mintedAmountOnToday"::text AS minted_amount,
             "day"::text AS day
         FROM "CrcV2_ScoreGroup_PersonalMinted"
         WHERE LOWER("emitter") = ANY(@scoreMintPolicies)
           AND (@maxBlock::bigint IS NULL OR "blockNumber" <= @maxBlock)
-        ORDER BY LOWER("emitter"), "group", "collateral", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC;
+        ORDER BY LOWER("emitter"), LOWER("group"), "collateral", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC;
         """;
 
     public static IReadOnlyList<ScoreGroupMintLimitRow> Read(

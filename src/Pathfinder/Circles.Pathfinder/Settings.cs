@@ -162,16 +162,7 @@ public class Settings
     /// lowercased. Aggregators not in this map keep single-treasury behavior.
     /// </summary>
     public Dictionary<string, string[]> ScoreTreasurySubTreasuries { get; set; } =
-        Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES")?.Split(';')
-            .Select(entry => entry.Trim())
-            .Where(entry => !string.IsNullOrEmpty(entry))
-            .Select(entry => entry.Split(':', 2))
-            .Where(parts => parts.Length == 2)
-            .ToDictionary(
-                parts => parts[0].Trim().ToLowerInvariant(),
-                parts => parts[1].Split(',')
-                    .Select(addr => addr.Trim().ToLowerInvariant())
-                    .Where(addr => !string.IsNullOrWhiteSpace(addr))
-                    .ToArray())
-        ?? new Dictionary<string, string[]>();
+        Circles.Common.EnvParsers.ParseAggregatorMap(
+            "SCORE_TREASURY_SUBTREASURIES",
+            Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES"));
 }
