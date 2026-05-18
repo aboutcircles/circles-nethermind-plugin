@@ -242,6 +242,24 @@ public class Settings
             .ToArray()
         ?? [];
 
+    /// <summary>
+    /// Maps a score-group "treasury" (as recorded in <c>CrcV2_RegisterGroup.treasury</c>) to one
+    /// or more sub-treasury addresses that actually hold collateral. Required when the on-chain
+    /// treasury is a <c>ScoreTreasury</c> router/splitter that forwards tokens to score-keyed
+    /// sub-treasuries rather than custody-ing them itself; without this mapping
+    /// <see cref="Hub.balanceOf(treasury, collateral)"/> returns 0 and the mint-cap formula
+    /// over-approves every router/migration mint.
+    ///
+    /// Format: semicolon-separated entries; each entry is <c>aggregator:sub1,sub2[,...]</c>.
+    /// Example: <c>0xbee55b27...:0xe7dc5fae...,0x4b767d10...</c>. All addresses are normalized to
+    /// lowercase. Aggregators not in this map fall back to single-treasury behavior (legacy
+    /// base groups stay correct).
+    /// </summary>
+    public readonly Dictionary<string, string[]> ScoreTreasurySubTreasuries =
+        EnvParsers.ParseAggregatorMap(
+            "SCORE_TREASURY_SUBTREASURIES",
+            Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES"));
+
     public readonly string BaseGroupDeployer =
         Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")?.ToLowerInvariant()
         ?? "0xd0b5bd9962197beac4cba24244ec3587f19bd06d";

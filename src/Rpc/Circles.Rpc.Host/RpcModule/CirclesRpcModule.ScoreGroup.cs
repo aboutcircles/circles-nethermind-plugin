@@ -35,7 +35,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
             safetyMargin: 1.0,
             commandTimeoutSeconds: _settings.DatabaseQueryTimeoutSeconds,
             groupAddressFilter: group,
-            collateralTokenFilter: collateralFilter);
+            collateralTokenFilter: collateralFilter,
+            subTreasuryOverrides: _settings.ScoreTreasurySubTreasuries);
 
         var rpcRows = rows
             .Select(row => new ScoreGroupMintLimitRpcRow(
