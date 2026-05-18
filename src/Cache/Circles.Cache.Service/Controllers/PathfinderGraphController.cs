@@ -38,6 +38,24 @@ public class PathfinderGraphController : ControllerBase
             .Select(x => x.ToLowerInvariant())
             .ToHashSet();
 
+    /// <summary>
+    /// Score-group treasury "aggregator" → sub-treasury address list. Mirrors the
+    /// <c>SCORE_TREASURY_SUBTREASURIES</c> env parsed by <see cref="Settings"/>; this
+    /// controller reads env directly because the Cache service does not consume
+    /// <c>Circles.Common.Settings</c>. Format: <c>agg:sub1,sub2;agg:sub3,sub4</c>.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> ScoreTreasurySubTreasuries =
+        (Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES") ?? "")
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(entry => entry.Split(':', 2))
+            .Where(parts => parts.Length == 2)
+            .ToDictionary(
+                parts => parts[0].Trim().ToLowerInvariant(),
+                parts => parts[1]
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(addr => addr.ToLowerInvariant())
+                    .ToArray());
+
     private static readonly string BaseGroupRouter =
         Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.Trim().ToLowerInvariant()
         ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -673,9 +691,23 @@ public class PathfinderGraphController : ControllerBase
             if (!groupMetadata.TryGetValue(group, out var metadata))
                 continue;
 
+            // When the on-chain treasury is a ScoreTreasury aggregator that doesn't
+            // custody tokens (forwards them to score-keyed sub-treasuries), the
+            // override list provides the actual holders. Sum balances across them;
+            // legacy single-treasury groups fall through to the original lookup.
+            var effectiveTreasuries =
+                ScoreTreasurySubTreasuries.TryGetValue(metadata.Treasury, out var subs) && subs.Length > 0
+                    ? subs
+                    : [metadata.Treasury];
+
             foreach (var token in tokens)
             {
-                accountTokenBalances.TryGetValue((metadata.Treasury, token), out var treasuryBalance);
+                BigInteger treasuryBalance = BigInteger.Zero;
+                foreach (var treasury in effectiveTreasuries)
+                {
+                    if (accountTokenBalances.TryGetValue((treasury, token), out var bal))
+                        treasuryBalance += bal;
+                }
                 tokenSupply.TryGetValue(token, out var currentSupply);
 
                 rows.Add(new ScoreGroupMintLimitBaseRow(

@@ -648,7 +648,8 @@ namespace Circles.Pathfinder.Data
                 _settings.ScoreGroupMintPolicies,
                 _settings.TargetDemurrageTimestamp,
                 _settings.DemurrageSafetyMargin,
-                _settings.PathfinderGroupTimeoutSeconds);
+                _settings.PathfinderGroupTimeoutSeconds,
+                subTreasuryOverrides: _settings.ScoreTreasurySubTreasuries);
 
             sw.Stop();
             OnQueryCompleted?.Invoke("score_group_mint_limits", sw.Elapsed);
@@ -712,7 +713,8 @@ namespace Circles.Pathfinder.Data
                 _settings.TargetDemurrageTimestamp,
                 _settings.DemurrageSafetyMargin,
                 _settings.PathfinderGroupTimeoutSeconds,
-                transaction: tx);
+                transaction: tx,
+                subTreasuryOverrides: _settings.ScoreTreasurySubTreasuries);
 
             sw.Stop();
             OnQueryCompleted?.Invoke("score_group_mint_limits", sw.Elapsed);

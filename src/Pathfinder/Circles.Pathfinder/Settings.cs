@@ -151,4 +151,27 @@ public class Settings
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToArray()
         ?? [];
+
+    /// <summary>
+    /// Score-group treasury "aggregator" → sub-treasury address list. Required
+    /// when the on-chain treasury is a ScoreTreasury router/splitter that
+    /// forwards collateral to score-keyed sub-treasuries rather than custody-ing
+    /// it itself. Without this mapping <c>Hub.balanceOf(treasury, collateral)</c>
+    /// returns 0 and the mint-cap formula over-approves router/migration mints.
+    /// Format: <c>aggregator:sub1,sub2;aggregator:sub3,sub4</c>; addresses are
+    /// lowercased. Aggregators not in this map keep single-treasury behavior.
+    /// </summary>
+    public Dictionary<string, string[]> ScoreTreasurySubTreasuries { get; set; } =
+        Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES")?.Split(';')
+            .Select(entry => entry.Trim())
+            .Where(entry => !string.IsNullOrEmpty(entry))
+            .Select(entry => entry.Split(':', 2))
+            .Where(parts => parts.Length == 2)
+            .ToDictionary(
+                parts => parts[0].Trim().ToLowerInvariant(),
+                parts => parts[1].Split(',')
+                    .Select(addr => addr.Trim().ToLowerInvariant())
+                    .Where(addr => !string.IsNullOrWhiteSpace(addr))
+                    .ToArray())
+        ?? new Dictionary<string, string[]>();
 }

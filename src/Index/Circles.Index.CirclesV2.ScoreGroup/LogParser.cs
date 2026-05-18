@@ -103,7 +103,11 @@ public class LogParser(ImmutableHashSet<Address> policyAddresses) : ILogParser
 
     private static MerkleRootUpdated ParseMerkleRootUpdated(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event MerkleRootUpdated(address indexed group, bytes32 newMerkleRoot,
+        //                         bytes32 previousRoot, uint256 updateBlockNumber)
+        // 96 unindexed bytes: newMerkleRoot | previousRoot | updateBlockNumber.
         var group = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        var data = log.Data.AsSpan();
 
         return new MerkleRootUpdated(
             block.Number,
@@ -113,11 +117,17 @@ public class LogParser(ImmutableHashSet<Address> policyAddresses) : ILogParser
             receipt.TxHash!.ToString(),
             log.Address.ToLowerHex(),
             group,
-            log.Data.ToArray());
+            data.Slice(0, 32).ToArray(),
+            data.Slice(32, 32).ToArray(),
+            Uint(data.Slice(64, 32)));
     }
 
     private static HistoricalSupply ParseHistoricalSupply(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event HistoricalSupply(address indexed group, uint256 indexed collateral,
+        //                        uint256 supply, uint256 day)
+        // Topic shift: topic[1] was collateral, now group; topic[2] is collateral.
+        var group = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         var data = log.Data.AsSpan();
 
         return new HistoricalSupply(
@@ -127,7 +137,8 @@ public class LogParser(ImmutableHashSet<Address> policyAddresses) : ILogParser
             logIndex,
             receipt.TxHash!.ToString(),
             log.Address.ToLowerHex(),
-            Uint(log.Topics[1].Bytes),
+            group,
+            Uint(log.Topics[2].Bytes),
             Uint(data.Slice(0, 32)),
             Uint(data.Slice(32, 32)));
     }

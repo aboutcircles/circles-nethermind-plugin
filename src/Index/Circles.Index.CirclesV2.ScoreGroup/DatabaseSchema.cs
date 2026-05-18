@@ -23,7 +23,9 @@ public record MerkleRootUpdated(
     string TransactionHash,
     string Emitter,
     string Group,
-    byte[] NewMerkleRoot) : IIndexEvent;
+    byte[] NewMerkleRoot,
+    byte[] PreviousRoot,
+    UInt256 UpdateBlockNumber) : IIndexEvent;
 
 public record HistoricalSupply(
     long BlockNumber,
@@ -32,6 +34,7 @@ public record HistoricalSupply(
     int LogIndex,
     string TransactionHash,
     string Emitter,
+    string Group,
     UInt256 Collateral,
     UInt256 Supply,
     UInt256 Day) : IIndexEvent;
@@ -70,11 +73,11 @@ public class DatabaseSchema : BaseDatabaseSchema
 
     public static readonly EventSchema MerkleRootUpdated = WithEmitterColumn(EventSchema.FromSolidity(
         "CrcV2_ScoreGroup",
-        "event MerkleRootUpdated(address indexed group,bytes32 newMerkleRoot)"));
+        "event MerkleRootUpdated(address indexed group,bytes32 newMerkleRoot,bytes32 previousRoot,uint256 updateBlockNumber)"));
 
     public static readonly EventSchema HistoricalSupply = WithEmitterColumn(EventSchema.FromSolidity(
         "CrcV2_ScoreGroup",
-        "event HistoricalSupply(uint256 indexed collateral,uint256 supply,uint256 day)"));
+        "event HistoricalSupply(address indexed group,uint256 indexed collateral,uint256 supply,uint256 day)"));
 
     public static readonly EventSchema PersonalMinted = WithEmitterColumn(EventSchema.FromSolidity(
         "CrcV2_ScoreGroup",
@@ -112,7 +115,9 @@ public class DatabaseSchema : BaseDatabaseSchema
             [
                 ("emitter", e => e.Emitter),
                 ("group", e => e.Group),
-                ("newMerkleRoot", e => e.NewMerkleRoot)
+                ("newMerkleRoot", e => e.NewMerkleRoot),
+                ("previousRoot", e => e.PreviousRoot),
+                ("updateBlockNumber", e => (BigInteger)e.UpdateBlockNumber)
             ]);
 
         AddMappings<HistoricalSupply>(
@@ -122,6 +127,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             databaseFieldMap:
             [
                 ("emitter", e => e.Emitter),
+                ("group", e => e.Group),
                 ("collateral", e => (BigInteger)e.Collateral),
                 ("supply", e => (BigInteger)e.Supply),
                 ("day", e => (BigInteger)e.Day)

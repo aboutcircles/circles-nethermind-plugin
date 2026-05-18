@@ -21,6 +21,17 @@ public static class ScoreGroupMintLimitReader
 {
     private const uint InflationDayZeroUnix = 1_602_720_000;
 
+    /// <summary>
+    /// Base-rows SQL. Each score group's "treasury" (as recorded in
+    /// <c>CrcV2_RegisterGroup.treasury</c>) is expanded into one or more
+    /// effective treasury addresses via the <c>treasury_overrides</c> CTE.
+    /// When the on-chain treasury is a <c>ScoreTreasury</c> router/splitter
+    /// (does not custody collateral itself but forwards to score-keyed
+    /// sub-treasuries), the override list contains the sub-treasuries that
+    /// actually hold tokens. Groups not in the override map fall back to
+    /// single-treasury behavior — the override list defaults to
+    /// <c>ARRAY[treasury]</c>.
+    /// </summary>
     private const string BaseRowsSql = """
         WITH latest_score_group AS (
             SELECT DISTINCT ON ("group")
@@ -43,14 +54,31 @@ public static class ScoreGroupMintLimitReader
               AND lsg.group_address IS NOT NULL
               AND (@groupAddressFilter::text IS NULL OR g."group" = @groupAddressFilter)
         ),
-        group_tokens AS (
+        treasury_overrides AS (
+            SELECT
+                LOWER(agg) AS aggregator,
+                string_to_array(LOWER(subs_csv), ',') AS subs
+            FROM unnest(
+                @subTreasuryAggregators::text[],
+                @subTreasuryLists::text[]
+            ) AS u(agg, subs_csv)
+        ),
+        effective_treasuries AS (
             SELECT
                 sg.group_address,
-                sg.treasury,
                 sg.policy,
-                t.trustee AS trusted_token
+                COALESCE(o.subs, ARRAY[sg.treasury]::text[]) AS treasuries
             FROM score_groups sg
-            INNER JOIN "V_CrcV2_TrustRelations" t ON t.truster = sg.group_address
+            LEFT JOIN treasury_overrides o ON o.aggregator = sg.treasury
+        ),
+        group_tokens AS (
+            SELECT
+                et.group_address,
+                et.treasuries,
+                et.policy,
+                t.trustee AS trusted_token
+            FROM effective_treasuries et
+            INNER JOIN "V_CrcV2_TrustRelations" t ON t.truster = et.group_address
             INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = t.trustee
             WHERE (@collateralTokenFilter::text IS NULL OR t.trustee = @collateralTokenFilter)
         ),
@@ -67,26 +95,33 @@ public static class ScoreGroupMintLimitReader
             gt.group_address,
             gt.trusted_token,
             gt.policy,
-            COALESCE(tb."demurragedTotalBalance", 0)::text AS treasury_balance,
+            COALESCE((
+                SELECT SUM(b."demurragedTotalBalance")
+                FROM "V_CrcV2_BalancesByAccountAndToken" b
+                WHERE b.account = ANY(gt.treasuries)
+                  AND b."tokenAddress" = gt.trusted_token
+            ), 0)::text AS treasury_balance,
             COALESCE(ts.current_supply, '0') AS current_supply
         FROM group_tokens gt
-        LEFT JOIN "V_CrcV2_BalancesByAccountAndToken" tb
-            ON tb.account = gt.treasury
-           AND tb."tokenAddress" = gt.trusted_token
         LEFT JOIN token_supply ts
             ON ts."tokenAddress" = gt.trusted_token;
         """;
 
+    // HistoricalSupply is now per-(group, collateral) in the prod contract — the
+    // event added `address indexed group`, so a single policy serving multiple
+    // groups (via initializeGroup) tracks supply scoped to each group rather
+    // than conflating them. DISTINCT ON / ORDER BY must include "group".
     private const string HistoricalSql = """
-        SELECT DISTINCT ON (LOWER("emitter"), "collateral")
+        SELECT DISTINCT ON (LOWER("emitter"), "group", "collateral")
             LOWER("emitter") AS policy,
+            LOWER("group") AS group_address,
             "collateral"::text AS collateral,
             "supply"::text AS supply,
             "day"::text AS day
         FROM "CrcV2_ScoreGroup_HistoricalSupply"
         WHERE LOWER("emitter") = ANY(@scoreMintPolicies)
           AND (@maxBlock::bigint IS NULL OR "blockNumber" <= @maxBlock)
-        ORDER BY LOWER("emitter"), "collateral", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC;
+        ORDER BY LOWER("emitter"), "group", "collateral", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC;
         """;
 
     private const string PersonalSql = """
@@ -111,7 +146,8 @@ public static class ScoreGroupMintLimitReader
         long? maxBlock = null,
         NpgsqlTransaction? transaction = null,
         string? groupAddressFilter = null,
-        string? collateralTokenFilter = null)
+        string? collateralTokenFilter = null,
+        IReadOnlyDictionary<string, string[]>? subTreasuryOverrides = null)
     {
         var policies = scoreMintPolicies
             .Select(x => x.Trim().ToLowerInvariant())
@@ -129,7 +165,8 @@ public static class ScoreGroupMintLimitReader
             maxBlock,
             transaction,
             NormalizeFilter(groupAddressFilter),
-            NormalizeFilter(collateralTokenFilter));
+            NormalizeFilter(collateralTokenFilter),
+            subTreasuryOverrides);
         return ReadFromBaseRows(
             connection,
             policies,
@@ -183,7 +220,7 @@ public static class ScoreGroupMintLimitReader
             var currentSupply = row.CurrentSupply;
             var collateralId = AddressToTokenId(collateralToken);
 
-            var historicalSupply = historical.TryGetValue((policy, collateralId), out var historicalState)
+            var historicalSupply = historical.TryGetValue((policy, group, collateralId), out var historicalState)
                 ? DiscountToTargetDay(historicalState.Amount, historicalState.Day, targetDay)
                 : currentSupply;
 
@@ -214,12 +251,29 @@ public static class ScoreGroupMintLimitReader
         long? maxBlock,
         NpgsqlTransaction? transaction,
         string? groupAddressFilter = null,
-        string? collateralTokenFilter = null)
+        string? collateralTokenFilter = null,
+        IReadOnlyDictionary<string, string[]>? subTreasuryOverrides = null)
     {
+        // Flatten the override dict into two parallel text[] arrays so the SQL
+        // CTE can unnest them. Empty input keeps every group on its single
+        // RegisterGroup-recorded treasury via the COALESCE fallback inside the
+        // SQL. All addresses lowercased to match the score_groups CTE keys.
+        var overridePairs = (subTreasuryOverrides ?? new Dictionary<string, string[]>())
+            .Where(kv => kv.Value.Length > 0)
+            .ToArray();
+        var subTreasuryAggregators = overridePairs
+            .Select(kv => kv.Key.Trim().ToLowerInvariant())
+            .ToArray();
+        var subTreasuryLists = overridePairs
+            .Select(kv => string.Join(",", kv.Value.Select(addr => addr.Trim().ToLowerInvariant())))
+            .ToArray();
+
         var rows = new List<ScoreGroupMintLimitBaseRow>();
         using var command = new NpgsqlCommand(BaseRowsSql, connection, transaction);
         command.CommandTimeout = commandTimeoutSeconds;
         command.Parameters.AddWithValue("scoreMintPolicies", policies);
+        command.Parameters.AddWithValue("subTreasuryAggregators", subTreasuryAggregators);
+        command.Parameters.AddWithValue("subTreasuryLists", subTreasuryLists);
         AddMaxBlockParameter(command, maxBlock);
         AddTextFilterParameter(command, "groupAddressFilter", groupAddressFilter);
         AddTextFilterParameter(command, "collateralTokenFilter", collateralTokenFilter);
@@ -243,14 +297,14 @@ public static class ScoreGroupMintLimitReader
         return rows;
     }
 
-    private static Dictionary<(string Policy, string Collateral), (BigInteger Amount, ulong Day)> ReadHistorical(
+    private static Dictionary<(string Policy, string Group, string Collateral), (BigInteger Amount, ulong Day)> ReadHistorical(
         NpgsqlConnection connection,
         string[] policies,
         int commandTimeoutSeconds,
         long? maxBlock,
         NpgsqlTransaction? transaction)
     {
-        var result = new Dictionary<(string, string), (BigInteger, ulong)>();
+        var result = new Dictionary<(string, string, string), (BigInteger, ulong)>();
         using var command = new NpgsqlCommand(HistoricalSql, connection, transaction);
         command.CommandTimeout = commandTimeoutSeconds;
         command.Parameters.AddWithValue("scoreMintPolicies", policies);
@@ -259,9 +313,10 @@ public static class ScoreGroupMintLimitReader
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            result[(reader.GetString(0), reader.GetString(1))] = (
-                ParseBigInteger(reader.GetString(2)),
-                ParseUInt64(reader.GetString(3)));
+            // policy | group_address | collateral | supply | day
+            result[(reader.GetString(0), reader.GetString(1).ToLowerInvariant(), reader.GetString(2))] = (
+                ParseBigInteger(reader.GetString(3)),
+                ParseUInt64(reader.GetString(4)));
         }
 
         return result;
