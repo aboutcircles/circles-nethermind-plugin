@@ -16,24 +16,36 @@ public class LogParser(ImmutableHashSet<Address> policyAddresses) : ILogParser
     private static readonly Hash256 HistoricalSupplyTopic = new(DatabaseSchema.HistoricalSupply.Topic);
     private static readonly Hash256 PersonalMintedTopic = new(DatabaseSchema.PersonalMinted.Topic);
     private static readonly Hash256 RouterMintedTopic = new(DatabaseSchema.RouterMinted.Topic);
+    private static readonly Hash256 ScoreGroupInitializedTopic = new(DatabaseSchema.ScoreGroupInitialized.Topic);
+    private static readonly Hash256 OptOutStatusChangedTopic = new(DatabaseSchema.OptOutStatusChanged.Topic);
 
     public static readonly RollbackCache<Address, object?> ScoreGroupPolicies = new("ScoreGroupPolicies");
 
-    public IRollbackCache[] Caches { get; } = [ScoreGroupPolicies];
+    // Tracks ScoreGroup contract addresses (the groups themselves, not the
+    // policies). Populated from `GroupInitialized.group` rows at startup and
+    // extended at runtime when a new GroupInitialized event is parsed.
+    // ScoreGroup contracts emit ScoreGroupInitialized + OptOutStatusChanged
+    // themselves, so we need this address set in addition to the policy set.
+    public static readonly RollbackCache<Address, object?> ScoreGroupContracts = new("ScoreGroupContracts");
+
+    public IRollbackCache[] Caches { get; } = [ScoreGroupPolicies, ScoreGroupContracts];
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
-        var seed = policyAddresses.ToDictionary(a => a, _ => (object?)null);
+        var policySeed = policyAddresses.ToDictionary(a => a, _ => (object?)null);
+        var groupSeed = new Dictionary<Address, object?>();
 
-        var query = new Select("CrcV2_ScoreGroup", "GroupInitialized", ["emitter"], [], [], int.MaxValue, false,
+        var query = new Select("CrcV2_ScoreGroup", "GroupInitialized", ["emitter", "group"], [], [], int.MaxValue, false,
             int.MaxValue);
         foreach (var row in database.Select(query.ToSql(database)).Rows)
         {
-            seed[new Address(row[0]?.ToString() ?? throw new InvalidOperationException("Score group policy address is null"))] = null;
+            policySeed[new Address(row[0]?.ToString() ?? throw new InvalidOperationException("Score group policy address is null"))] = null;
+            groupSeed[new Address(row[1]?.ToString() ?? throw new InvalidOperationException("Score group address is null"))] = null;
         }
 
-        ScoreGroupPolicies.Seed(seed);
-        logger.Info($" * Cached {seed.Count} score group mint policy contracts");
+        ScoreGroupPolicies.Seed(policySeed);
+        ScoreGroupContracts.Seed(groupSeed);
+        logger.Info($" * Cached {policySeed.Count} score group mint policy contracts and {groupSeed.Count} score group contracts");
 
         return Task.CompletedTask;
     }
@@ -55,31 +67,51 @@ public class LogParser(ImmutableHashSet<Address> policyAddresses) : ILogParser
         LogEntry log,
         int logIndex)
     {
-        if (log.Topics.Length == 0 || !ScoreGroupPolicies.ContainsKey(log.Address))
+        if (log.Topics.Length == 0)
         {
             yield break;
         }
 
         var topic = log.Topics[0];
-        if (topic == GroupInitializedTopic)
+
+        // Policy contracts emit: GroupInitialized / MerkleRootUpdated /
+        // HistoricalSupply / PersonalMinted / RouterMinted.
+        if (ScoreGroupPolicies.ContainsKey(log.Address))
         {
-            yield return ParseGroupInitialized(block, receipt, log, logIndex);
+            if (topic == GroupInitializedTopic)
+            {
+                yield return ParseGroupInitialized(block, receipt, log, logIndex);
+            }
+            else if (topic == MerkleRootUpdatedTopic)
+            {
+                yield return ParseMerkleRootUpdated(block, receipt, log, logIndex);
+            }
+            else if (topic == HistoricalSupplyTopic)
+            {
+                yield return ParseHistoricalSupply(block, receipt, log, logIndex);
+            }
+            else if (topic == PersonalMintedTopic)
+            {
+                yield return ParsePersonalMinted(block, receipt, log, logIndex);
+            }
+            else if (topic == RouterMintedTopic)
+            {
+                yield return ParseRouterMinted(block, receipt, log, logIndex);
+            }
+            yield break;
         }
-        else if (topic == MerkleRootUpdatedTopic)
+
+        // ScoreGroup contracts emit: ScoreGroupInitialized / OptOutStatusChanged.
+        if (ScoreGroupContracts.ContainsKey(log.Address))
         {
-            yield return ParseMerkleRootUpdated(block, receipt, log, logIndex);
-        }
-        else if (topic == HistoricalSupplyTopic)
-        {
-            yield return ParseHistoricalSupply(block, receipt, log, logIndex);
-        }
-        else if (topic == PersonalMintedTopic)
-        {
-            yield return ParsePersonalMinted(block, receipt, log, logIndex);
-        }
-        else if (topic == RouterMintedTopic)
-        {
-            yield return ParseRouterMinted(block, receipt, log, logIndex);
+            if (topic == ScoreGroupInitializedTopic)
+            {
+                yield return ParseScoreGroupInitialized(block, receipt, log, logIndex);
+            }
+            else if (topic == OptOutStatusChangedTopic)
+            {
+                yield return ParseOptOutStatusChanged(block, receipt, log, logIndex);
+            }
         }
     }
 
@@ -88,6 +120,10 @@ public class LogParser(ImmutableHashSet<Address> policyAddresses) : ILogParser
         var group = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         var manager = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         var router = new Address(log.Data.Slice(12, 20)).ToLowerHex();
+
+        // Track this score group so a subsequent ScoreGroupInitialized or
+        // OptOutStatusChanged log emitted by it gets indexed.
+        ScoreGroupContracts.Add(block.Number, new Address(group), null);
 
         return new GroupInitialized(
             block.Number,
@@ -179,6 +215,56 @@ public class LogParser(ImmutableHashSet<Address> policyAddresses) : ILogParser
             Uint(log.Topics[2].Bytes),
             Uint(data.Slice(0, 32)),
             Uint(data.Slice(32, 32)));
+    }
+
+    private static ScoreGroupInitialized ParseScoreGroupInitialized(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        // event ScoreGroupInitialized(
+        //     address indexed metadataManager,
+        //     address indexed mintRouter,
+        //     address indexed treasury,
+        //     address stableERC20,
+        //     address demurrageERC20
+        // );
+        var metadataManager = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        var mintRouter = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+        var treasury = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
+        var data = log.Data.AsSpan();
+        // Each address is right-padded to 32 bytes in event data — last 20 bytes are the address.
+        var stableErc20 = new Address(data.Slice(12, 20).ToArray()).ToLowerHex();
+        var demurrageErc20 = new Address(data.Slice(44, 20).ToArray()).ToLowerHex();
+
+        return new ScoreGroupInitialized(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToLowerHex(),
+            metadataManager,
+            mintRouter,
+            treasury,
+            stableErc20,
+            demurrageErc20);
+    }
+
+    private static OptOutStatusChanged ParseOptOutStatusChanged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        // event OptOutStatusChanged(address indexed member, bool optedOut);
+        var member = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        var data = log.Data.AsSpan();
+        // bool is encoded as a 32-byte word; non-zero last byte → true.
+        var optedOut = data.Length >= 32 && data[31] != 0;
+
+        return new OptOutStatusChanged(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToLowerHex(),
+            member,
+            optedOut);
     }
 
     private static UInt256 Uint(ReadOnlySpan<byte> bytes) => new(bytes, true);
