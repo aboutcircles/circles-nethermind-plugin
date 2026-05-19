@@ -751,22 +751,6 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             capacityGraph.ScoreRouterIds.Add(scoreRouterId);
         }
 
-        // A score group must deploy its own pathMintRouter. If one is ever
-        // initialized with the standard group router, IsScoreGroup excludes it
-        // (otherwise every regular group would be misflagged and silently
-        // stripped). Surface the misconfiguration loudly — the wrap-only guard
-        // is inert for that group until it is redeployed with a dedicated router.
-        if (capacityGraph.RouterNode is { } stdRouterId
-            && capacityGraph.ScoreRouterIds.Contains(stdRouterId))
-        {
-            _logger.LogError(
-                "Score router collision: a ScoreGroup.GroupInitialized event uses the standard " +
-                "group router {Router} as pathMintRouter. IsScoreGroup excludes the standard " +
-                "router, so the wrapped-only guard is INERT for any such group. Redeploy the " +
-                "score group with a dedicated ScoreGroupMintRouter.",
-                AddressIdPool.StringOf(stdRouterId));
-        }
-
         // Load ERC-1155 operator approvals granted BY the known group routers.
         // These gate Avatar→Router edges: Hub.operateFlowMatrix reverts if the caller
         // (operator/msg.sender) is not approved by the Router that holds tokens on the path.
@@ -882,10 +866,6 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             if (isSource && excludedFromTokensFilter.Count > 0 && excludedFromTokensFilter.Contains(bn.Token)) continue;
             if (bn.IsWrapped && !(req?.WithWrap ?? false)) continue;
             if (bn.IsWrapped && !isSource) continue;
-            // ScoreGroup CRC is wrapped-only: the unwrapped ERC1155 must never be a
-            // routable holder balance (no source spend, no transient forwarding). It
-            // may exist only on the terminal Group→sink mint edge.
-            if (g.IsScoreGroup(bn.Token)) continue;
 
             // ensure the pool node exists
             g.AddTokenNode(bn.Token);
@@ -923,8 +903,6 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
             if (sb.IsWrapped && !(req?.WithWrap ?? false)) continue;
             if (sb.IsWrapped && !isSource) continue;
-            // ScoreGroup CRC is wrapped-only — never a routable (simulated) balance.
-            if (g.IsScoreGroup(sb.TokenId)) continue;
 
             g.AddTokenNode(sb.TokenId);
             int pool = AddressIdPool.TokenPoolIdOf(sb.TokenId);
@@ -1049,14 +1027,6 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             int pool = AddressIdPool.TokenPoolIdOf(token);
             if (!g.Nodes.ContainsKey(pool)) continue; // no supply -> no out-edges
 
-            // Defense-in-depth safety net (normally a no-op): a score-group CRC
-            // pool node is never created in the first place (guards in the
-            // holder/simulated balance loops skip it), so this branch is not the
-            // primary enforcement — it only matters if those upstream guards are
-            // ever weakened. Collateral mint inflow (pool(collateral)→group) is
-            // unaffected: its token is member collateral, never a score-group id.
-            if (g.IsScoreGroup(token)) continue;
-
             foreach (var a in acceptors)
             {
                 var capacity = g.ScoreGroupMintLimits.TryGetValue((a, token), out var availableLimit)
@@ -1088,16 +1058,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 int pool = AddressIdPool.TokenPoolIdOf(t);
                 if (g.Nodes.ContainsKey(pool))
                 {
-                    // Defense-in-depth: a score-group CRC pool node must never
-                    // exist (upstream guards prevent it). If one ever did, do NOT
-                    // route it transiently via pool→virtualSink — fall through to
-                    // the Group→virtualSink self-mint terminal, the only permitted
-                    // appearance of the unwrapped score-group ERC1155.
-                    if (!g.IsScoreGroup(t))
-                    {
-                        g.AddCapacityEdge(pool, virtualSink.Value, t, long.MaxValue);
-                        continue;
-                    }
+                    g.AddCapacityEdge(pool, virtualSink.Value, t, long.MaxValue);
+                    continue;
                 }
 
                 if (g.IsGroup(t))
@@ -1118,12 +1080,6 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         HashSet<int> toTokensFilter,
         HashSet<int> excludedToTokensFilter)
     {
-        // Observability for the hard-wired (no kill-switch) wrap-only guard: a
-        // sudden spike here vs. the known score-group count signals a misfire
-        // (e.g. the standard-router collision IsScoreGroup guards against).
-        int scoreGroupNonSinkSkipped = 0;
-        var scoreGroupsGuarded = new HashSet<int>();
-
         foreach (var groupId in g.GroupNodes)
         {
             // Each group mints its own token (the group address IS the token address)
@@ -1140,18 +1096,6 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 if (trustedTokens.Contains(groupToken))
                 {
                     bool isSink = sinkId.HasValue && truster == sinkId.Value;
-                    // ScoreGroup CRC is wrapped-only: the unwrapped ERC1155 may be
-                    // minted ONLY directly to the final recipient (sink), who wraps
-                    // it off-graph. No Group→intermediary delivery, no transient
-                    // forwarding. In the sink-less shared snapshot this fails closed
-                    // (no score-group mint edges); per-request filtered builds
-                    // reconstruct them with proper sink context.
-                    if (g.IsScoreGroup(groupId) && !isSink)
-                    {
-                        scoreGroupNonSinkSkipped++;
-                        scoreGroupsGuarded.Add(groupId);
-                        continue;
-                    }
                     if (isSink && toTokensFilter.Count > 0 && !toTokensFilter.Contains(groupToken))
                         continue;
                     if (isSink && excludedToTokensFilter.Count > 0 && excludedToTokensFilter.Contains(groupToken))
@@ -1167,11 +1111,6 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 g.AddCapacityEdge(groupId, avatar, groupToken, long.MaxValue);
             }
         }
-
-        if (scoreGroupNonSinkSkipped > 0)
-            _logger.LogInformation(
-                "Wrapped-only guard: dropped {Count} non-sink Group→avatar mint edges across {Groups} score group(s)",
-                scoreGroupNonSinkSkipped, scoreGroupsGuarded.Count);
     }
 
     private void RemoveTokenSelfLoopsForSwap(

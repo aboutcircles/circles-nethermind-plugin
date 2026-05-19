@@ -131,33 +131,6 @@ public class CapacityGraph : IGraph<CapacityEdge>
     public bool IsOrganization(int nodeAddress) => OrganizationNodes.Contains(nodeAddress);
     public bool IsRouter(int nodeAddress) => RouterNodes.Contains(nodeAddress);
 
-    /// <summary>
-    /// True when <paramref name="nodeAddress"/> is a score-group avatar (its CRC
-    /// token id == the avatar address). Derived from the canonical ScoreRouterIds
-    /// set (sourced from CrcV2_ScoreGroup.GroupInitialized.pathMintRouter, immutable
-    /// post-init, does not lag mint-limit rows) joined via the group→router map —
-    /// the same signal AddTokenPoolOutEdges uses to recognize a score router. No
-    /// separate propagation path, so every graph-load mode (per-request DB, cached,
-    /// cache snapshot, incremental) gets it for free once GroupRouters and
-    /// ScoreRouterIds are populated.
-    ///
-    /// ScoreGroup CRC is wrapped-only by design: the unwrapped ERC1155 may appear
-    /// solely on the terminal Group→sink mint edge — never as a holder balance or a
-    /// transient hop. The graph-construction guards consult this predicate.
-    ///
-    /// The standard group router (<see cref="RouterNode"/>) is explicitly excluded:
-    /// every regular group is assigned the standard router, so if a score group were
-    /// ever initialized with the standard router as its pathMintRouter, ScoreRouterIds
-    /// would contain it and this predicate would fire for ALL regular groups, silently
-    /// stripping their routing. A score group that genuinely reused the standard router
-    /// is anyway indistinguishable from a regular group here, so excluding it is the
-    /// safe, non-lossy choice. A collision is logged at load (see GraphFactory).
-    /// </summary>
-    public bool IsScoreGroup(int nodeAddress) =>
-        GroupRouters.TryGetValue(nodeAddress, out var routerId)
-        && routerId != RouterNode
-        && ScoreRouterIds.Contains(routerId);
-
     public int RouterForGroup(int groupAddress)
     {
         if (GroupRouters.TryGetValue(groupAddress, out var routerAddress))
