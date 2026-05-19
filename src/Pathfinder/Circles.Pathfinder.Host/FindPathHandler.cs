@@ -175,8 +175,22 @@ internal sealed class FindPathHandler(
 
             if (balanceGraph is null)
             {
+                // Transient warmup (post-restart / reorg / upstream not ready), not a
+                // client error — 503 so load balancers drain & clients retry.
+                FindPathMetrics.SolverStatusTotal.WithLabels("not_ready").Inc();
                 log.LogWarning("Graphs not ready");
-                return Results.BadRequest("Graphs are not loaded yet.");
+                return Results.Json(new { error = "Graphs are not loaded yet." },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
+            if (!pool.HasCurrentSnapshot)
+            {
+                // Same predicate as GraphReadinessHealthCheck (/ready). Without this
+                // gate, pool.Rent throws InvalidOperationException → generic catch → 500
+                // for a recoverable warmup state.
+                FindPathMetrics.SolverStatusTotal.WithLabels("not_ready").Inc();
+                log.LogWarning("Capacity graph snapshot not ready — returning 503 (warmup)");
+                return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
             }
 
             using var h = await pool.Rent(request, balanceGraph, trustGraph);
@@ -343,6 +357,21 @@ internal sealed class FindPathHandler(
                 graphBlock, sw.ElapsedMilliseconds, 400,
                 request.WithWrap ?? false, request.QuantizedMode ?? false, "bad_request");
             return Results.BadRequest(ex.Message);
+        }
+        catch (GraphNotReadyException ex)
+        {
+            // Backstops the check-then-Rent TOCTOU window after the
+            // HasCurrentSnapshot gate above. Scoped to the dedicated
+            // GraphNotReadyException so genuine InvalidOperationExceptions from
+            // the solver still surface as 500 via the generic catch below.
+            FindPathMetrics.SolverStatusTotal.WithLabels("not_ready").Inc();
+            log.LogWarning(ex,
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                graphBlock, sw.ElapsedMilliseconds, 503,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "not_ready");
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
