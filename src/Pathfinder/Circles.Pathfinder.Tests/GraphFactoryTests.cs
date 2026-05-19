@@ -498,6 +498,200 @@ public class GraphFactoryTests
     }
 
     [Test]
+    public void SelfMintViaPath_GroupTokenWithNoSupply_VirtualSinkSurvivesViaGroupEdge()
+    {
+        // Regression for self-mint via path returning maxFlow=0 against prod
+        // ScoreGroup 0x7CadB2E9… (2026-05-19). Reproduces shape: source==sink,
+        // toTokens=[group whose CRC nobody holds yet]. Pre-fix the virtualSink
+        // had zero inbound edges (TokenPool(groupToken) doesn't exist pre-mint)
+        // and got pruned, yielding maxFlow=0 for legitimate self-mint paths.
+        // Fix: Group → virtualSink fallback when pool is absent and t is a group.
+        var mock = new MockLoadGraph
+        {
+            Groups = new List<string> { GroupG },
+            // GroupG trusts TokenA as collateral
+            GroupTrusts = new List<(string, string)> { (GroupG, TokenA) }
+        };
+        var factory = MakeFactory(mock);
+
+        // Alice holds TokenA (collateral). Nobody holds GroupG's CRC yet.
+        var balance = MakeBalanceGraph((Alice, TokenA, 1000));
+        // Alice trusts both TokenA (for her own holdings) and GroupG (to receive
+        // the group's CRC after mint).
+        var trust = MakeTrust((Alice, TokenA), (Alice, GroupG));
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { GroupG }
+        };
+
+        var cg = factory.CreateCapacityGraph(balance, trust, request);
+
+        Assert.That(cg.VirtualSinkAddress, Is.Not.Null,
+            "Virtual sink must survive — Group → virtualSink edge should be added " +
+            "even when TokenPool(groupToken) is absent (no existing supply).");
+
+        int groupId = AddressIdPool.IdOf(GroupG);
+        int virtualSinkId = cg.VirtualSinkAddress!.Value;
+        var groupToVirtualSink = cg.Edges
+            .Where(e => e.From == groupId && e.To == virtualSinkId && e.Token == groupId)
+            .ToList();
+        Assert.That(groupToVirtualSink.Count, Is.EqualTo(1),
+            "Exactly one Group → virtualSink edge should exist for the group token.");
+        Assert.That(groupToVirtualSink[0].InitialCapacity, Is.EqualTo(long.MaxValue),
+            "Group → virtualSink capacity is uncapped; mint cap is enforced upstream " +
+            "by the pool_collateral → group edge.");
+    }
+
+    [Test]
+    public void SelfMintViaPath_GroupTokenWithExistingSupply_UsesPoolEdge()
+    {
+        // Counterpart to the above: when TokenPool(groupToken) DOES exist (some
+        // avatar holds the group's CRC), the existing pool → virtualSink path
+        // must still be used. The Group → virtualSink fallback must not fire.
+        var mock = new MockLoadGraph
+        {
+            Groups = new List<string> { GroupG },
+            GroupTrusts = new List<(string, string)> { (GroupG, TokenA) }
+        };
+        var factory = MakeFactory(mock);
+
+        // Bob already holds GroupG's CRC, so TokenPool(GroupG) will be created.
+        var balance = MakeBalanceGraph((Alice, TokenA, 1000), (Bob, GroupG, 500));
+        var trust = MakeTrust((Alice, TokenA), (Alice, GroupG), (Bob, GroupG));
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { GroupG }
+        };
+
+        var cg = factory.CreateCapacityGraph(balance, trust, request);
+
+        int groupId = AddressIdPool.IdOf(GroupG);
+        int virtualSinkId = cg.VirtualSinkAddress!.Value;
+
+        // Group → virtualSink fallback edge should NOT exist when pool path is viable.
+        var fallbackEdges = cg.Edges
+            .Where(e => e.From == groupId && e.To == virtualSinkId)
+            .ToList();
+        Assert.That(fallbackEdges.Count, Is.EqualTo(0),
+            "Group → virtualSink fallback must not fire when TokenPool(groupToken) exists.");
+    }
+
+    [Test]
+    public void SelfMintViaPath_FallbackActive_MintCapBindsThroughCollateralEdge()
+    {
+        // Review-gated regression: when the Group → virtualSink fallback fires
+        // (group token has no pool pre-mint), the mint cap must still bind the
+        // flow through the upstream pool_collateral → group edge. Verifies the
+        // fallback's `long.MaxValue` capacity is not the effective bottleneck.
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        // Alice trusts GroupG so it survives the sink-side toTokens filter and
+        // ends up in virtualSinkTrustedTokens.
+        mock.AddTrust(Alice, GroupG);
+        mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
+        mock.AddOperatorApproval(ScoreRouterAddr, Alice);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { GroupG }
+        };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        int groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        int poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        // Cap edge binds at the cached limit (25_000_000 from AddScoreGroupMintLimit).
+        var capEdge = cg.Edges.Single(e => e.From == poolId && e.To == groupId && e.Token == tokenAId);
+        Assert.That(capEdge.InitialCapacity, Is.EqualTo(25_000_000),
+            "pool_collateral → group capacity must equal ScoreGroupMintLimits cap.");
+
+        // Fallback edge exists and is uncapped (cap is enforced by the upstream collateral edge).
+        Assert.That(cg.VirtualSinkAddress, Is.Not.Null);
+        int virtualSinkId = cg.VirtualSinkAddress!.Value;
+        var fallbackEdge = cg.Edges.Single(e => e.From == groupId && e.To == virtualSinkId && e.Token == groupId);
+        Assert.That(fallbackEdge.InitialCapacity, Is.EqualTo(long.MaxValue),
+            "Group → virtualSink fallback edge is intentionally uncapped; cap is enforced by the upstream collateral edge.");
+    }
+
+    [Test]
+    public void SelfMintViaPath_FallbackActive_UnapprovedOperator_HasNoCollateralEdge()
+    {
+        // Review-gated regression: when source is NOT an approved operator of
+        // a score router, the per-request build filters out the
+        // pool_collateral → group edge. The fallback edge Group → virtualSink
+        // may still get created (it only checks pool absence + IsGroup), but
+        // the group node has no inbound edges, so max-flow returns 0.
+        // This proves the fallback does not enable false positives.
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddTrust(Alice, GroupG);
+        mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
+        // INTENTIONALLY OMIT mock.AddOperatorApproval(ScoreRouterAddr, Alice);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { GroupG }
+        };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        int groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        int poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        // pool_collateral → group edge must be filtered out when operator is unapproved.
+        var collateralEdges = cg.Edges
+            .Where(e => e.From == poolId && e.To == groupId && e.Token == tokenAId)
+            .ToList();
+        Assert.That(collateralEdges.Count, Is.EqualTo(0),
+            "pool_collateral → group must NOT be added when source is not an approved operator of the score router.");
+
+        // Group has zero inbound edges → no path source → group → virtualSink exists.
+        // Fallback edge (group → virtualSink) might be added, but it's unreachable.
+        var groupInbound = cg.Edges.Where(e => e.To == groupId).ToList();
+        Assert.That(groupInbound.Count, Is.EqualTo(0),
+            "Group node must have no inbound edges when source is unapproved — proves no false positive even if Group → virtualSink exists.");
+    }
+
+    [Test]
     public void GroupTrustedToken_IsAvatarNode_EvenWithNoUserTrust_DbPath()
     {
         // Token T is ONLY reachable via group trust (G trusts T).
