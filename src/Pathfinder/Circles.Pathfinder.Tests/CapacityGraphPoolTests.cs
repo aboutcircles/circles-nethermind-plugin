@@ -103,17 +103,18 @@ public class CapacityGraphPoolTests
     }
 
     // ----------------------------------------------------------------
-    // 3. Rent before snapshot loaded throws InvalidOperationException
+    // 3. Rent before snapshot loaded throws GraphNotReadyException
+    //    (a recoverable warmup signal, distinct from a solver fault)
     // ----------------------------------------------------------------
 
     [Test]
-    public void Rent_BeforeSnapshotLoaded_ThrowsInvalidOperation()
+    public void Rent_BeforeSnapshotLoaded_ThrowsGraphNotReady()
     {
         var pool = CreatePool();
         var (balances, trust) = BuildMinimalInputs();
         var request = new FlowRequest();
 
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        var ex = Assert.ThrowsAsync<GraphNotReadyException>(async () =>
         {
             await pool.Rent(request, balances, trust);
         });
