@@ -498,6 +498,91 @@ public class GraphFactoryTests
     }
 
     [Test]
+    public void SelfMintViaPath_GroupTokenWithNoSupply_VirtualSinkSurvivesViaGroupEdge()
+    {
+        // Regression for self-mint via path returning maxFlow=0 against prod
+        // ScoreGroup 0x7CadB2E9… (2026-05-19). Reproduces shape: source==sink,
+        // toTokens=[group whose CRC nobody holds yet]. Pre-fix the virtualSink
+        // had zero inbound edges (TokenPool(groupToken) doesn't exist pre-mint)
+        // and got pruned, yielding maxFlow=0 for legitimate self-mint paths.
+        // Fix: Group → virtualSink fallback when pool is absent and t is a group.
+        var mock = new MockLoadGraph
+        {
+            Groups = new List<string> { GroupG },
+            // GroupG trusts TokenA as collateral
+            GroupTrusts = new List<(string, string)> { (GroupG, TokenA) }
+        };
+        var factory = MakeFactory(mock);
+
+        // Alice holds TokenA (collateral). Nobody holds GroupG's CRC yet.
+        var balance = MakeBalanceGraph((Alice, TokenA, 1000));
+        // Alice trusts both TokenA (for her own holdings) and GroupG (to receive
+        // the group's CRC after mint).
+        var trust = MakeTrust((Alice, TokenA), (Alice, GroupG));
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { GroupG }
+        };
+
+        var cg = factory.CreateCapacityGraph(balance, trust, request);
+
+        Assert.That(cg.VirtualSinkAddress, Is.Not.Null,
+            "Virtual sink must survive — Group → virtualSink edge should be added " +
+            "even when TokenPool(groupToken) is absent (no existing supply).");
+
+        int groupId = AddressIdPool.IdOf(GroupG);
+        int virtualSinkId = cg.VirtualSinkAddress!.Value;
+        var groupToVirtualSink = cg.Edges
+            .Where(e => e.From == groupId && e.To == virtualSinkId && e.Token == groupId)
+            .ToList();
+        Assert.That(groupToVirtualSink.Count, Is.EqualTo(1),
+            "Exactly one Group → virtualSink edge should exist for the group token.");
+        Assert.That(groupToVirtualSink[0].InitialCapacity, Is.EqualTo(long.MaxValue),
+            "Group → virtualSink capacity is uncapped; mint cap is enforced upstream " +
+            "by the pool_collateral → group edge.");
+    }
+
+    [Test]
+    public void SelfMintViaPath_GroupTokenWithExistingSupply_UsesPoolEdge()
+    {
+        // Counterpart to the above: when TokenPool(groupToken) DOES exist (some
+        // avatar holds the group's CRC), the existing pool → virtualSink path
+        // must still be used. The Group → virtualSink fallback must not fire.
+        var mock = new MockLoadGraph
+        {
+            Groups = new List<string> { GroupG },
+            GroupTrusts = new List<(string, string)> { (GroupG, TokenA) }
+        };
+        var factory = MakeFactory(mock);
+
+        // Bob already holds GroupG's CRC, so TokenPool(GroupG) will be created.
+        var balance = MakeBalanceGraph((Alice, TokenA, 1000), (Bob, GroupG, 500));
+        var trust = MakeTrust((Alice, TokenA), (Alice, GroupG), (Bob, GroupG));
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { GroupG }
+        };
+
+        var cg = factory.CreateCapacityGraph(balance, trust, request);
+
+        int groupId = AddressIdPool.IdOf(GroupG);
+        int virtualSinkId = cg.VirtualSinkAddress!.Value;
+
+        // Group → virtualSink fallback edge should NOT exist when pool path is viable.
+        var fallbackEdges = cg.Edges
+            .Where(e => e.From == groupId && e.To == virtualSinkId)
+            .ToList();
+        Assert.That(fallbackEdges.Count, Is.EqualTo(0),
+            "Group → virtualSink fallback must not fire when TokenPool(groupToken) exists.");
+    }
+
+    [Test]
     public void GroupTrustedToken_IsAvatarNode_EvenWithNoUserTrust_DbPath()
     {
         // Token T is ONLY reachable via group trust (G trusts T).

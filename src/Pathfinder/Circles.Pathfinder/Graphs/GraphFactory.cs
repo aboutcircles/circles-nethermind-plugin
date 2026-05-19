@@ -1039,14 +1039,33 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             }
         }
 
-        // Virtual sink edges (swap mode): TokenPool(token) -> virtualSink
+        // Virtual sink edges (swap mode): TokenPool(token) -> virtualSink, OR
+        // Group → virtualSink for group tokens that have no existing supply.
+        //
+        // When the target token in a source==sink swap is a group's own CRC and
+        // no avatar holds it yet (= no TokenPool node), the group itself is the
+        // implicit issuer via Hub.groupMint inside operateFlowMatrix. Without a
+        // direct Group → virtualSink edge the virtual sink has zero inbound
+        // edges and gets pruned at line ~502, yielding maxFlow=0 for legitimate
+        // self-mint paths. The mint cap is still enforced upstream by the
+        // pool_collateral → group edges (capacity = ScoreGroupMintLimits[(group,
+        // collateral)]) added above, so this fallback never inflates allowable
+        // flow beyond the cached cap.
         if (virtualSink != null)
         {
             foreach (var t in virtualSinkTrustedTokens)
             {
                 int pool = AddressIdPool.TokenPoolIdOf(t);
-                if (!g.Nodes.ContainsKey(pool)) continue;
-                g.AddCapacityEdge(pool, virtualSink.Value, t, long.MaxValue);
+                if (g.Nodes.ContainsKey(pool))
+                {
+                    g.AddCapacityEdge(pool, virtualSink.Value, t, long.MaxValue);
+                    continue;
+                }
+
+                if (g.IsGroup(t))
+                {
+                    g.AddCapacityEdge(t, virtualSink.Value, t, long.MaxValue);
+                }
             }
         }
 
