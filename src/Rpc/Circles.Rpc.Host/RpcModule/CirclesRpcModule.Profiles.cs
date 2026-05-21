@@ -683,7 +683,16 @@ public partial class CirclesRpcModule
 
         if (proxyResults == null || proxyResults.Length == 0)
         {
-            // Return null to fall through to SQL fallback
+            // When a groupType filter is set, the pinning service is the only data source
+            // that knows about group_type — the SQL fallback (V_CrcV2_Avatars + ipfs_files)
+            // has no such column. An empty proxy result is therefore *the answer*; falling
+            // through to SQL would silently return unfiltered results and leak rows the
+            // caller asked to exclude. Return empty instead. Without a groupType filter we
+            // preserve the prior behavior (fall through to SQL on empty proxy result).
+            if (!string.IsNullOrEmpty(groupType))
+            {
+                return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            }
             return null;
         }
 
