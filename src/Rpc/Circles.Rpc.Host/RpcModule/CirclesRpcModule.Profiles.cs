@@ -574,12 +574,23 @@ public partial class CirclesRpcModule
         return await GetProfileByCidBatchInternal(cids);
     }
 
-    public async Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null)
+    public async Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null, string? groupType = null)
     {
         const int hardLimit = 100;
         if (limit > hardLimit)
         {
             throw new ArgumentException($"limit must not exceed {hardLimit} (got {limit}).");
+        }
+
+        string? groupTypeFilter = null;
+        if (!string.IsNullOrWhiteSpace(groupType))
+        {
+            var gt = groupType.Trim();
+            if (gt != "open" && gt != "closed")
+            {
+                throw new ArgumentException($"groupType must be 'open' or 'closed' (got '{groupType}').", nameof(groupType));
+            }
+            groupTypeFilter = gt;
         }
 
         string qText = text.Trim();
@@ -608,7 +619,7 @@ public partial class CirclesRpcModule
         {
             try
             {
-                var proxyResult = await SearchProfilesViaProxy(qText, limit, offset, typeFilter);
+                var proxyResult = await SearchProfilesViaProxy(qText, limit, offset, typeFilter, groupTypeFilter);
                 if (proxyResult != null)
                 {
                     return proxyResult;
@@ -620,7 +631,13 @@ public partial class CirclesRpcModule
             }
         }
 
-        // Fallback: direct SQL search
+        // Fallback: direct SQL search. SQL fallback cannot filter by groupType — the chain
+        // index has no such column. Log a warning so callers can see the degradation, then
+        // proceed unfiltered (preferred over throwing; matches the existing "fall back silently" pattern).
+        if (groupTypeFilter != null)
+        {
+            _logger?.LogWarning("SearchProfiles groupType={GroupType} filter ignored in SQL fallback (chain index has no group_type column)", groupTypeFilter);
+        }
         return await SearchProfilesViaSql(qText, limit, offset, typeFilter);
     }
 
@@ -629,7 +646,7 @@ public partial class CirclesRpcModule
     /// Returns null if the service is unavailable or returns an error.
     /// </summary>
     private async Task<ProfileSearchResult?> SearchProfilesViaProxy(
-        string qText, int limit, int offset, string[]? typeFilter)
+        string qText, int limit, int offset, string[]? typeFilter, string? groupType = null)
     {
         var baseUrl = _settings.ProfilePinningServiceUrl!.TrimEnd('/');
 
@@ -645,6 +662,11 @@ public partial class CirclesRpcModule
         if (typeFilter is { Length: > 0 })
         {
             url += $"&type={Uri.EscapeDataString(typeFilter[0])}";
+        }
+
+        if (!string.IsNullOrEmpty(groupType))
+        {
+            url += $"&groupType={Uri.EscapeDataString(groupType)}";
         }
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -699,6 +721,28 @@ public partial class CirclesRpcModule
                 profileDict["description"] = descEl.GetString();
             if (proxyEntry.TryGetProperty("location", out var locEl) && locEl.ValueKind != JsonValueKind.Null)
                 profileDict["location"] = locEl.GetString();
+
+            // Extended group-profile fields (proxy returns flat shape — see pinning service
+            // ProfileResponse). Keys are omitted by the proxy when unset, so the same is true here.
+            // Numeric fields come back as JS numbers thanks to the `::float8` cast applied
+            // in the pinning service's repositories/profiles.ts (migration 017 follow-up).
+            if (proxyEntry.TryGetProperty("externalWebsite", out var extWebEl) && extWebEl.ValueKind != JsonValueKind.Null)
+                profileDict["externalWebsite"] = extWebEl.GetString();
+            if (proxyEntry.TryGetProperty("minRepScore", out var minRepEl) && minRepEl.ValueKind == JsonValueKind.Number)
+                profileDict["minRepScore"] = minRepEl.GetDouble();
+            if (proxyEntry.TryGetProperty("membershipFee", out var feeEl) && feeEl.ValueKind == JsonValueKind.Number)
+                profileDict["membershipFee"] = feeEl.GetDouble();
+            if (proxyEntry.TryGetProperty("additionalCriteria", out var critEl) && critEl.ValueKind == JsonValueKind.Array)
+                profileDict["additionalCriteria"] = critEl.EnumerateArray()
+                    .Where(e => e.ValueKind == JsonValueKind.String)
+                    .Select(e => e.GetString())
+                    .ToArray();
+            if (proxyEntry.TryGetProperty("groupType", out var gtEl) && gtEl.ValueKind != JsonValueKind.Null)
+                profileDict["groupType"] = gtEl.GetString();
+            if (proxyEntry.TryGetProperty("contactEmail", out var emailEl) && emailEl.ValueKind != JsonValueKind.Null)
+                profileDict["contactEmail"] = emailEl.GetString();
+            if (proxyEntry.TryGetProperty("contactWebsite", out var contWebEl) && contWebEl.ValueKind != JsonValueKind.Null)
+                profileDict["contactWebsite"] = contWebEl.GetString();
 
             if (profileDict.Count > 0)
             {

@@ -85,7 +85,7 @@ public static class OpenRpcGenerator
 
         ("circles_searchProfiles", "SearchProfiles", "Profiles",
             "Full-text search across profiles",
-            "Searches avatar profiles by name and description text. Supports up to 3 search tokens (each must be > 1 character). Can filter by avatar type.\n\n**Common use case**: User search bar — type a name, get matching profiles.\n\n**Tip**: For searching by address prefix OR name, use `circles_searchProfileByAddressOrName` which auto-detects the query type."),
+            "Searches avatar profiles by name and description text. Supports up to 3 search tokens (each must be > 1 character). Can filter by avatar type and (for group profiles) by `groupType` (`open`/`closed`).\n\n**Common use case**: User search bar — type a name, get matching profiles.\n\n**Tip**: For searching by address prefix OR name, use `circles_searchProfileByAddressOrName` which auto-detects the query type.\n\n**Extended return fields** (each result item's `Profile` sub-object, omitted when unset): `externalWebsite`, `minRepScore`, `membershipFee`, `additionalCriteria`, `groupType`, `contactEmail`, `contactWebsite`."),
 
         // ── Trust & Network Methods ──────────────────────────────────────────
         ("circles_getTrustRelations", "GetTrustRelations", "Trust",
@@ -308,7 +308,9 @@ public static class OpenRpcGenerator
             Param("offset", false, "integer",
                 "Number of results to skip. Use with limit for offset-based pagination (e.g., offset=20, limit=20 for page 2)."),
             ParamArray("types", false, "string",
-                "Filter results by avatar type. Valid values: 'CrcV2_RegisterHuman', 'CrcV2_RegisterGroup', 'CrcV2_RegisterOrganization'. Omit to search all types.")
+                "Filter results by avatar type. Valid values: 'CrcV2_RegisterHuman', 'CrcV2_RegisterGroup', 'CrcV2_RegisterOrganization'. Omit to search all types."),
+            Param("groupType", false, "string",
+                "Filter group profiles by their stored group type. Valid values: 'open', 'closed'. Forwarded to the profile-pinning service (fast path); silently ignored by the SQL fallback (chain index has no group_type column). Omit to apply no group-type filter.")
         ],
         ["circles_getTrustRelations"] =
         [
@@ -688,6 +690,19 @@ public static class OpenRpcGenerator
                     new() { Name = "limit", Value = 20 },
                     new() { Name = "offset", Value = 0 },
                     new() { Name = "types", Value = new[] { "CrcV2_RegisterGroup" } },
+                ],
+            },
+            new()
+            {
+                Name = "Search closed groups",
+                Description = "Find closed-membership group profiles matching 'community' (filter on the extended groupType field)",
+                Params =
+                [
+                    new() { Name = "text", Value = "community" },
+                    new() { Name = "limit", Value = 20 },
+                    new() { Name = "offset", Value = 0 },
+                    new() { Name = "types", Value = new[] { "CrcV2_RegisterGroup" } },
+                    new() { Name = "groupType", Value = "closed" },
                 ],
             }
         ],
