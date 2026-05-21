@@ -1008,6 +1008,7 @@ static async Task<object> HandleSearchProfiles(JsonRpcRequest request, CirclesRp
     int limit = 20;
     int offset = 0;
     string[]? types = null;
+    string? groupType = null;
 
     if (parameters.Length > 1 && parameters[1].ValueKind != JsonValueKind.Null)
     {
@@ -1024,7 +1025,12 @@ static async Task<object> HandleSearchProfiles(JsonRpcRequest request, CirclesRp
         types = parameters[3].Deserialize<string[]>();
     }
 
-    var searchResults = await rpcModule.SearchProfiles(text, limit, offset, types);
+    if (parameters.Length > 4 && parameters[4].ValueKind != JsonValueKind.Null)
+    {
+        groupType = parameters[4].GetString();
+    }
+
+    var searchResults = await rpcModule.SearchProfiles(text, limit, offset, types, groupType);
     var transformedResults = searchResults.Results.Select(item =>
     {
         // Extract properties from AvatarInfo
@@ -1033,20 +1039,41 @@ static async Task<object> HandleSearchProfiles(JsonRpcRequest request, CirclesRp
         var cid = avatarInfo.CidV0; // Remote expects "cid"
         var avatarType = avatarInfo.Type; // Remote expects "avatarType"
 
-        // Extract properties from Profile (JsonElement)
-        var profileName = item.Profile?.TryGetProperty("name", out var nameElement) == true ? nameElement.GetString() : null;
-        var profileDescription = item.Profile?.TryGetProperty("description", out var descElement) == true ? descElement.GetString() : null;
-        var profilePreviewImageUrl = item.Profile?.TryGetProperty("previewImageUrl", out var imageUrlElement) == true ? imageUrlElement.GetString() : null;
+        // Extract properties from Profile (JsonElement). Extended group-profile fields
+        // are surfaced when the underlying proxy result populated them; null values are
+        // dropped from the JSON output by the global DefaultIgnoreCondition=WhenWritingNull
+        // serializer setting, so legacy profiles stay byte-identical to the pre-change baseline.
+        var profile = item.Profile;
+        string? GetStr(string key) =>
+            profile?.TryGetProperty(key, out var el) == true && el.ValueKind != JsonValueKind.Null
+                ? el.GetString() : null;
+        double? GetNum(string key) =>
+            profile?.TryGetProperty(key, out var el) == true && el.ValueKind == JsonValueKind.Number
+                ? el.GetDouble() : null;
+        string[]? GetStrArr(string key) =>
+            profile?.TryGetProperty(key, out var el) == true && el.ValueKind == JsonValueKind.Array
+                ? el.EnumerateArray()
+                    .Where(e => e.ValueKind == JsonValueKind.String)
+                    .Select(e => e.GetString()!)
+                    .ToArray()
+                : null;
 
         // Construct the flattened anonymous object
         return new
         {
             address = address,
             cid = cid,
-            name = profileName,
-            description = profileDescription,
-            previewImageUrl = profilePreviewImageUrl,
-            avatarType = avatarType
+            name = GetStr("name"),
+            description = GetStr("description"),
+            previewImageUrl = GetStr("previewImageUrl"),
+            avatarType = avatarType,
+            externalWebsite = GetStr("externalWebsite"),
+            minRepScore = GetNum("minRepScore"),
+            membershipFee = GetNum("membershipFee"),
+            additionalCriteria = GetStrArr("additionalCriteria"),
+            groupType = GetStr("groupType"),
+            contactEmail = GetStr("contactEmail"),
+            contactWebsite = GetStr("contactWebsite")
         };
     }).ToArray();
 
