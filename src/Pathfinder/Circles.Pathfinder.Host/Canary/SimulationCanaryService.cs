@@ -56,6 +56,13 @@ internal sealed class SimulationCanaryService : BackgroundService
         "circles_canary_simulation_queue_dropped_total",
         "Work items dropped because the simulation queue was full");
 
+    private static readonly Counter SimulationSkipped = Metrics.CreateCounter(
+        "circles_canary_simulation_skipped_total",
+        "Work items skipped before enqueue, by reason",
+        new CounterConfiguration { LabelNames = new[] { "reason" } });
+
+    public static void RecordSkipped(string reason) => SimulationSkipped.WithLabels(reason).Inc();
+
     public SimulationCanaryService(
         Settings settings,
         ILogger<SimulationCanaryService> log,

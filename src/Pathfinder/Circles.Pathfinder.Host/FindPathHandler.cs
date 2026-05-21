@@ -260,9 +260,15 @@ internal sealed class FindPathHandler(
                     FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
 
                 // Simulation canary: enqueue for async eth_call validation.
-                // Skip when: simulated balances/trusts (not real state), or source is a Group/Organization
-                // (Hub.sol operateFlowMatrix requires isApprovedForAll(source, msg.sender).
-                // Groups/Orgs don't self-approve — canary would get OperatorNotApprovedForSource).
+                // Skip when:
+                //   - simulated balances/trusts (not real state),
+                //   - source is a Group/Organization (Hub.sol operateFlowMatrix requires
+                //     isApprovedForAll(source, msg.sender); Groups/Orgs don't self-approve →
+                //     false-positive OperatorNotApprovedForSource),
+                //   - withWrap=true (SDK prepends Wrapper.unwrap() before operateFlowMatrix;
+                //     canary's eth_call only replays operateFlowMatrix and sees zero ERC1155
+                //     balance → false-positive ERC1155InsufficientBalance. Full fix tracked
+                //     as the unwrap-prefix simulation follow-up).
                 bool hasSimulated = (request.SimulatedBalances?.Count > 0)
                                     || (request.SimulatedTrusts?.Count > 0)
                                     || (request.SimulatedConsentedAvatars?.Count > 0);
@@ -275,12 +281,15 @@ internal sealed class FindPathHandler(
                                           || h.Graph.IsOrganization(sourceId);
                 }
 
+                bool withWrap = request.WithWrap ?? false;
+
                 if (simulationCanary != null
                     && mfr.Transfers.Count > 0
                     && !string.IsNullOrEmpty(request.Source)
                     && !string.IsNullOrEmpty(request.Sink)
                     && !hasSimulated
-                    && !sourceUnsimulatable)
+                    && !sourceUnsimulatable
+                    && !withWrap)
                 {
                     Dictionary<string, string>? wrapperMap = null;
                     try
@@ -316,6 +325,16 @@ internal sealed class FindPathHandler(
                             Transfers: new List<TransferPathStep>(mfr.Transfers),
                             WrapperToAvatar: wrapperMap));
                     }
+                }
+                else if (simulationCanary != null
+                         && mfr.Transfers.Count > 0
+                         && !string.IsNullOrEmpty(request.Source)
+                         && !string.IsNullOrEmpty(request.Sink)
+                         && !hasSimulated
+                         && !sourceUnsimulatable
+                         && withWrap)
+                {
+                    SimulationCanaryService.RecordSkipped("with_wrap");
                 }
 
                 log.LogInformation(
