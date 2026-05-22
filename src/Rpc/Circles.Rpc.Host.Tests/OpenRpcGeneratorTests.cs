@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using Circles.Rpc.Host.OpenRpc;
 
 namespace Circles.Rpc.Host.Tests;
@@ -136,5 +138,46 @@ public class OpenRpcGeneratorTests
             Assert.That(method.Examples, Is.Not.Null.And.Not.Empty,
                 $"Method {method.Name} is missing examples");
         }
+    }
+
+    // SSOT for the live RPC surface is the dispatch switch in Program.cs. The OpenRPC
+    // spec is hand-derived from MethodMappings in OpenRpcGenerator. This test parses
+    // Program.cs at test time and asserts every dispatched circles_*/circlesV2_* arm
+    // has a MethodMappings entry — adding a handler without updating MethodMappings
+    // fails CI here instead of silently shipping a stale /openrpc.json.
+    [Test]
+    public void Generate_AllDispatchedMethods_ArePresentInOpenRpcSpec()
+    {
+        var programCsPath = ResolveProgramCsPath();
+        var source = File.ReadAllText(programCsPath);
+
+        var dispatchArm = new Regex(@"""(circles_[A-Za-z_]+|circlesV2_[A-Za-z_]+)""\s*=>");
+        var dispatched = dispatchArm.Matches(source)
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.That(dispatched, Is.Not.Empty,
+            $"No dispatch arms matched in {programCsPath} — regex stale or file moved");
+
+        var documented = OpenRpcGenerator.Generate().Methods
+            .Select(m => m.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var missing = dispatched.Except(documented).OrderBy(x => x, StringComparer.Ordinal).ToList();
+        Assert.That(missing, Is.Empty,
+            "Methods dispatched in Program.cs but missing from OpenRpcGenerator.MethodMappings:\n  - " +
+            string.Join("\n  - ", missing) +
+            "\n\nAdd a MethodMappings entry for each dispatched method to keep /openrpc.json fresh.");
+    }
+
+    private static string ResolveProgramCsPath([CallerFilePath] string? thisFile = null)
+    {
+        var dir = Path.GetDirectoryName(thisFile!)!;
+        var candidate = Path.GetFullPath(Path.Combine(dir, "..", "Circles.Rpc.Host", "Program.cs"));
+        if (!File.Exists(candidate))
+            Assert.Ignore(
+                $"OpenRPC drift guard requires source-tree access. Program.cs not at '{candidate}' " +
+                "— skipping (test was likely built on a different host than it is run on).");
+        return candidate;
     }
 }
