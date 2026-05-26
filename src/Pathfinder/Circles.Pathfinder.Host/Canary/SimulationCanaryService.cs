@@ -227,13 +227,14 @@ internal sealed class SimulationCanaryService : BackgroundService
                 SimulationTotal.WithLabels("revert", prefixLabel).Inc();
                 SimulationRevertTotal.WithLabels(category, label, "flow_matrix").Inc();
 
-                // Full replay context: everything needed to reproduce
+                // Full replay context: everything needed to reproduce (incl. calldata
+                // so the canary log alone is sufficient to feed scripts/_resources/run-sim.sh).
                 _log.LogError(
                     "[{ReqId}] SimulationCanary: REVERT category={Category} label={Label} " +
-                    "from={Source} to={Sink} graphBlock={Block} simBlock={SimBlock} steps={Steps} revert={Revert}",
+                    "from={Source} to={Sink} graphBlock={Block} simBlock={SimBlock} steps={Steps} revert={Revert} calldata={Calldata}",
                     item.ReqId, category, label,
                     item.Source, item.Sink, item.GraphBlock, blockTag,
-                    item.Transfers.Count, revertMsg);
+                    item.Transfers.Count, revertMsg, calldata);
 
                 if (revertData == null && revertMsg?.Contains("revert", StringComparison.OrdinalIgnoreCase) == true)
                 {
@@ -466,12 +467,18 @@ internal sealed class SimulationCanaryService : BackgroundService
             case BundleOutcome.Revert:
                 SimulationTotal.WithLabels("revert", prefixLabel).Inc();
                 SimulationRevertTotal.WithLabels(parsed.Category!, parsed.Label!, parsed.Stage!).Inc();
+                // Full replay context: everything needed to reproduce, incl. calldata
+                // and the wrapper list so the canary log alone is sufficient to feed
+                // scripts/_resources/run-sim.sh.
+                var wrappers = string.Join(",", unwrapCalls.Select(u => u.Wrapper));
                 _log.LogError(
                     "[{ReqId}] SimulationCanary: REVERT stage={Stage} category={Category} label={Label} " +
-                    "from={Source} to={Sink} graphBlock={Block} simBlock={SimBlock} steps={Steps} unwraps={Unwraps} revert={Revert}",
+                    "from={Source} to={Sink} graphBlock={Block} simBlock={SimBlock} steps={Steps} unwraps={Unwraps} " +
+                    "revert={Revert} wrappers={Wrappers} calldata={Calldata}",
                     item.ReqId, parsed.Stage, parsed.Category, parsed.Label,
                     item.Source, item.Sink, item.GraphBlock, blockTag,
-                    item.Transfers.Count, unwrapCalls.Count, parsed.RevertMessage ?? parsed.RevertData);
+                    item.Transfers.Count, unwrapCalls.Count,
+                    parsed.RevertMessage ?? parsed.RevertData, wrappers, flowMatrixCalldata);
                 return;
 
             case BundleOutcome.Success:
