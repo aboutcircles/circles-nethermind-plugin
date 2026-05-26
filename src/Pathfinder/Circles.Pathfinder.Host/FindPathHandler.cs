@@ -259,16 +259,15 @@ internal sealed class FindPathHandler(
                 if (mfr.ValidatorException)
                     FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
 
-                // Simulation canary: enqueue for async eth_call validation.
+                // Simulation canary: enqueue for async on-chain validation.
                 // Skip when:
                 //   - simulated balances/trusts (not real state),
                 //   - source is a Group/Organization (Hub.sol operateFlowMatrix requires
                 //     isApprovedForAll(source, msg.sender); Groups/Orgs don't self-approve →
-                //     false-positive OperatorNotApprovedForSource),
-                //   - withWrap=true (SDK prepends Wrapper.unwrap() before operateFlowMatrix;
-                //     canary's eth_call only replays operateFlowMatrix and sees zero ERC1155
-                //     balance → false-positive ERC1155InsufficientBalance. Full fix tracked
-                //     as the unwrap-prefix simulation follow-up).
+                //     false-positive OperatorNotApprovedForSource).
+                // withWrap=true is handled via eth_simulateV1 bundle inside the canary:
+                // source's Wrapper.unwrap() calls run before operateFlowMatrix in a single
+                // shared-state simulation, mirroring how the SDK builds the on-chain tx.
                 bool hasSimulated = (request.SimulatedBalances?.Count > 0)
                                     || (request.SimulatedTrusts?.Count > 0)
                                     || (request.SimulatedConsentedAvatars?.Count > 0);
@@ -288,8 +287,7 @@ internal sealed class FindPathHandler(
                     && !string.IsNullOrEmpty(request.Source)
                     && !string.IsNullOrEmpty(request.Sink)
                     && !hasSimulated
-                    && !sourceUnsimulatable
-                    && !withWrap)
+                    && !sourceUnsimulatable)
                 {
                     Dictionary<string, string>? wrapperMap = null;
                     try
@@ -313,7 +311,10 @@ internal sealed class FindPathHandler(
                     if (wrapperMap == null && h.Graph.WrapperToAvatar.Count > 0)
                     {
                         // Wrapper resolution failed — simulation without it would produce
-                        // false-positive AvatarMustBeRegistered reverts. Skip entirely.
+                        // false-positive AvatarMustBeRegistered reverts (and would skip the
+                        // unwrap prefix for withWrap=true). Skip entirely and record the
+                        // reason so operators can spot map-build failures in metrics.
+                        SimulationCanaryService.RecordSkipped("wrapper_map_unavailable");
                     }
                     else
                     {
@@ -323,18 +324,9 @@ internal sealed class FindPathHandler(
                             Sink: request.Sink,
                             GraphBlock: mfr.GraphBlock,
                             Transfers: new List<TransferPathStep>(mfr.Transfers),
-                            WrapperToAvatar: wrapperMap));
+                            WrapperToAvatar: wrapperMap,
+                            WithWrap: withWrap));
                     }
-                }
-                else if (simulationCanary != null
-                         && mfr.Transfers.Count > 0
-                         && !string.IsNullOrEmpty(request.Source)
-                         && !string.IsNullOrEmpty(request.Sink)
-                         && !hasSimulated
-                         && !sourceUnsimulatable
-                         && withWrap)
-                {
-                    SimulationCanaryService.RecordSkipped("with_wrap");
                 }
 
                 log.LogInformation(
