@@ -317,8 +317,16 @@ public class SimulationCanaryInflationaryConversionTests
     #region End-to-end regression (f72f2d61)
 
     [Test]
-    public void RegressionF72f2d61_ConversionTurnsFalsePositiveIntoSuccessfulPath()
+    public void RegressionF72f2d61_HelperPipelinePreservesInflationaryAmounts()
     {
+        // Scope: this test only validates the helper pipeline
+        // (ExtractInflationaryAmounts → ApplyInflationaryAmounts → EncodeUnwrapCalldata)
+        // round-trip and that the encoded unwrap calldata carries the inflationary value
+        // rather than the demurraged sum. The end-to-end bundle outcome — that the
+        // resolved unwrap turns the operateFlowMatrix revert into success — is covered
+        // by the staging probe runs documented in the project memory (see
+        // project_canary_unwrap_prefix_2026-05-21.md), not by this in-process test.
+        //
         // The f72f2d61 capture's path was correct — the canary's old logic passed the
         // demurraged-units sum (3147.356750 CRC) directly to wrapper.unwrap, which on an
         // InflationaryCircles wrapper credited only ~2094 CRC of 1155 to the holder. The

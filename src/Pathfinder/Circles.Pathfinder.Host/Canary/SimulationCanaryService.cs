@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Threading.Channels;
 using Circles.Common.Dto;
+using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Simulation;
 using Prometheus;
 
@@ -171,16 +172,24 @@ internal sealed class SimulationCanaryService : BackgroundService
                 // numeric value yields fewer 1155 tokens after unwrap. Pre-resolve every
                 // unwrap to the wrapper's native unit before assembling the bundle.
                 long? blockTimestamp = await FetchBlockTimestampAsync(blockTag, client, ct);
+                IReadOnlyList<UnwrapCall> resolvedUnwraps;
                 if (!blockTimestamp.HasValue)
                 {
+                    // RPC blip on eth_getBlockByNumber must not silence the canary entirely.
+                    // Fall back to the demurraged amounts (pre-PR behavior): worst case is a
+                    // false-positive InsufficientBalance on an InflationaryCircles wrapper,
+                    // which is strictly better than producing no signal at all.
                     _log.LogWarning(
-                        "[{ReqId}] SimulationCanary: failed to fetch block timestamp for {Block}; skipping unwrap-prefix simulation",
+                        "[{ReqId}] SimulationCanary: failed to fetch block timestamp for {Block}; falling back to demurraged-unit unwrap bundle",
                         item.ReqId, blockTag);
                     SimulationTotal.WithLabels("block_lookup_failed", prefixLabel).Inc();
-                    return;
+                    resolvedUnwraps = unwrapCalls;
                 }
-                long day = ComputeInflationDay(blockTimestamp.Value);
-                var resolvedUnwraps = await ResolveInflationaryAmountsAsync(unwrapCalls, day, blockTag, client, ct);
+                else
+                {
+                    long day = ComputeInflationDay(blockTimestamp.Value);
+                    resolvedUnwraps = await ResolveInflationaryAmountsAsync(unwrapCalls, day, blockTag, client, ct);
+                }
 
                 await SimulateBundleAsync(item, resolvedUnwraps, calldata, blockTag, prefixLabel, client, ct);
                 QueueDepth.Set(_channel.Reader.Count);
@@ -379,7 +388,9 @@ internal sealed class SimulationCanaryService : BackgroundService
     // For DemurrageCircles wrappers the call returns its input (identity), so the
     // resolution is type-agnostic at the call site.
     private const string ConvertDemurrageToInflationarySelector = "0x253dd0b5";
-    private const long InflationDayZeroSeconds = 1602720000L; // Circles V2 inflationDayZero
+    // Single source of truth for the V2 Hub inflation day zero is DemurrageCalculator;
+    // keep this canary aligned so a future Hub-epoch change rolls through one constant.
+    private const long InflationDayZeroSeconds = (long)DemurrageCalculator.InflationDayZeroUnix;
     private const long SecondsPerDay = 86400L;
     private const string ZeroSenderForReadOnly = "0x0000000000000000000000000000000000000000";
 
@@ -404,10 +415,15 @@ internal sealed class SimulationCanaryService : BackgroundService
         if (day < 0)
             throw new ArgumentOutOfRangeException(nameof(day), "day must be non-negative");
 
+        // BigInteger.ToString("x") prepends a leading 0 on positive numbers whose top
+        // nibble is ≥ 0x8 to avoid sign ambiguity. Trim it so the left-pad math is
+        // correct (same rationale as EncodeUnwrapCalldata).
         var amountHex = demurragedAmount.ToString("x", CultureInfo.InvariantCulture);
         if (amountHex.Length > 0 && amountHex[0] == '0' && amountHex.Length > 1) amountHex = amountHex.TrimStart('0');
         if (amountHex.Length == 0) amountHex = "0";
 
+        // `day` is a long (>= 0 guarded above); long.ToString("x") emits minimal hex
+        // for positive values with NO sign-disambiguating leading zero, unlike BigInteger.
         var dayHex = day.ToString("x", CultureInfo.InvariantCulture);
 
         return ConvertDemurrageToInflationarySelector
@@ -468,6 +484,9 @@ internal sealed class SimulationCanaryService : BackgroundService
     /// Fetches the block timestamp (seconds since unix epoch) for a JSON-RPC block tag
     /// (hex block number or "latest"). Returns null if the RPC call fails or the
     /// response shape is unexpected; caller decides whether to fall back or abort.
+    /// All non-success branches log a warning so RPC degradation is observable. The
+    /// caller emits the single <c>block_lookup_failed</c> metric label — branch-level
+    /// labels were intentionally omitted to cap cardinality.
     /// </summary>
     private async Task<long?> FetchBlockTimestampAsync(string blockTag, HttpClient client, CancellationToken ct)
     {
@@ -484,25 +503,66 @@ internal sealed class SimulationCanaryService : BackgroundService
             response = await client.PostAsJsonAsync(_rpcUrl, rpc, ct);
         }
         catch (TaskCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _log.LogWarning(ex,
+                "SimulationCanary: FetchBlockTimestamp: eth_getBlockByNumber failed (network/timeout) for {Block}",
+                blockTag);
             return null;
         }
-        if (!response.IsSuccessStatusCode) return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            _log.LogWarning(
+                "SimulationCanary: FetchBlockTimestamp: eth_getBlockByNumber HTTP {StatusCode} for {Block}",
+                (int)response.StatusCode, blockTag);
+            return null;
+        }
 
         JsonElement json;
         try { json = await response.Content.ReadFromJsonAsync<JsonElement>(ct); }
-        catch (JsonException) { return null; }
+        catch (JsonException jex)
+        {
+            _log.LogWarning(jex,
+                "SimulationCanary: FetchBlockTimestamp: non-JSON response for {Block}", blockTag);
+            return null;
+        }
 
+        if (json.TryGetProperty("error", out var rpcError))
+        {
+            var msg = rpcError.TryGetProperty("message", out var m) ? m.GetString() : "unknown";
+            _log.LogWarning(
+                "SimulationCanary: FetchBlockTimestamp: JSON-RPC error for {Block}: {Msg}",
+                blockTag, msg);
+            return null;
+        }
         if (!json.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Object)
+        {
+            _log.LogWarning(
+                "SimulationCanary: FetchBlockTimestamp: missing/non-object result for {Block}", blockTag);
             return null;
+        }
         if (!result.TryGetProperty("timestamp", out var tsProp))
+        {
+            _log.LogWarning(
+                "SimulationCanary: FetchBlockTimestamp: missing timestamp field for {Block}", blockTag);
             return null;
+        }
         var hex = tsProp.GetString();
-        if (string.IsNullOrEmpty(hex)) return null;
+        if (string.IsNullOrEmpty(hex))
+        {
+            _log.LogWarning(
+                "SimulationCanary: FetchBlockTimestamp: null/empty timestamp hex for {Block}", blockTag);
+            return null;
+        }
         if (hex.StartsWith("0x", StringComparison.Ordinal)) hex = hex[2..];
         try { return Convert.ToInt64(hex, 16); }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "SimulationCanary: FetchBlockTimestamp: failed to parse timestamp hex '{Hex}' for {Block}",
+                hex, blockTag);
+            return null;
+        }
     }
 
     /// <summary>
@@ -553,13 +613,34 @@ internal sealed class SimulationCanaryService : BackgroundService
             response = await client.PostAsJsonAsync(_rpcUrl, rpcRequest, ct);
         }
         catch (TaskCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception) { return unwrapCalls; }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "SimulationCanary: ResolveInflationaryAmounts: eth_simulateV1 failed (network/timeout), falling back to demurraged units for {Count} wrapper(s) at {Block}",
+                unwrapCalls.Count, blockTag);
+            SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Inc();
+            return unwrapCalls;
+        }
 
-        if (!response.IsSuccessStatusCode) return unwrapCalls;
+        if (!response.IsSuccessStatusCode)
+        {
+            _log.LogWarning(
+                "SimulationCanary: ResolveInflationaryAmounts: eth_simulateV1 HTTP {StatusCode} for {Count} wrapper(s) at {Block}, falling back to demurraged units",
+                (int)response.StatusCode, unwrapCalls.Count, blockTag);
+            SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Inc();
+            return unwrapCalls;
+        }
 
         JsonElement json;
         try { json = await response.Content.ReadFromJsonAsync<JsonElement>(ct); }
-        catch (JsonException) { return unwrapCalls; }
+        catch (JsonException jex)
+        {
+            _log.LogWarning(jex,
+                "SimulationCanary: ResolveInflationaryAmounts: non-JSON response at {Block}, falling back to demurraged units",
+                blockTag);
+            SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Inc();
+            return unwrapCalls;
+        }
 
         var amounts = ExtractInflationaryAmounts(json, unwrapCalls.Count);
         return ApplyInflationaryAmounts(unwrapCalls, amounts);
