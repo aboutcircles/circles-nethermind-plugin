@@ -25,7 +25,7 @@ namespace Circles.Pathfinder.Data
         IReadOnlyList<string> ScoreRouters,
         IReadOnlyList<(string Avatar, bool HasConsentedFlow)> ConsentedFlags,
         IReadOnlyList<string> RegisteredAvatars,
-        IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar)> WrapperMappings
+        IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> WrapperMappings
     );
 
     public interface ILoadGraph
@@ -63,7 +63,7 @@ namespace Circles.Pathfinder.Data
 
         IEnumerable<string> LoadRegisteredAvatars();
 
-        IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings();
+        IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings();
     }
 
     public class LoadGraph : ILoadGraph, IDisposable
@@ -767,11 +767,11 @@ namespace Circles.Pathfinder.Data
             return results;
         }
 
-        private List<(string WrapperAddress, string UnderlyingAvatar)>
+        private List<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)>
             LoadWrapperMappingsInternal(NpgsqlConnection connection, NpgsqlTransaction tx)
         {
             var query = LoadQueryFromResource("wrapperMappingQuery.sql");
-            var results = new List<(string WrapperAddress, string UnderlyingAvatar)>(10_000);
+            var results = new List<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)>(10_000);
 
             var sw = Stopwatch.StartNew();
 
@@ -781,7 +781,7 @@ namespace Circles.Pathfinder.Data
 
             while (reader.Read())
             {
-                results.Add((reader.GetString(0), reader.GetString(1)));
+                results.Add((reader.GetString(0), reader.GetString(1), reader.GetInt32(2)));
             }
 
             sw.Stop();
@@ -1198,10 +1198,10 @@ namespace Circles.Pathfinder.Data
             return results;
         }
 
-        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
         {
             var query = LoadQueryFromResource("wrapperMappingQuery.sql");
-            var results = new List<(string WrapperAddress, string UnderlyingAvatar)>(10_000);
+            var results = new List<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)>(10_000);
 
             var sw = Stopwatch.StartNew();
             using var connection = _dataSource.OpenConnection();
@@ -1212,7 +1212,7 @@ namespace Circles.Pathfinder.Data
 
             while (reader.Read())
             {
-                results.Add((reader.GetString(0), reader.GetString(1)));
+                results.Add((reader.GetString(0), reader.GetString(1), reader.GetInt32(2)));
             }
 
             sw.Stop();

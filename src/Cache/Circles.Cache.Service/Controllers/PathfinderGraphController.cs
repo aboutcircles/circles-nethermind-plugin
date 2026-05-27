@@ -832,7 +832,8 @@ public class PathfinderGraphController : ControllerBase
 
             mappings.Add(new PathfinderWrapperMappingRow(
                 WrapperAddress: kvp.Key,
-                UnderlyingAvatar: kvp.Value.Avatar
+                UnderlyingAvatar: kvp.Value.Avatar,
+                CirclesType: kvp.Value.CirclesType
             ));
         }
         return mappings;

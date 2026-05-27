@@ -815,25 +815,37 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         }
     }
 
-    // Load ERC20 wrapper→avatar reverse mappings for DTO output resolution
+    // Load ERC20 wrapper→avatar reverse mappings for DTO output resolution.
+    // Also populates InflationaryWrappers for the canary's unit-discrimination logic.
+    // circlesType: 0 = DemurrageCircles (unwrap takes demurraged units),
+    //              1 = InflationaryCircles (unwrap takes inflationary units).
     private void LoadWrapperMappings(CapacityGraph capacityGraph, CachedGroupData? cached = null)
     {
         if (cached != null)
         {
             foreach (var (wrapperId, avatarId) in cached.WrapperToAvatar)
                 capacityGraph.WrapperToAvatar[wrapperId] = avatarId;
-            _logger.LogDebug("Used cached wrapper mappings: {Count} entries", cached.WrapperToAvatar.Count);
+            if (cached.InflationaryWrappers != null)
+            {
+                foreach (var wrapperId in cached.InflationaryWrappers)
+                    capacityGraph.InflationaryWrappers.Add(wrapperId);
+            }
+            _logger.LogDebug("Used cached wrapper mappings: {Count} entries ({Inflationary} inflationary)",
+                cached.WrapperToAvatar.Count, capacityGraph.InflationaryWrappers.Count);
             return;
         }
 
-        foreach (var (wrapperAddr, avatarAddr) in loadGraph.LoadWrapperMappings())
+        foreach (var (wrapperAddr, avatarAddr, circlesType) in loadGraph.LoadWrapperMappings())
         {
             int wrapperId = AddressIdPool.IdOf(wrapperAddr.ToLowerInvariant());
             int avatarId = AddressIdPool.IdOf(avatarAddr.ToLowerInvariant());
             capacityGraph.WrapperToAvatar[wrapperId] = avatarId;
+            if (circlesType == 1)
+                capacityGraph.InflationaryWrappers.Add(wrapperId);
         }
 
-        _logger.LogDebug("Loaded {Count} wrapper→avatar mappings from DB", capacityGraph.WrapperToAvatar.Count);
+        _logger.LogDebug("Loaded {Count} wrapper→avatar mappings from DB ({Inflationary} inflationary)",
+            capacityGraph.WrapperToAvatar.Count, capacityGraph.InflationaryWrappers.Count);
     }
 
     // Load consented flow flags — exceptions propagate to caller (CreateCapacityGraph)

@@ -642,8 +642,8 @@ public class ArithmeticSafetyTests
 
         public IEnumerable<string> LoadRegisteredAvatars()
             => Enumerable.Empty<string>();
-        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
-            => Array.Empty<(string, string)>();
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
+            => Array.Empty<(string, string, int)>();
     }
 
     #endregion

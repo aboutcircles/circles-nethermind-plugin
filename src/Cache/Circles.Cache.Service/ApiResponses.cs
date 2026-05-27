@@ -232,7 +232,8 @@ public record PathfinderConsentedFlowRow(
 
 public record PathfinderWrapperMappingRow(
     string WrapperAddress,
-    string UnderlyingAvatar
+    string UnderlyingAvatar,
+    int CirclesType = 0
 );
 
 public record PathfinderOperatorApprovalRow(

@@ -138,10 +138,10 @@ public sealed class CacheLoadGraph : ILoadGraph
             yield return row.ToLowerInvariant();
     }
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
     {
         var rows = _snapshot.WrapperMappings ?? [];
         foreach (var row in rows)
-            yield return (row.WrapperAddress.ToLowerInvariant(), row.UnderlyingAvatar.ToLowerInvariant());
+            yield return (row.WrapperAddress.ToLowerInvariant(), row.UnderlyingAvatar.ToLowerInvariant(), row.CirclesType);
     }
 }

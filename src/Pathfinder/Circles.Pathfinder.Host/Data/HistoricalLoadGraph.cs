@@ -328,8 +328,8 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         return results.Select(a => a.ToLowerInvariant()).ToList();
     }
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
-        => Array.Empty<(string, string)>();
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
+        => Array.Empty<(string, string, int)>();
 
     /// <summary>
     /// Executes a query with @mintPolicy parameter and returns a list of strings from column 0.

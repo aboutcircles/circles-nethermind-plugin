@@ -290,6 +290,7 @@ internal sealed class FindPathHandler(
                     && !sourceUnsimulatable)
                 {
                     Dictionary<string, string>? wrapperMap = null;
+                    HashSet<string>? inflationaryWrappers = null;
                     try
                     {
                         if (h.Graph.WrapperToAvatar.Count > 0)
@@ -300,12 +301,23 @@ internal sealed class FindPathHandler(
                             {
                                 wrapperMap[AddressIdPool.StringOf(kv.Key)] = AddressIdPool.StringOf(kv.Value);
                             }
+                            // Build the inflationary-wrapper subset by resolving wrapper int IDs back
+                            // to addresses. Empty set is fine — the canary treats absence as "demurraged"
+                            // and skips the conversion step, preserving correctness for non-inflationary paths.
+                            if (h.Graph.InflationaryWrappers.Count > 0)
+                            {
+                                inflationaryWrappers = new HashSet<string>(
+                                    h.Graph.InflationaryWrappers.Count, StringComparer.OrdinalIgnoreCase);
+                                foreach (var wrapperId in h.Graph.InflationaryWrappers)
+                                    inflationaryWrappers.Add(AddressIdPool.StringOf(wrapperId));
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         log.LogError(ex, "Failed to build wrapper map for canary — skipping simulation (would produce false positives)");
                         wrapperMap = null;
+                        inflationaryWrappers = null;
                     }
 
                     if (wrapperMap == null && h.Graph.WrapperToAvatar.Count > 0)
@@ -325,7 +337,8 @@ internal sealed class FindPathHandler(
                             GraphBlock: mfr.GraphBlock,
                             Transfers: new List<TransferPathStep>(mfr.Transfers),
                             WrapperToAvatar: wrapperMap,
-                            WithWrap: withWrap));
+                            WithWrap: withWrap,
+                            InflationaryWrappers: inflationaryWrappers));
                     }
                 }
 

@@ -21,7 +21,7 @@ public class IncrementalLoadGraph : ILoadGraph
     private readonly Settings _settings;
     private readonly long _maxBlockTimestamp;
     private readonly ILogger _logger;
-    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar)>? _cachedWrapperMappings;
+    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)>? _cachedWrapperMappings;
 
     public IncrementalLoadGraph(
         InMemoryBalanceState balanceState,
@@ -103,6 +103,9 @@ public class IncrementalLoadGraph : ILoadGraph
             .ToDictionary(
                 g => g.Key,
                 g => g.Select(x => x.WrapperAddress.ToLowerInvariant()).Distinct().ToArray());
+        // CirclesType is intentionally dropped here — this map drives trust-edge expansion
+        // (wrappers inherit the underlying avatar's trust), which is type-agnostic. The
+        // CapacityGraph.InflationaryWrappers set carries the type info separately.
 
         foreach (var (truster, trustee, limit) in directTrusts)
         {
@@ -179,9 +182,9 @@ public class IncrementalLoadGraph : ILoadGraph
     /// Returns cached wrapper mappings — loaded once per graph build from inner LoadGraph.
     /// Wrapper deployments are append-only, so caching within a single build is safe.
     /// </summary>
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
         => GetCachedWrapperMappings();
 
-    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar)> GetCachedWrapperMappings()
+    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> GetCachedWrapperMappings()
         => _cachedWrapperMappings ??= _inner.LoadWrapperMappings().ToList();
 }
