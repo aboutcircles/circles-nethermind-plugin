@@ -979,6 +979,24 @@ internal sealed class SimulationCanaryService : BackgroundService
         // Step 4: extract per-position results; ApplyInflationaryAmounts substitutes only
         // inflationary positions (demurraged calls pass through unchanged).
         var inflationaryAmounts = ExtractInflationaryAmounts(json, inflationaryIndices.Count);
+
+        // Per-call partial-failure observability: a null entry in `inflationaryAmounts`
+        // means the convert call for that wrapper failed (status != 0x1, empty returnData,
+        // or unparseable hex). ApplyInflationaryAmounts will fall back to the demurraged
+        // amount, which then drives `unwrap()` and reverts with ERC1155InsufficientBalance —
+        // the exact f72f2d61-class FP this code is trying to suppress. Without per-wrapper
+        // observability operators can't distinguish "real on-chain bug" from "resolver
+        // partial failure that re-introduced the prior FP class for one wrapper".
+        for (int i = 0; i < inflationaryAmounts.Count; i++)
+        {
+            if (inflationaryAmounts[i] != null) continue;
+            var call = calls[inflationaryIndices[i]];
+            _log.LogWarning(
+                "[{ReqId}] SimulationCanary: ResolveInflationaryAmounts: per-call resolve failed for wrapper={Wrapper} from={From} — falling back to demurraged (will likely revert at unwrap with ERC1155InsufficientBalance)",
+                item.ReqId, call.Wrapper, call.From);
+            SimulationTotal.WithLabels("inflation_resolve_partial", "unwrap").Inc();
+        }
+
         return ApplyInflationaryAmounts(calls, inflationaryAmounts);
     }
 }
