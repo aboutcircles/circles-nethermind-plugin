@@ -627,17 +627,25 @@ public partial class CirclesRpcModule
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Profile pinning service proxy failed, falling back to SQL");
+                _logger?.LogWarning(ex, "Profile pinning service proxy failed for SearchProfiles (groupType={GroupType})", groupTypeFilter);
             }
         }
 
-        // Fallback: direct SQL search. SQL fallback cannot filter by groupType — the chain
-        // index has no such column. Log a warning so callers can see the degradation, then
-        // proceed unfiltered (preferred over throwing; matches the existing "fall back silently" pattern).
+        // SQL fallback cannot honor a groupType filter — the chain index table has no
+        // group_type column, so a SQL search would silently return rows from the wrong
+        // group type. The only data source that knows group_type is the pinning service;
+        // if it's unreachable, the truthful answer to a groupType-filtered query is empty,
+        // not "everything that matches the text". Return an authoritative empty result
+        // so closed-group filters can't leak open-group rows during a proxy outage.
         if (groupTypeFilter != null)
         {
-            _logger?.LogWarning("SearchProfiles groupType={GroupType} filter ignored in SQL fallback (chain index has no group_type column)", groupTypeFilter);
+            _logger?.LogWarning(
+                "SearchProfiles groupType={GroupType} requested but pinning-service proxy did not return a result; returning empty (SQL fallback has no group_type column)",
+                groupTypeFilter);
+            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
         }
+
+        // Fallback: direct SQL search when no groupType filter is in play.
         return await SearchProfilesViaSql(qText, limit, offset, typeFilter);
     }
 
