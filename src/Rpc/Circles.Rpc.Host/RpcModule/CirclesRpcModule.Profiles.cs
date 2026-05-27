@@ -646,7 +646,7 @@ public partial class CirclesRpcModule
             catch (Exception ex)
             {
                 path = ClassifyProxyException(ex);
-                _logger?.LogWarning(ex, "Profile pinning service proxy failed ({Path}), falling back to SQL", path);
+                _logger?.LogWarning(ex, "Profile pinning service proxy failed ({Path}, groupType={GroupType}), falling back to SQL", path, groupTypeFilter);
             }
         }
 

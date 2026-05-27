@@ -1000,38 +1000,10 @@ static async Task<object> HandleGetProfileByAddressBatch(JsonRpcRequest request,
 static async Task<object> HandleSearchProfiles(JsonRpcRequest request, CirclesRpcModule rpcModule)
 {
     var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
-    if (parameters == null || parameters.Length == 0)
-    {
-        throw new ArgumentException("Search text parameter is required");
-    }
+    var parsed = Circles.Rpc.Host.Wire.SearchProfilesRequestParser.Parse(parameters);
 
-    string text = parameters[0].GetString() ?? "";
-    int limit = 20;
-    int offset = 0;
-    string[]? types = null;
-    string? groupType = null;
-
-    if (parameters.Length > 1 && parameters[1].ValueKind != JsonValueKind.Null)
-    {
-        limit = parameters[1].GetInt32();
-    }
-
-    if (parameters.Length > 2 && parameters[2].ValueKind != JsonValueKind.Null)
-    {
-        offset = parameters[2].GetInt32();
-    }
-
-    if (parameters.Length > 3 && parameters[3].ValueKind != JsonValueKind.Null)
-    {
-        types = parameters[3].Deserialize<string[]>();
-    }
-
-    if (parameters.Length > 4 && parameters[4].ValueKind != JsonValueKind.Null)
-    {
-        groupType = parameters[4].GetString();
-    }
-
-    var searchResults = await rpcModule.SearchProfiles(text, limit, offset, types, groupType);
+    var searchResults = await rpcModule.SearchProfiles(
+        parsed.Text, parsed.Limit, parsed.Offset, parsed.Types, parsed.GroupType);
     var transformedResults = searchResults.Results.Select(item =>
     {
         // Extract properties from AvatarInfo
