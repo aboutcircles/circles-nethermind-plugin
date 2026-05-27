@@ -15,6 +15,7 @@ public record GroupInitialized(
     string MerkleTreeManager,
     string PathMintRouter) : IIndexEvent;
 
+// score-refactor: MerkleRootUpdated event moved from policy → merkle-tree contract; Topic[1] is now manager, not group.
 public record MerkleRootUpdated(
     long BlockNumber,
     long Timestamp,
@@ -22,7 +23,7 @@ public record MerkleRootUpdated(
     int LogIndex,
     string TransactionHash,
     string Emitter,
-    string Group,
+    string MerkleTreeManager,
     byte[] NewMerkleRoot,
     byte[] PreviousRoot,
     UInt256 UpdateBlockNumber) : IIndexEvent;
@@ -99,9 +100,12 @@ public class DatabaseSchema : BaseDatabaseSchema
         "CrcV2_ScoreGroup",
         "event GroupInitialized(address indexed group,address indexed merkleTreeManager,address pathMintRouter)"));
 
+    // score-refactor: MerkleRootUpdated event moved from policy → merkle-tree contract; Topic[1] is now manager, not group.
+    // TODO(score-refactor): point V2_SCORE_GROUP_MINT_POLICIES at the new merkle-tree contract address(es) at cutover.
+    // This signature change re-hashes the event topic; pre-cutover logs will no longer match.
     public static readonly EventSchema MerkleRootUpdated = WithEmitterColumn(EventSchema.FromSolidity(
         "CrcV2_ScoreGroup",
-        "event MerkleRootUpdated(address indexed group,bytes32 newMerkleRoot,bytes32 previousRoot,uint256 updateBlockNumber)"));
+        "event MerkleRootUpdated(address indexed merkleTreeManager,bytes32 newMerkleRoot,bytes32 previousRoot,uint256 updateBlockNumber)"));
 
     public static readonly EventSchema HistoricalSupply = WithEmitterColumn(EventSchema.FromSolidity(
         "CrcV2_ScoreGroup",
@@ -143,6 +147,7 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("pathMintRouter", e => e.PathMintRouter)
             ]);
 
+        // score-refactor: MerkleRootUpdated event moved from policy → merkle-tree contract; Topic[1] is now manager, not group.
         AddMappings<MerkleRootUpdated>(
             ns: "CrcV2_ScoreGroup",
             table: "MerkleRootUpdated",
@@ -150,7 +155,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             databaseFieldMap:
             [
                 ("emitter", e => e.Emitter),
-                ("group", e => e.Group),
+                ("merkleTreeManager", e => e.MerkleTreeManager),
                 ("newMerkleRoot", e => e.NewMerkleRoot),
                 ("previousRoot", e => e.PreviousRoot),
                 ("updateBlockNumber", e => (BigInteger)e.UpdateBlockNumber)
