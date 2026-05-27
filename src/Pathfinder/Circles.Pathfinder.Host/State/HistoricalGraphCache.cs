@@ -230,7 +230,7 @@ internal sealed class MaterializedLoadGraph(
     List<(string GroupAddress, string TrustedToken)> groupTrusts,
     List<(string Avatar, bool HasConsentedFlow)> consentedFlags,
     List<string> registeredAvatars,
-    List<(string WrapperAddress, string UnderlyingAvatar)> wrapperMappings) : ILoadGraph
+    List<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> wrapperMappings) : ILoadGraph
 {
     public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
         LoadV2Balances() => balances;
@@ -249,6 +249,6 @@ internal sealed class MaterializedLoadGraph(
 
     public IEnumerable<string> LoadRegisteredAvatars() => registeredAvatars;
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)>
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)>
         LoadWrapperMappings() => wrapperMappings;
 }

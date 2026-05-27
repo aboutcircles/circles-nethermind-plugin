@@ -19,7 +19,7 @@ public class MockLoadGraph : ILoadGraph
     private readonly List<string> _scoreRouters = new();
     private readonly List<(string Avatar, bool HasConsentedFlow)> _consentedFlags = new();
     private readonly List<string> _registeredAvatars = new();
-    private readonly List<(string WrapperAddress, string UnderlyingAvatar)> _wrapperMappings = new();
+    private readonly List<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> _wrapperMappings = new();
     private string? _routerAddress;
 
     /// <summary>
@@ -210,7 +210,7 @@ public class MockLoadGraph : ILoadGraph
         return _registeredAvatars;
     }
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
     {
         return _wrapperMappings;
     }
@@ -225,10 +225,12 @@ public class MockLoadGraph : ILoadGraph
 
     /// <summary>
     /// Add a wrapper→avatar mapping for testing.
+    /// circlesType: 0 = DemurrageCircles (default, unwrap takes demurraged units),
+    ///              1 = InflationaryCircles (unwrap takes inflationary units).
     /// </summary>
-    public void AddWrapperMapping(string wrapperAddress, string underlyingAvatar)
+    public void AddWrapperMapping(string wrapperAddress, string underlyingAvatar, int circlesType = 0)
     {
-        _wrapperMappings.Add((wrapperAddress.ToLowerInvariant(), underlyingAvatar.ToLowerInvariant()));
+        _wrapperMappings.Add((wrapperAddress.ToLowerInvariant(), underlyingAvatar.ToLowerInvariant(), circlesType));
     }
 
     /// <summary>

@@ -13,7 +13,7 @@ public static class DemurrageCalculator
 {
     // V2 Hub epoch on gnosis mainnet — MUST match CirclesConverter.V2_INFLATION_DAY_ZERO_UNIX
     // On-chain: Hub(0x5524...).inflationDayZero() == 1_602_720_000 (Oct 15, 2020)
-    internal const uint InflationDayZeroUnix = 1_602_720_000;
+    public const uint InflationDayZeroUnix = 1_602_720_000;
     internal const ulong SecondsPerDay = 86_400;
 
     /// <summary>

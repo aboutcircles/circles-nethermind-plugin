@@ -17,7 +17,8 @@ public sealed record CachedGroupData(
     Dictionary<int, int>? GroupRouters = null,
     Dictionary<(int GroupAddress, int CollateralToken), long>? ScoreGroupMintLimits = null,
     Dictionary<int, HashSet<int>>? OperatorApprovals = null,
-    HashSet<int>? ScoreRouterIds = null);
+    HashSet<int>? ScoreRouterIds = null,
+    HashSet<int>? InflationaryWrappers = null);
 
 public class CapacityGraph : IGraph<CapacityEdge>
 {
@@ -69,6 +70,13 @@ public class CapacityGraph : IGraph<CapacityEdge>
     // Reverse mapping: ERC20 wrapper contract address ID → underlying avatar address ID
     // Used at DTO output layer to resolve wrapper addresses to registered avatars
     public Dictionary<int, int> WrapperToAvatar { get; } = new Dictionary<int, int>();
+
+    // Subset of WrapperToAvatar keys whose CrcV2_ERC20WrapperDeployed.circlesType == 1
+    // (InflationaryCircles, `s-` symbol prefix). The canary needs this to discriminate
+    // unwrap() argument units: DemurrageCircles.unwrap takes demurraged 1155 units 1:1,
+    // InflationaryCircles.unwrap takes inflationary ERC20 units (= demurraged * β^day).
+    // Verified on-chain by direct probes at 2026-05-27 — see PR description for evidence.
+    public HashSet<int> InflationaryWrappers { get; } = new HashSet<int>();
 
     // Trust lookup for consented flow validation (truster -> set of trustees)
     public IReadOnlyDictionary<int, HashSet<int>>? TrustLookup { get; set; }

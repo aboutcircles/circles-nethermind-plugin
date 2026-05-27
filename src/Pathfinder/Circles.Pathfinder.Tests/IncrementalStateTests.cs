@@ -826,8 +826,8 @@ public class IncrementalLoadGraphTests
         var balances = CreateBalanceState();
         var settings = new Settings();
         var stubInner = new StubLoadGraph();
-        stubInner.WrapperMappings.Add((Wrapper1, Bob));
-        stubInner.WrapperMappings.Add((Wrapper2, Bob));
+        stubInner.WrapperMappings.Add((Wrapper1, Bob, 0));
+        stubInner.WrapperMappings.Add((Wrapper2, Bob, 0));
 
         var incGraph = new IncrementalLoadGraph(balances, trusts, avatars, stubInner, settings, 0);
         var results = incGraph.LoadV2Trust().ToList();
@@ -960,7 +960,7 @@ public class IncrementalLoadGraphTests
         public List<string> Groups { get; } = new();
         public List<(string GroupAddress, string TrustedToken)> GroupTrustEntries { get; } = new();
         public List<(string Avatar, bool HasConsentedFlow)> ConsentedFlags { get; } = new();
-        public List<(string WrapperAddress, string UnderlyingAvatar)> WrapperMappings { get; } = new();
+        public List<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> WrapperMappings { get; } = new();
         public List<string> ScoreRouterAddresses { get; } = new();
         public List<(string Account, string Operator)> OperatorApprovalRows { get; } = new();
 
@@ -978,7 +978,7 @@ public class IncrementalLoadGraphTests
 
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
         public IEnumerable<string> LoadRegisteredAvatars() => Enumerable.Empty<string>();
-        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
             => WrapperMappings;
 
         public IEnumerable<string> LoadScoreRouters() => ScoreRouterAddresses;

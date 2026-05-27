@@ -68,7 +68,11 @@ public record PathfinderGraphConsentedFlowRow(
 
 public record PathfinderGraphWrapperMappingRow(
     string WrapperAddress,
-    string UnderlyingAvatar
+    string UnderlyingAvatar,
+    // 0 = DemurrageCircles (unwrap takes demurraged units), 1 = InflationaryCircles (unwrap takes inflationary units).
+    // Default 0 is safe-degrade: old cache snapshots without this field deserialize as demurraged,
+    // matching pre-PR-#408 canary behavior (false positives for inflationary unwraps, no new reverts).
+    int CirclesType = 0
 );
 
 /// <summary>

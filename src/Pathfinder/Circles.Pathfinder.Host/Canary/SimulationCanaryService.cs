@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Threading.Channels;
 using Circles.Common.Dto;
+using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Simulation;
 using Prometheus;
 
@@ -19,7 +20,12 @@ internal sealed record CanaryWorkItem(
     long GraphBlock,
     List<TransferPathStep> Transfers,
     IReadOnlyDictionary<string, string>? WrapperToAvatar = null,
-    bool WithWrap = false);
+    bool WithWrap = false,
+    // Subset of WrapperToAvatar keys (lowercased addresses) whose CrcV2_ERC20WrapperDeployed.circlesType == 1.
+    // The canary's unwrap-prefix resolver uses this to discriminate the `_amount` unit semantic:
+    // - DemurrageCircles (NOT in this set): unwrap(_amount) takes demurraged 1155 units; pass BuildUnwrapPrefix's sum directly.
+    // - InflationaryCircles (IN this set):  unwrap(_amount) takes inflationary ERC20 units; convert via convertDemurrageToInflationaryValue.
+    IReadOnlySet<string>? InflationaryWrappers = null);
 
 /// <summary>
 /// Background service that simulates pathfinder results via eth_call against the local
@@ -132,7 +138,7 @@ internal sealed class SimulationCanaryService : BackgroundService
         try
         {
             unwrapCalls = item.WithWrap
-                ? BuildUnwrapPrefix(item.Transfers, item.WrapperToAvatar)
+                ? BuildUnwrapPrefix(item.Transfers, item.WrapperToAvatar, item.InflationaryWrappers)
                 : Array.Empty<UnwrapCall>();
             var transfers = ResolveWrapperTokenOwners(item.Transfers, item.WrapperToAvatar);
             calldata = FlowMatrixEncoder.BuildCalldata(item.Source, item.Sink, transfers);
@@ -166,6 +172,20 @@ internal sealed class SimulationCanaryService : BackgroundService
 
             if (useUnwrapBundle)
             {
+                // Inflationary wrappers need demurraged → inflationary conversion before unwrap().
+                // DemurrageCircles wrappers pass through unchanged. Resolver is a no-op (zero RPC
+                // overhead) when the bundle contains no inflationary wrappers — the common case.
+                bool hasInflationary = false;
+                for (int i = 0; i < unwrapCalls.Count; i++)
+                {
+                    if (unwrapCalls[i].IsInflationary) { hasInflationary = true; break; }
+                }
+
+                if (hasInflationary)
+                {
+                    unwrapCalls = await ResolveInflationaryAmountsAsync(item, unwrapCalls, blockTag, client, ct);
+                }
+
                 await SimulateBundleAsync(item, unwrapCalls, calldata, blockTag, prefixLabel, client, ct);
                 QueueDepth.Set(_channel.Reader.Count);
                 return;
@@ -271,18 +291,34 @@ internal sealed class SimulationCanaryService : BackgroundService
     /// <summary>
     /// One unwrap call in the eth_simulateV1 bundle: caller (from) unwraps `amount` of the
     /// wrapped ERC20 at `wrapper`, which mints the underlying 1155 to caller on Hub.sol.
+    /// <para><b>Amount unit semantics depend on the wrapper's circlesType:</b></para>
+    /// <list type="bullet">
+    ///   <item>DemurrageCircles (<see cref="IsInflationary"/> = false): <c>Amount</c> is in
+    ///     demurraged 1155 units. unwrap(_amount) burns _amount ERC20 AND credits _amount of
+    ///     the underlying 1155 (1:1). BuildUnwrapPrefix's raw sum is correct here.</item>
+    ///   <item>InflationaryCircles (<see cref="IsInflationary"/> = true): <c>Amount</c> must be
+    ///     in inflationary ERC20 units before reaching unwrap(). unwrap(_amount) burns _amount
+    ///     ERC20 and credits <c>_amount * γ^day</c> of 1155. BuildUnwrapPrefix produces a
+    ///     demurraged sum; the resolver converts it via wrapper.convertDemurrageToInflationaryValue
+    ///     before bundle assembly.</item>
+    /// </list>
+    /// Verified on-chain by direct eth_simulateV1 probes against both wrapper types (2026-05-27).
     /// </summary>
-    internal readonly record struct UnwrapCall(string From, string Wrapper, BigInteger Amount);
+    internal readonly record struct UnwrapCall(string From, string Wrapper, BigInteger Amount, bool IsInflationary = false);
 
     /// <summary>
     /// For each transfer whose TokenOwner is a known wrapper, attribute one unwrap call
     /// to the transfer's From address for the full transfer value. Groups identical
     /// (from, wrapper) pairs and sums amounts so a single SDK-equivalent unwrap precedes
     /// the operateFlowMatrix call in the bundle.
+    /// <para>The <paramref name="inflationaryWrappers"/> set discriminates which wrappers
+    /// need <c>convertDemurrageToInflationaryValue</c> at resolve-time. Wrappers absent
+    /// from the set are treated as DemurrageCircles (unit pass-through).</para>
     /// </summary>
     internal static IReadOnlyList<UnwrapCall> BuildUnwrapPrefix(
         List<TransferPathStep> transfers,
-        IReadOnlyDictionary<string, string>? wrapperToAvatar)
+        IReadOnlyDictionary<string, string>? wrapperToAvatar,
+        IReadOnlySet<string>? inflationaryWrappers = null)
     {
         if (wrapperToAvatar == null || wrapperToAvatar.Count == 0)
             return Array.Empty<UnwrapCall>();
@@ -319,7 +355,10 @@ internal sealed class SimulationCanaryService : BackgroundService
 
         var calls = new List<UnwrapCall>(order.Count);
         foreach (var key in order)
-            calls.Add(new UnwrapCall(key.From, key.Wrapper, sums[key]));
+        {
+            bool isInflationary = inflationaryWrappers != null && inflationaryWrappers.Contains(key.Wrapper);
+            calls.Add(new UnwrapCall(key.From, key.Wrapper, sums[key], isInflationary));
+        }
 
         return calls;
     }
@@ -611,5 +650,335 @@ internal sealed class SimulationCanaryService : BackgroundService
         }
 
         return resolved;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Inflationary unit conversion for InflationaryCircles wrappers.
+    //
+    // Circles V2 has two ERC20 wrapper flavors that BuildUnwrapPrefix cannot
+    // distinguish from the transfer list alone — both expose `unwrap(uint256)`
+    // but interpret the argument differently:
+    //
+    //   - DemurrageCircles  (circlesType=0, symbol `CRC`/`gCRC`):
+    //       unwrap(_amount) burns _amount ERC20 AND transfers _amount of 1155
+    //       — argument is in demurraged 1155 units (1:1 with the underlying).
+    //       BuildUnwrapPrefix's sum (in demurraged units) is correct as-is.
+    //
+    //   - InflationaryCircles (circlesType=1, symbol `s-`-prefixed):
+    //       unwrap(_amount) burns _amount ERC20 and transfers `_amount * γ^day`
+    //       of 1155 — argument is in inflationary ERC20 units. To release D of
+    //       1155 we must call unwrap(D * β^day) = unwrap(convertDemurrageToInflationaryValue(D, day)).
+    //
+    // Both wrappers inherit `convertDemurrageToInflationaryValue` from the
+    // shared Demurrage base, so the function ALWAYS applies β^day regardless of
+    // wrapper flavor. We branch on InflationaryWrappers set membership, not on
+    // the conversion function's return value.
+    //
+    // Verified on-chain 2026-05-27 via direct eth_simulateV1 probes against
+    // wrapper 0x548c20e6 (gCRC, demurraged) and 0x5d7eaaed (s-gCRC, inflationary):
+    //   - DemurrageCircles.unwrap(B)  → 1155 minted = B            (ratio 1.0)
+    //   - InflationaryCircles.unwrap(B) → 1155 minted = B * γ^day  (ratio β^day)
+    // ──────────────────────────────────────────────────────────────────────
+
+    private const string ConvertDemurrageToInflationarySelector = "0x253dd0b5";
+    private const long InflationDayZeroSeconds = (long)DemurrageCalculator.InflationDayZeroUnix;
+    private const long SecondsPerDay = 86_400L;
+    private const string ZeroSenderForReadOnly = "0x0000000000000000000000000000000000000000";
+
+    /// <summary>
+    /// Day index for Circles V2 demurrage math. Mirrors the on-chain
+    /// <c>Demurrage.day(blockTimestamp) = (blockTimestamp - inflationDayZero) / 86400</c>.
+    /// Pre-genesis or negative inputs yield day = 0, never a negative value.
+    /// </summary>
+    internal static long ComputeInflationDay(long blockTimestampSeconds)
+    {
+        long delta = blockTimestampSeconds - InflationDayZeroSeconds;
+        return delta <= 0 ? 0 : delta / SecondsPerDay;
+    }
+
+    /// <summary>
+    /// Encodes calldata for <c>convertDemurrageToInflationaryValue(uint256,uint64)</c>.
+    /// </summary>
+    internal static string EncodeConvertDemurrageCalldata(BigInteger demurragedAmount, long day)
+    {
+        if (demurragedAmount < 0)
+            throw new ArgumentOutOfRangeException(nameof(demurragedAmount), "uint256 amount must be non-negative");
+        if (day < 0)
+            throw new ArgumentOutOfRangeException(nameof(day), "day must be non-negative");
+
+        // BigInteger.ToString("x") prepends a leading 0 on positive numbers whose top
+        // nibble is ≥ 0x8 to avoid sign ambiguity. Trim it so the left-pad math is correct
+        // (same rationale as EncodeUnwrapCalldata).
+        var amountHex = demurragedAmount.ToString("x", CultureInfo.InvariantCulture);
+        if (amountHex.Length > 0 && amountHex[0] == '0' && amountHex.Length > 1) amountHex = amountHex.TrimStart('0');
+        if (amountHex.Length == 0) amountHex = "0";
+
+        // `day` is a long (>= 0 guarded above); long.ToString("x") emits minimal hex
+        // for positive values with NO sign-disambiguating leading zero, unlike BigInteger.
+        var dayHex = day.ToString("x", CultureInfo.InvariantCulture);
+
+        return ConvertDemurrageToInflationarySelector
+             + amountHex.PadLeft(64, '0')
+             + dayHex.PadLeft(64, '0');
+    }
+
+    /// <summary>
+    /// Parses one eth_simulateV1 call's returnData into a non-negative BigInteger.
+    /// Returns null if the call did not succeed, the payload is empty, or the hex
+    /// does not decode.
+    /// </summary>
+    internal static BigInteger? ParseConvertCallReturnData(JsonElement call)
+    {
+        if (!call.TryGetProperty("status", out var status) || status.GetString() != "0x1")
+            return null;
+        if (!call.TryGetProperty("returnData", out var rd))
+            return null;
+        var hex = rd.GetString();
+        if (string.IsNullOrEmpty(hex) || hex == "0x")
+            return null;
+        if (hex.StartsWith("0x", StringComparison.Ordinal)) hex = hex[2..];
+        // Prepend a leading '0' so BigInteger treats the value as unsigned even if
+        // the top nibble is ≥ 0x8 (e.g., a uint256 with the high bit set).
+        return BigInteger.TryParse("0" + hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var v)
+            ? v
+            : null;
+    }
+
+    /// <summary>
+    /// Extracts the per-call resolved amount from a batched eth_simulateV1 response.
+    /// Always returns a list of length <paramref name="expectedCount"/>; failed calls yield null.
+    /// </summary>
+    internal static IReadOnlyList<BigInteger?> ExtractInflationaryAmounts(JsonElement json, int expectedCount)
+    {
+        var amounts = new BigInteger?[expectedCount];
+        if (!json.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Array || result.GetArrayLength() == 0)
+            return amounts;
+        var block0 = result[0];
+        if (!block0.TryGetProperty("calls", out var innerCalls) || innerCalls.ValueKind != JsonValueKind.Array)
+            return amounts;
+        int actual = innerCalls.GetArrayLength();
+        for (int i = 0; i < expectedCount && i < actual; i++)
+            amounts[i] = ParseConvertCallReturnData(innerCalls[i]);
+        return amounts;
+    }
+
+    /// <summary>
+    /// Applies resolved inflationary amounts to the original unwrap-call list. Only
+    /// entries with <c>IsInflationary=true</c> consume the resolver's output; demurraged
+    /// entries pass through unchanged. A null resolved amount (RPC/parse failure) falls
+    /// back to the demurraged amount — the canary still attempts a simulation, which
+    /// just produces the prior false-positive class for that one inflationary wrapper,
+    /// not silently skipping coverage.
+    /// </summary>
+    internal static IReadOnlyList<UnwrapCall> ApplyInflationaryAmounts(
+        IReadOnlyList<UnwrapCall> calls,
+        IReadOnlyList<BigInteger?> inflationaryAmountsForInflationaryCalls)
+    {
+        var resolved = new List<UnwrapCall>(calls.Count);
+        int infIdx = 0;
+        for (int i = 0; i < calls.Count; i++)
+        {
+            var src = calls[i];
+            if (!src.IsInflationary)
+            {
+                resolved.Add(src);
+                continue;
+            }
+            BigInteger? resolvedAmount = infIdx < inflationaryAmountsForInflationaryCalls.Count
+                ? inflationaryAmountsForInflationaryCalls[infIdx]
+                : null;
+            infIdx++;
+            resolved.Add(new UnwrapCall(src.From, src.Wrapper, resolvedAmount ?? src.Amount, src.IsInflationary));
+        }
+        return resolved;
+    }
+
+    /// <summary>
+    /// Fetches the block timestamp (seconds since unix epoch) for a JSON-RPC block tag.
+    /// Returns null on any failure; caller decides fallback strategy. Every non-success
+    /// branch logs a warning for observability; metric label cardinality kept low via
+    /// the single <c>block_lookup_failed</c> label emitted by the caller.
+    /// </summary>
+    private async Task<long?> FetchBlockTimestampAsync(string blockTag, HttpClient client, CancellationToken ct)
+    {
+        var rpc = new
+        {
+            jsonrpc = "2.0",
+            id = 1,
+            method = "eth_getBlockByNumber",
+            @params = new object[] { blockTag, false }
+        };
+        HttpResponseMessage response;
+        try
+        {
+            response = await client.PostAsJsonAsync(_rpcUrl, rpc, ct);
+        }
+        catch (TaskCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "SimulationCanary: FetchBlockTimestamp: eth_getBlockByNumber failed (network/timeout) for {Block}",
+                blockTag);
+            return null;
+        }
+        if (!response.IsSuccessStatusCode)
+        {
+            _log.LogWarning(
+                "SimulationCanary: FetchBlockTimestamp: eth_getBlockByNumber HTTP {StatusCode} for {Block}",
+                (int)response.StatusCode, blockTag);
+            return null;
+        }
+        JsonElement json;
+        try { json = await response.Content.ReadFromJsonAsync<JsonElement>(ct); }
+        catch (JsonException jex)
+        {
+            _log.LogWarning(jex,
+                "SimulationCanary: FetchBlockTimestamp: non-JSON response for {Block}", blockTag);
+            return null;
+        }
+        if (json.TryGetProperty("error", out var rpcError))
+        {
+            var msg = rpcError.TryGetProperty("message", out var m) ? m.GetString() : "unknown";
+            _log.LogWarning(
+                "SimulationCanary: FetchBlockTimestamp: JSON-RPC error for {Block}: {Msg}",
+                blockTag, msg);
+            return null;
+        }
+        if (!json.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Object)
+        {
+            _log.LogWarning(
+                "SimulationCanary: FetchBlockTimestamp: missing/non-object result for {Block}", blockTag);
+            return null;
+        }
+        if (!result.TryGetProperty("timestamp", out var tsProp))
+        {
+            _log.LogWarning(
+                "SimulationCanary: FetchBlockTimestamp: missing timestamp field for {Block}", blockTag);
+            return null;
+        }
+        var hex = tsProp.GetString();
+        if (string.IsNullOrEmpty(hex))
+        {
+            _log.LogWarning(
+                "SimulationCanary: FetchBlockTimestamp: null/empty timestamp hex for {Block}", blockTag);
+            return null;
+        }
+        if (hex.StartsWith("0x", StringComparison.Ordinal)) hex = hex[2..];
+        try { return Convert.ToInt64(hex, 16); }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "SimulationCanary: FetchBlockTimestamp: timestamp parse failed for {Block} hex={Hex}", blockTag, hex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// For each unwrap call against an InflationaryCircles wrapper, replaces its
+    /// demurraged amount with the inflationary-unit equivalent at the simulation block's
+    /// day index, by batch-calling <c>convertDemurrageToInflationaryValue(amount, day)</c>
+    /// via eth_simulateV1 at the same block tag.
+    /// <para>
+    /// Failures (block lookup, RPC, parse) fall back to the demurraged amount per-call —
+    /// the bundle still simulates, which may produce the prior false-positive class
+    /// (<c>ERC1155InsufficientBalance</c> for inflationary unwraps) but never widens
+    /// coverage loss. Per-failure-class metrics use the existing simulation_total counter
+    /// with new result labels (<c>block_lookup_failed</c>, <c>inflation_resolve_failed</c>).
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<UnwrapCall>> ResolveInflationaryAmountsAsync(
+        CanaryWorkItem item,
+        IReadOnlyList<UnwrapCall> calls,
+        string blockTag,
+        HttpClient client,
+        CancellationToken ct)
+    {
+        // Step 1: pull block timestamp (one RPC, deterministic key for the conversion math).
+        var ts = await FetchBlockTimestampAsync(blockTag, client, ct);
+        if (ts == null)
+        {
+            SimulationTotal.WithLabels("block_lookup_failed", "unwrap").Inc();
+            // Fall through: simulate bundle with demurraged amounts. For inflationary wrappers
+            // this reverts at unwrap() (the original f72f2d61-class FP), but it preserves the
+            // pre-PR signal — strictly better than silently dropping the canary attempt.
+            return calls;
+        }
+        long day = ComputeInflationDay(ts.Value);
+
+        // Step 2: collect inflationary-only positions; their order is preserved across the
+        // batched call array so ExtractInflationaryAmounts indexes match.
+        var inflationaryIndices = new List<int>();
+        for (int i = 0; i < calls.Count; i++)
+            if (calls[i].IsInflationary) inflationaryIndices.Add(i);
+
+        if (inflationaryIndices.Count == 0) return calls;
+
+        // Step 3: batch eth_simulateV1 — one call per inflationary unwrap.
+        // `from = ZERO_ADDRESS` is fine: convertDemurrageToInflationaryValue is a pure view
+        // function on the wrapper, ignores msg.sender.
+        var batchCalls = new List<object>(inflationaryIndices.Count);
+        foreach (var idx in inflationaryIndices)
+        {
+            var c = calls[idx];
+            batchCalls.Add(new
+            {
+                from = ZeroSenderForReadOnly,
+                to = c.Wrapper,
+                data = EncodeConvertDemurrageCalldata(c.Amount, day)
+            });
+        }
+        var rpc = new
+        {
+            jsonrpc = "2.0",
+            id = 1,
+            method = "eth_simulateV1",
+            @params = new object[]
+            {
+                new
+                {
+                    blockStateCalls = new[] { new { calls = batchCalls } },
+                    validation = false,
+                    traceTransfers = false
+                },
+                blockTag
+            }
+        };
+        HttpResponseMessage response;
+        try
+        {
+            response = await client.PostAsJsonAsync(_rpcUrl, rpc, ct);
+        }
+        catch (TaskCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "[{ReqId}] SimulationCanary: ResolveInflationaryAmounts: eth_simulateV1 failed (network/timeout)",
+                item.ReqId);
+            SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Inc();
+            return calls;
+        }
+        if (!response.IsSuccessStatusCode)
+        {
+            _log.LogWarning(
+                "[{ReqId}] SimulationCanary: ResolveInflationaryAmounts: eth_simulateV1 HTTP {StatusCode}",
+                item.ReqId, (int)response.StatusCode);
+            SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Inc();
+            return calls;
+        }
+        JsonElement json;
+        try { json = await response.Content.ReadFromJsonAsync<JsonElement>(ct); }
+        catch (JsonException jex)
+        {
+            _log.LogWarning(jex,
+                "[{ReqId}] SimulationCanary: ResolveInflationaryAmounts: non-JSON response",
+                item.ReqId);
+            SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Inc();
+            return calls;
+        }
+
+        // Step 4: extract per-position results; ApplyInflationaryAmounts substitutes only
+        // inflationary positions (demurraged calls pass through unchanged).
+        var inflationaryAmounts = ExtractInflationaryAmounts(json, inflationaryIndices.Count);
+        return ApplyInflationaryAmounts(calls, inflationaryAmounts);
     }
 }
