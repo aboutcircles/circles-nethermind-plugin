@@ -31,6 +31,12 @@ public class SimulationCanaryResolverFastPathTests
     [SetUp]
     public void SetUp()
     {
+        // DO NOT add [Parallelizable] to this fixture: SetUp/TearDown mutate process-wide
+        // environment variables (NETHERMIND_RPC_URL, POSTGRES_CONNECTION_STRING). Peer
+        // fixtures such as HostSettingsRegressionTests, HttpEndpointTests, and
+        // NetworkStateUpdaterServiceTests also read these. NUnit assembly default is
+        // sequential per-fixture, which keeps this safe today — opting in to fixture
+        // parallelism here would silently corrupt those neighbors.
         _prevRpcUrl = Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL");
         _prevPgConn = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING");
         // SimulationCanaryService caches NethermindRpcUrl in its ctor; the actual network
@@ -75,9 +81,17 @@ public class SimulationCanaryResolverFastPathTests
             "all-DemurrageCircles batch must short-circuit before any HTTP — both " +
             "eth_getBlockByNumber AND eth_simulateV1 are wasted RPCs in this path");
         Assert.That(resolved.Count, Is.EqualTo(3));
-        Assert.That(resolved[0].Amount, Is.EqualTo(BigInteger.Parse("100")));
-        Assert.That(resolved[1].Amount, Is.EqualTo(BigInteger.Parse("200")));
-        Assert.That(resolved[2].Amount, Is.EqualTo(BigInteger.Parse("300")));
+        // Per-row From/Wrapper assertions in addition to Amount: catches a future
+        // factory mutation that swaps fields (e.g. `new(call.Wrapper, call.From, ...)`).
+        Assert.That(resolved[0].From,    Is.EqualTo("0xfromA"));
+        Assert.That(resolved[0].Wrapper, Is.EqualTo("0xwrapA"));
+        Assert.That(resolved[0].Amount,  Is.EqualTo(BigInteger.Parse("100")));
+        Assert.That(resolved[1].From,    Is.EqualTo("0xfromB"));
+        Assert.That(resolved[1].Wrapper, Is.EqualTo("0xwrapB"));
+        Assert.That(resolved[1].Amount,  Is.EqualTo(BigInteger.Parse("200")));
+        Assert.That(resolved[2].From,    Is.EqualTo("0xfromC"));
+        Assert.That(resolved[2].Wrapper, Is.EqualTo("0xwrapC"));
+        Assert.That(resolved[2].Amount,  Is.EqualTo(BigInteger.Parse("300")));
     }
 
     [Test]
@@ -127,10 +141,57 @@ public class SimulationCanaryResolverFastPathTests
         Assert.That(handler.Count, Is.EqualTo(2),
             "positive control: 1× eth_getBlockByNumber + 1× eth_simulateV1 batch");
         Assert.That(resolved.Count, Is.EqualTo(2));
-        Assert.That(resolved[0].Amount, Is.EqualTo(BigInteger.Parse("100")),
+        Assert.That(resolved[0].From,    Is.EqualTo("0xfromD"));
+        Assert.That(resolved[0].Wrapper, Is.EqualTo("0xwrapD"));
+        Assert.That(resolved[0].Amount,  Is.EqualTo(BigInteger.Parse("100")),
             "DemurrageCircles entry passes through unchanged");
-        Assert.That(resolved[1].Amount, Is.EqualTo(BigInteger.Parse("300")),
+        Assert.That(resolved[1].From,    Is.EqualTo("0xfromI"));
+        Assert.That(resolved[1].Wrapper, Is.EqualTo("0xwrapI"));
+        Assert.That(resolved[1].Amount,  Is.EqualTo(BigInteger.Parse("300")),
             "InflationaryCircles entry substituted with scripted convertDemurrageToInflationaryValue result");
+    }
+
+    [Test]
+    public async Task ResolveInflationaryAmounts_MixedBatch_WalksInfIdxAcrossDemurragedGaps()
+    {
+        // ApplyInflationaryAmounts walks an `infIdx` cursor that ONLY advances for
+        // InflationaryCircles positions. An off-by-one (e.g. advancing on every position)
+        // still passes OneInflationaryEntry because there's only one inflationary slot.
+        // This test forces the resolver to walk past a demurraged entry between two
+        // inflationary ones, with two distinct scripted return amounts so a misaligned
+        // cursor produces a visibly wrong assignment.
+        var handler = new MixedBatchScriptedHandler();
+        var factory = new SingleHandlerHttpClientFactory(handler);
+        var service = NewService(factory);
+        var item = NewWorkItem();
+        var calls = new[]
+        {
+            new SimulationCanaryService.DemurragedUnwrapCall(
+                "0xfromI1", "0xwrapI1", BigInteger.Parse("200"), CirclesType.InflationaryCircles),
+            new SimulationCanaryService.DemurragedUnwrapCall(
+                "0xfromD",  "0xwrapD",  BigInteger.Parse("500"), CirclesType.DemurrageCircles),
+            new SimulationCanaryService.DemurragedUnwrapCall(
+                "0xfromI2", "0xwrapI2", BigInteger.Parse("400"), CirclesType.InflationaryCircles),
+        };
+
+        using var client = factory.CreateClient("canary-simulation");
+        var resolved = await service.ResolveInflationaryAmountsAsync(
+            item, calls, "0x3e8", client, CancellationToken.None);
+
+        Assert.That(handler.Count, Is.EqualTo(2),
+            "two RPCs: eth_getBlockByNumber + eth_simulateV1 with batch of 2 convert calls");
+        Assert.That(resolved.Count, Is.EqualTo(3));
+        // Slot 0 (inflationary) gets the first scripted return = 300
+        Assert.That(resolved[0].Wrapper, Is.EqualTo("0xwrapI1"));
+        Assert.That(resolved[0].Amount,  Is.EqualTo(BigInteger.Parse("300")));
+        // Slot 1 (demurraged) passes through with original 500 — proves the resolver
+        // does NOT consume an inflationary-batch result for this position.
+        Assert.That(resolved[1].Wrapper, Is.EqualTo("0xwrapD"));
+        Assert.That(resolved[1].Amount,  Is.EqualTo(BigInteger.Parse("500")));
+        // Slot 2 (inflationary) gets the second scripted return = 700; an off-by-one
+        // infIdx would either reuse 300 here or assign 700 to slot 0 / 500 to slot 2.
+        Assert.That(resolved[2].Wrapper, Is.EqualTo("0xwrapI2"));
+        Assert.That(resolved[2].Amount,  Is.EqualTo(BigInteger.Parse("700")));
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -180,6 +241,37 @@ public class SimulationCanaryResolverFastPathTests
         private static readonly string SimulateV1Body =
             "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[{\"calls\":[{\"status\":\"0x1\",\"returnData\":\"0x" +
             new string('0', 61) + "12c\"}]}]}";
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken ct)
+        {
+            int n = Interlocked.Increment(ref _count);
+            string body = n == 1
+                ? "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"timestamp\":\"0x6\"}}"
+                : SimulateV1Body;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body)
+            });
+        }
+    }
+
+    /// <summary>
+    /// Variant of <see cref="ScriptedHandler"/> that returns TWO distinct values in the
+    /// eth_simulateV1 batch (300, 700) — so an off-by-one <c>infIdx</c> in
+    /// <c>ApplyInflationaryAmounts</c> produces a visibly wrong assignment to slot 0 vs slot 2.
+    /// </summary>
+    private sealed class MixedBatchScriptedHandler : HttpMessageHandler
+    {
+        private int _count;
+        public int Count => Volatile.Read(ref _count);
+
+        // 300 (decimal) = 0x12c, 700 = 0x2bc — both padded to 64 hex chars
+        private static readonly string SimulateV1Body =
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[{\"calls\":[" +
+            "{\"status\":\"0x1\",\"returnData\":\"0x" + new string('0', 61) + "12c\"}," +
+            "{\"status\":\"0x1\",\"returnData\":\"0x" + new string('0', 61) + "2bc\"}" +
+            "]}]}";
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken ct)
