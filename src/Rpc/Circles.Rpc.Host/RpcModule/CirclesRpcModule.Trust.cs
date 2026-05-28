@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Text;
 using Npgsql;
 
 namespace Circles.Rpc.Host;
@@ -465,5 +466,127 @@ public partial class CirclesRpcModule
         var task2 = _cacheServiceClient!.GetTrustRelationsAsync(address2, version);
         await Task.WhenAll(task1, task2);
         return (task1.Result, task2.Result);
+    }
+
+    /// <summary>
+    /// Gets aggregated trust network summary including trust counts, common trusts, and network depth.
+    /// Server-side aggregation reduces client-side processing.
+    /// </summary>
+    public async Task<TrustNetworkSummaryResponse> GetTrustNetworkSummary(string address, int? maxDepth = 2)
+    {
+        var trustRelations = await GetTrustRelations(address);
+
+        // Calculate network size at different depths
+        var depth1Trusts = new HashSet<string>(trustRelations.Trusts?.Select(t => t.User) ?? Array.Empty<string>());
+        var depth1TrustedBy = new HashSet<string>(trustRelations.TrustedBy?.Select(t => t.User) ?? Array.Empty<string>());
+
+        // Mutual trusts (intersection)
+        var mutualTrusts = depth1Trusts.Intersect(depth1TrustedBy).ToArray();
+
+        return new TrustNetworkSummaryResponse
+        {
+            Address = address,
+            DirectTrustsCount = depth1Trusts.Count,
+            DirectTrustedByCount = depth1TrustedBy.Count,
+            MutualTrustsCount = mutualTrusts.Length,
+            MutualTrusts = mutualTrusts,
+            NetworkReach = depth1Trusts.Count + depth1TrustedBy.Count - mutualTrusts.Length // Union count
+        };
+    }
+
+    /// <summary>
+    /// Gets aggregated trust relations showing mutual, one-way trusts, and trusted-by in a single call.
+    /// Categorizes relationships for easier UI rendering. Enriched with avatar info.
+    /// </summary>
+    public async Task<PagedAggregatedTrustRelationsResponse> GetAggregatedTrustRelationsEnriched(
+        string address,
+        int? limit = null,
+        string? cursor = null)
+    {
+        // Apply pagination limits
+        const int defaultLimit = 50;
+        const int maxLimit = 200;
+        var effectiveLimit = Math.Min(limit ?? defaultLimit, maxLimit);
+
+        var trustRelations = await GetTrustRelations(address);
+
+        var trustsSet = new HashSet<string>(trustRelations.Trusts?.Select(t => t.User) ?? Array.Empty<string>());
+        var trustedBySet = new HashSet<string>(trustRelations.TrustedBy?.Select(t => t.User) ?? Array.Empty<string>());
+
+        var mutualAddresses = trustsSet.Intersect(trustedBySet).OrderBy(a => a).ToList();
+        var oneWayTrustsAddresses = trustsSet.Except(trustedBySet).OrderBy(a => a).ToList();
+        var oneWayTrustedByAddresses = trustedBySet.Except(trustsSet).OrderBy(a => a).ToList();
+
+        // Build combined sorted list with relation types for stable cursor-based pagination
+        var allRelations = new List<(string Address, string RelationType)>();
+        allRelations.AddRange(mutualAddresses.Select(a => (a, "mutual")));
+        allRelations.AddRange(oneWayTrustsAddresses.Select(a => (a, "trusts")));
+        allRelations.AddRange(oneWayTrustedByAddresses.Select(a => (a, "trustedBy")));
+
+        // Sort by address for consistent ordering
+        allRelations = allRelations.OrderBy(r => r.Address).ToList();
+
+        // Decode cursor (we use address as cursor for simplicity since addresses are unique)
+        string? cursorAddress = null;
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            try
+            {
+                cursorAddress = Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+            }
+            catch
+            {
+                // Invalid cursor, ignore
+            }
+        }
+
+        // Filter by cursor
+        if (cursorAddress != null)
+        {
+            allRelations = allRelations.Where(r => string.Compare(r.Address, cursorAddress, StringComparison.Ordinal) > 0).ToList();
+        }
+
+        // Take limit + 1 to check if there are more
+        var pageRelations = allRelations.Take(effectiveLimit + 1).ToList();
+        var hasMore = pageRelations.Count > effectiveLimit;
+        if (hasMore)
+        {
+            pageRelations.RemoveAt(pageRelations.Count - 1);
+        }
+
+        // Get avatar info for addresses in this page
+        var pageAddresses = pageRelations.Select(r => r.Address).ToArray();
+        var avatars = pageAddresses.Length > 0 ? await GetAvatarInfoBatchInternal(pageAddresses) : Array.Empty<AvatarInfo?>();
+        var avatarDict = avatars.Where(a => a != null).ToDictionary(a => a!.Avatar, a => a);
+
+        // Build results
+        var results = pageRelations.Select(r => new TrustRelationInfo
+        {
+            Address = r.Address,
+            AvatarInfo = avatarDict.TryGetValue(r.Address, out var avatar) ? avatar : null,
+            RelationType = r.RelationType
+        }).ToArray();
+
+        // Generate next cursor from last address
+        string? nextCursor = null;
+        if (hasMore && results.Length > 0)
+        {
+            nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(results[^1].Address));
+        }
+
+        return new PagedAggregatedTrustRelationsResponse
+        {
+            Address = address,
+            Results = results,
+            Counts = new TrustRelationCounts
+            {
+                Mutual = mutualAddresses.Count,
+                Trusts = oneWayTrustsAddresses.Count,
+                TrustedBy = oneWayTrustedByAddresses.Count,
+                Total = mutualAddresses.Count + oneWayTrustsAddresses.Count + oneWayTrustedByAddresses.Count
+            },
+            HasMore = hasMore,
+            NextCursor = nextCursor
+        };
     }
 }
