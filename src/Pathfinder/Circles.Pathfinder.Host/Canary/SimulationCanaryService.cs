@@ -852,10 +852,40 @@ internal sealed class SimulationCanaryService : BackgroundService
                 : null;
             infIdx++;
             resolved.Add(resolvedAmount.HasValue
-                ? ResolvedUnwrapCall.FromInflated(src, resolvedAmount.Value)
+                ? ResolvedUnwrapCall.FromInflated(src, ApplyInflationaryRoundtripBump(resolvedAmount.Value))
                 : ResolvedUnwrapCall.FromDemurraged(src));
         }
         return resolved;
+    }
+
+    /// <summary>
+    /// On-chain `convertDemurrageToInflationaryValue(D, day)` followed by
+    /// `convertInflationaryToDemurrageValue(I, day)` (which Hub.sol's `unwrap()`
+    /// invokes internally) is NOT a left-inverse: each `Math64x64.mulu` floors,
+    /// so the demurraged amount the holder actually receives lands in `[D - ε, D]`.
+    /// Empirically (probed at day 2051) the gap scales linearly with D at ratio
+    /// ≈ 3.43e-14, e.g. 342,753 wei short on 10,000 CRC. The canary then asks
+    /// `operateFlowMatrix` to forward exactly D and reverts with
+    /// `ERC1155InsufficientBalance` at `stage=flow_matrix` — a canary-only
+    /// false positive (real SDK broadcasts unwrap their full ERC20 balance, not
+    /// "minimum I"). Adding `I / 1e12` (one part per trillion) clears the gap
+    /// with ~30,000× safety vs the observed ratio. Worst-case future drift is
+    /// bounded by `2 · day · 2^-64` (Math64x64 has fixed 64-bit fractional
+    /// precision; two stacked floors over a β^day chain), ≈ 1.1e-16 at day=2051
+    /// and well under 1e-12 for any plausible future day index. The bump stays
+    /// six orders of magnitude below the demurrage safety headroom
+    /// (<c>1 - Settings.DemurrageSafetyMargin</c> ≈ 1e-6 at the default 0.999999)
+    /// so it does not eat into the balance-side margin that protects max-flow
+    /// paths. For tiny I (&lt; 1e12 wei, well below any realistic canary value)
+    /// integer division floors to zero — no bump applied.
+    /// </summary>
+    internal static BigInteger ApplyInflationaryRoundtripBump(BigInteger rawInflatedAmount)
+    {
+        // Negatives are blocked at the type boundary by `ResolvedUnwrapCall.FromInflated`;
+        // zero passes through unchanged so an upstream change that legitimately yields
+        // I=0 (no inflationary unwrap needed) doesn't acquire a spurious +1 wei.
+        if (rawInflatedAmount == 0) return rawInflatedAmount;
+        return rawInflatedAmount + (rawInflatedAmount / 1_000_000_000_000);
     }
 
     /// <summary>
