@@ -137,7 +137,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         var (totalGroupTokenEdges, routerFilteredCount) = AddTokenPoolOutEdges(
             capacityGraph, trustLookup,
             virtualSink: null, virtualSinkTrustedTokens: new HashSet<int>(),
-            sinkId: null, new HashSet<int>(), new HashSet<int>());
+            sinkId: null, sourceId: null, new HashSet<int>(), new HashSet<int>());
         capacityGraph.TotalGroupTokenEdges = totalGroupTokenEdges;
         capacityGraph.RouterFilteredEdges = routerFilteredCount;
 
@@ -479,6 +479,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             virtualSinkAddress,
             virtualSinkTrustedTokens,
             sinkId,
+            sourceId,
             toTokensFilter,
             excludedToTokensFilter);
         capacityGraph.TotalGroupTokenEdges = totalGroupTokenEdges;
@@ -672,6 +673,29 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         {
             foreach (var groupId in cached.GroupNodes)
                 capacityGraph.AddGroup(groupId);
+            if (cached.GroupRouters != null)
+            {
+                foreach (var (groupId, groupRouterId) in cached.GroupRouters)
+                {
+                    if (cached.GroupNodes.Contains(groupId))
+                        capacityGraph.SetGroupRouter(groupId, groupRouterId);
+                }
+            }
+            if (cached.ScoreGroupMintLimits != null)
+            {
+                foreach (var (key, limit) in cached.ScoreGroupMintLimits)
+                    capacityGraph.ScoreGroupMintLimits[key] = limit;
+            }
+            if (cached.OperatorApprovals != null)
+            {
+                foreach (var (cachedRouterId, operators) in cached.OperatorApprovals)
+                    capacityGraph.OperatorApprovals[cachedRouterId] = new HashSet<int>(operators);
+            }
+            if (cached.ScoreRouterIds != null)
+            {
+                foreach (var scoreRouterId in cached.ScoreRouterIds)
+                    capacityGraph.ScoreRouterIds.Add(scoreRouterId);
+            }
             foreach (var orgId in cached.OrganizationNodes)
                 capacityGraph.OrganizationNodes.Add(orgId);
             foreach (var (groupId, tokens) in cached.GroupTrustedTokens)
@@ -687,10 +711,83 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         // Load groups from DB
         var groups = loadGraph.LoadGroups().ToList();
+        var loadedGroupIds = new HashSet<int>();
         foreach (var groupAddress in groups)
         {
             int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
             capacityGraph.AddGroup(groupId);
+            loadedGroupIds.Add(groupId);
+        }
+
+        foreach (var (groupAddress, groupRouterAddress) in loadGraph.LoadGroupRouters())
+        {
+            int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
+            if (!loadedGroupIds.Contains(groupId))
+                continue;
+
+            int groupRouterId = AddressIdPool.IdOf(groupRouterAddress.ToLowerInvariant());
+            capacityGraph.SetGroupRouter(groupId, groupRouterId);
+        }
+
+        foreach (var (groupAddress, collateralToken, availableLimit) in loadGraph.LoadScoreGroupMintLimits())
+        {
+            if (!UInt256.TryParse(availableLimit, out var parsedLimit))
+                continue;
+
+            int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
+            int tokenId = AddressIdPool.IdOf(collateralToken.ToLowerInvariant());
+            capacityGraph.ScoreGroupMintLimits[(groupId, tokenId)] = CirclesConverter.TruncateToInt64(parsedLimit);
+        }
+
+        // Load the canonical score-router set from CrcV2_ScoreGroup.GroupInitialized.
+        // The pathMintRouter field is immutable post-init, so this is the source of truth
+        // for "is this address a score router" — independent of whether mint-limit rows
+        // or operator approvals exist yet (both lag the initialize event).
+        foreach (var scoreRouterAddress in loadGraph.LoadScoreRouters())
+        {
+            if (string.IsNullOrWhiteSpace(scoreRouterAddress))
+                continue;
+            int scoreRouterId = AddressIdPool.IdOf(scoreRouterAddress.ToLowerInvariant());
+            capacityGraph.ScoreRouterIds.Add(scoreRouterId);
+        }
+
+        // A score group must deploy its own pathMintRouter. If one is ever
+        // initialized with the standard group router, IsScoreGroup excludes it
+        // (otherwise every regular group would be misflagged and silently
+        // stripped). Surface the misconfiguration loudly — the wrap-only guard
+        // is inert for that group until it is redeployed with a dedicated router.
+        if (capacityGraph.RouterNode is { } stdRouterId
+            && capacityGraph.ScoreRouterIds.Contains(stdRouterId))
+        {
+            _logger.LogError(
+                "Score router collision: a ScoreGroup.GroupInitialized event uses the standard " +
+                "group router {Router} as pathMintRouter. IsScoreGroup excludes the standard " +
+                "router, so the wrapped-only guard is INERT for any such group. Redeploy the " +
+                "score group with a dedicated ScoreGroupMintRouter.",
+                AddressIdPool.StringOf(stdRouterId));
+        }
+
+        // Load ERC-1155 operator approvals granted BY the known group routers.
+        // These gate Avatar→Router edges: Hub.operateFlowMatrix reverts if the caller
+        // (operator/msg.sender) is not approved by the Router that holds tokens on the path.
+        var routerAddresses = capacityGraph.GroupRouters.Values
+            .Select(AddressIdPool.StringOf)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .ToList();
+        if (routerAddresses.Count > 0)
+        {
+            foreach (var (account, op) in loadGraph.LoadOperatorApprovals(routerAddresses))
+            {
+                int approvingRouterId = AddressIdPool.IdOf(account.ToLowerInvariant());
+                int operatorId = AddressIdPool.IdOf(op.ToLowerInvariant());
+                if (!capacityGraph.OperatorApprovals.TryGetValue(approvingRouterId, out var approved))
+                {
+                    approved = new HashSet<int>();
+                    capacityGraph.OperatorApprovals[approvingRouterId] = approved;
+                }
+                approved.Add(operatorId);
+            }
         }
 
         // Load organizations from DB (needed for canary source-type filtering)
@@ -718,25 +815,35 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         }
     }
 
-    // Load ERC20 wrapper→avatar reverse mappings for DTO output resolution
+    // Load ERC20 wrapper→avatar reverse mappings for DTO output resolution.
+    // Also populates InflationaryWrappers for the canary's unit-discrimination logic.
     private void LoadWrapperMappings(CapacityGraph capacityGraph, CachedGroupData? cached = null)
     {
         if (cached != null)
         {
             foreach (var (wrapperId, avatarId) in cached.WrapperToAvatar)
                 capacityGraph.WrapperToAvatar[wrapperId] = avatarId;
-            _logger.LogDebug("Used cached wrapper mappings: {Count} entries", cached.WrapperToAvatar.Count);
+            if (cached.InflationaryWrappers != null)
+            {
+                foreach (var wrapperId in cached.InflationaryWrappers)
+                    capacityGraph.InflationaryWrappers.Add(wrapperId);
+            }
+            _logger.LogDebug("Used cached wrapper mappings: {Count} entries ({Inflationary} inflationary)",
+                cached.WrapperToAvatar.Count, capacityGraph.InflationaryWrappers.Count);
             return;
         }
 
-        foreach (var (wrapperAddr, avatarAddr) in loadGraph.LoadWrapperMappings())
+        foreach (var (wrapperAddr, avatarAddr, circlesType) in loadGraph.LoadWrapperMappings())
         {
             int wrapperId = AddressIdPool.IdOf(wrapperAddr.ToLowerInvariant());
             int avatarId = AddressIdPool.IdOf(avatarAddr.ToLowerInvariant());
             capacityGraph.WrapperToAvatar[wrapperId] = avatarId;
+            if (circlesType == CirclesType.InflationaryCircles)
+                capacityGraph.InflationaryWrappers.Add(wrapperId);
         }
 
-        _logger.LogDebug("Loaded {Count} wrapper→avatar mappings from DB", capacityGraph.WrapperToAvatar.Count);
+        _logger.LogDebug("Loaded {Count} wrapper→avatar mappings from DB ({Inflationary} inflationary)",
+            capacityGraph.WrapperToAvatar.Count, capacityGraph.InflationaryWrappers.Count);
     }
 
     // Load consented flow flags — exceptions propagate to caller (CreateCapacityGraph)
@@ -785,6 +892,10 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             if (isSource && excludedFromTokensFilter.Count > 0 && excludedFromTokensFilter.Contains(bn.Token)) continue;
             if (bn.IsWrapped && !(req?.WithWrap ?? false)) continue;
             if (bn.IsWrapped && !isSource) continue;
+            // ScoreGroup CRC is wrapped-only: the unwrapped ERC1155 must never be a
+            // routable holder balance (no source spend, no transient forwarding). It
+            // may exist only on the terminal Group→sink mint edge.
+            if (g.IsScoreGroup(bn.Token)) continue;
 
             // ensure the pool node exists
             g.AddTokenNode(bn.Token);
@@ -822,6 +933,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
             if (sb.IsWrapped && !(req?.WithWrap ?? false)) continue;
             if (sb.IsWrapped && !isSource) continue;
+            // ScoreGroup CRC is wrapped-only — never a routable (simulated) balance.
+            if (g.IsScoreGroup(sb.TokenId)) continue;
 
             g.AddTokenNode(sb.TokenId);
             int pool = AddressIdPool.TokenPoolIdOf(sb.TokenId);
@@ -838,6 +951,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         int? virtualSink,
         HashSet<int> virtualSinkTrustedTokens,
         int? sinkId,
+        int? sourceId,
         HashSet<int> toTokensFilter,
         HashSet<int> excludedToTokensFilter)
     {
@@ -869,20 +983,38 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         // checks trustMarkers[router][token] for every Avatar→Router edge
         // in operateFlowMatrix, so tokens not trusted by the Router would
         // revert on-chain even though the pathfinder found a valid flow.
-        HashSet<int>? routerTrusts = null;
-        if (g.RouterNode.HasValue)
-        {
-            accountTrusts.TryGetValue(g.RouterNode.Value, out routerTrusts);
-            if (routerTrusts == null)
-                _logger.LogWarning("Router node is set but has no trust entries in accountTrusts — all group collateral edges will be blocked");
-        }
-
         int routerFilteredCount = 0;
         int totalGroupTokenEdges = 0;
+        int approvalFilteredCount = 0;
         foreach (var groupId in g.GroupNodes)
         {
             if (g.GroupTrustedTokens.TryGetValue(groupId, out var trustedTokens))
             {
+                var groupRouter = g.RouterForGroup(groupId);
+                accountTrusts.TryGetValue(groupRouter, out var routerTrusts);
+                if (routerTrusts == null)
+                    _logger.LogWarning("Router node {Router} has no trust entries in accountTrusts — group collateral edges for {Group} will be blocked",
+                        AddressIdPool.StringOf(groupRouter), AddressIdPool.StringOf(groupId));
+
+                // Score-group routers require ERC-1155 approval from the Router for the
+                // operator (msg.sender of operateFlowMatrix) before Hub will execute the
+                // Router→Group hop. The pathfinder treats the path source as that operator.
+                // When sourceId is provided but unapproved, skip every collateral edge
+                // through this group's router — the resulting path would revert on-chain.
+                // When sourceId is null (base snapshot), the gate cannot be evaluated and
+                // the edges are inherently source-dependent — strip them unconditionally so
+                // the shared snapshot can't emit reverting paths. Per-request filtered
+                // builds reconstruct these edges with proper source context.
+                // Membership in ScoreRouterIds is the canonical signal — derived from
+                // CrcV2_ScoreGroup.GroupInitialized.pathMintRouter — so freshly-initialized
+                // groups with no mint-limit rows yet are still recognized and gated.
+                bool isScoreRouter = g.ScoreRouterIds.Contains(groupRouter);
+                bool operatorApproved =
+                    !isScoreRouter
+                    || (sourceId.HasValue
+                        && g.OperatorApprovals.TryGetValue(groupRouter, out var approvedOps)
+                        && approvedOps.Contains(sourceId.Value));
+
                 foreach (var token in trustedTokens)
                 {
                     totalGroupTokenEdges++;
@@ -896,6 +1028,19 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                         continue;
                     }
 
+                    if (g.ScoreGroupMintLimits.TryGetValue((groupId, token), out var availableLimit) &&
+                        availableLimit <= 0)
+                    {
+                        continue;
+                    }
+
+                    // approveCRC gate (ERC-1155 operator approval Router→source).
+                    if (!operatorApproved)
+                    {
+                        approvalFilteredCount++;
+                        continue;
+                    }
+
                     if (!tokenToAvatars.TryGetValue(token, out var list))
                         tokenToAvatars[token] = list = new List<int>();
                     if (!list.Contains(groupId))
@@ -906,26 +1051,69 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         if (routerFilteredCount > 0)
             _logger.LogInformation("Filtered {Count} group collateral edges where Router does not trust the token", routerFilteredCount);
+        if (approvalFilteredCount > 0)
+            _logger.LogInformation("Filtered {Count} group collateral edges where source is not an approved operator of the score router", approvalFilteredCount);
 
         foreach (var (token, acceptors) in tokenToAvatars)
         {
             int pool = AddressIdPool.TokenPoolIdOf(token);
             if (!g.Nodes.ContainsKey(pool)) continue; // no supply -> no out-edges
 
+            // Defense-in-depth safety net (normally a no-op): a score-group CRC
+            // pool node is never created in the first place (guards in the
+            // holder/simulated balance loops skip it), so this branch is not the
+            // primary enforcement — it only matters if those upstream guards are
+            // ever weakened. Collateral mint inflow (pool(collateral)→group) is
+            // unaffected: its token is member collateral, never a score-group id.
+            if (g.IsScoreGroup(token)) continue;
+
             foreach (var a in acceptors)
             {
-                g.AddCapacityEdge(pool, a, token, long.MaxValue);
+                var capacity = g.ScoreGroupMintLimits.TryGetValue((a, token), out var availableLimit)
+                    ? availableLimit
+                    : long.MaxValue;
+                if (capacity <= 0)
+                    continue;
+
+                g.AddCapacityEdge(pool, a, token, capacity);
             }
         }
 
-        // Virtual sink edges (swap mode): TokenPool(token) -> virtualSink
+        // Virtual sink edges (swap mode): TokenPool(token) -> virtualSink, OR
+        // Group → virtualSink for group tokens that have no existing supply.
+        //
+        // When the target token in a source==sink swap is a group's own CRC and
+        // no avatar holds it yet (= no TokenPool node), the group itself is the
+        // implicit issuer via Hub.groupMint inside operateFlowMatrix. Without a
+        // direct Group → virtualSink edge the virtual sink has zero inbound
+        // edges and gets pruned at line ~502, yielding maxFlow=0 for legitimate
+        // self-mint paths. The mint cap is still enforced upstream by the
+        // pool_collateral → group edges (capacity = ScoreGroupMintLimits[(group,
+        // collateral)]) added above, so this fallback never inflates allowable
+        // flow beyond the cached cap.
         if (virtualSink != null)
         {
             foreach (var t in virtualSinkTrustedTokens)
             {
                 int pool = AddressIdPool.TokenPoolIdOf(t);
-                if (!g.Nodes.ContainsKey(pool)) continue;
-                g.AddCapacityEdge(pool, virtualSink.Value, t, long.MaxValue);
+                if (g.Nodes.ContainsKey(pool))
+                {
+                    // Defense-in-depth: a score-group CRC pool node must never
+                    // exist (upstream guards prevent it). If one ever did, do NOT
+                    // route it transiently via pool→virtualSink — fall through to
+                    // the Group→virtualSink self-mint terminal, the only permitted
+                    // appearance of the unwrapped score-group ERC1155.
+                    if (!g.IsScoreGroup(t))
+                    {
+                        g.AddCapacityEdge(pool, virtualSink.Value, t, long.MaxValue);
+                        continue;
+                    }
+                }
+
+                if (g.IsGroup(t))
+                {
+                    g.AddCapacityEdge(t, virtualSink.Value, t, long.MaxValue);
+                }
             }
         }
 
@@ -940,6 +1128,12 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         HashSet<int> toTokensFilter,
         HashSet<int> excludedToTokensFilter)
     {
+        // Observability for the hard-wired (no kill-switch) wrap-only guard: a
+        // sudden spike here vs. the known score-group count signals a misfire
+        // (e.g. the standard-router collision IsScoreGroup guards against).
+        int scoreGroupNonSinkSkipped = 0;
+        var scoreGroupsGuarded = new HashSet<int>();
+
         foreach (var groupId in g.GroupNodes)
         {
             // Each group mints its own token (the group address IS the token address)
@@ -956,6 +1150,18 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 if (trustedTokens.Contains(groupToken))
                 {
                     bool isSink = sinkId.HasValue && truster == sinkId.Value;
+                    // ScoreGroup CRC is wrapped-only: the unwrapped ERC1155 may be
+                    // minted ONLY directly to the final recipient (sink), who wraps
+                    // it off-graph. No Group→intermediary delivery, no transient
+                    // forwarding. In the sink-less shared snapshot this fails closed
+                    // (no score-group mint edges); per-request filtered builds
+                    // reconstruct them with proper sink context.
+                    if (g.IsScoreGroup(groupId) && !isSink)
+                    {
+                        scoreGroupNonSinkSkipped++;
+                        scoreGroupsGuarded.Add(groupId);
+                        continue;
+                    }
                     if (isSink && toTokensFilter.Count > 0 && !toTokensFilter.Contains(groupToken))
                         continue;
                     if (isSink && excludedToTokensFilter.Count > 0 && excludedToTokensFilter.Contains(groupToken))
@@ -971,6 +1177,11 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 g.AddCapacityEdge(groupId, avatar, groupToken, long.MaxValue);
             }
         }
+
+        if (scoreGroupNonSinkSkipped > 0)
+            _logger.LogInformation(
+                "Wrapped-only guard: dropped {Count} non-sink Group→avatar mint edges across {Groups} score group(s)",
+                scoreGroupNonSinkSkipped, scoreGroupsGuarded.Count);
     }
 
     private void RemoveTokenSelfLoopsForSwap(

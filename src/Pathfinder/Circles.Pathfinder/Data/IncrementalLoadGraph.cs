@@ -21,7 +21,7 @@ public class IncrementalLoadGraph : ILoadGraph
     private readonly Settings _settings;
     private readonly long _maxBlockTimestamp;
     private readonly ILogger _logger;
-    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar)>? _cachedWrapperMappings;
+    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)>? _cachedWrapperMappings;
 
     public IncrementalLoadGraph(
         InMemoryBalanceState balanceState,
@@ -103,6 +103,9 @@ public class IncrementalLoadGraph : ILoadGraph
             .ToDictionary(
                 g => g.Key,
                 g => g.Select(x => x.WrapperAddress.ToLowerInvariant()).Distinct().ToArray());
+        // CirclesType is intentionally dropped here — this map drives trust-edge expansion
+        // (wrappers inherit the underlying avatar's trust), which is type-agnostic. The
+        // CapacityGraph.InflationaryWrappers set carries the type info separately.
 
         foreach (var (truster, trustee, limit) in directTrusts)
         {
@@ -141,6 +144,25 @@ public class IncrementalLoadGraph : ILoadGraph
         return _trustState.GetGroupTrusts(routerGroups, _maxBlockTimestamp, _avatarState.AvatarSet);
     }
 
+    public IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters()
+        => _inner.LoadGroupRouters();
+
+    public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits()
+        => _inner.LoadScoreGroupMintLimits();
+
+    /// <summary>
+    /// Score-router set + ERC-1155 operator approvals are sourced from index tables that
+    /// the in-memory state doesn't shadow, so delegate to the inner DB-backed loader.
+    /// Without these overrides every base-snapshot build would inherit the
+    /// ILoadGraph default-empty implementations and silently disable the score-router
+    /// approval gate in production.
+    /// </summary>
+    public IEnumerable<string> LoadScoreRouters()
+        => _inner.LoadScoreRouters();
+
+    public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
+        => _inner.LoadOperatorApprovals(accounts);
+
     /// <summary>
     /// Delegates to inner LoadGraph — consented flow table is small, fast query.
     /// </summary>
@@ -160,9 +182,9 @@ public class IncrementalLoadGraph : ILoadGraph
     /// Returns cached wrapper mappings — loaded once per graph build from inner LoadGraph.
     /// Wrapper deployments are append-only, so caching within a single build is safe.
     /// </summary>
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
         => GetCachedWrapperMappings();
 
-    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar)> GetCachedWrapperMappings()
+    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> GetCachedWrapperMappings()
         => _cachedWrapperMappings ??= _inner.LoadWrapperMappings().ToList();
 }

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <Version>0.0.1</Version>
+        <Authors>Gnosis Service GmbH</Authors>
+        <Copyright>Gnosis Service GmbH</Copyright>
+        <Product>Circles</Product>
+        <PackageId>Gnosis.Circles.Nethermind.Plugin.CirclesV2.ScoreGroup</PackageId>
+        <Description>Score group mint policy indexing for Circles V2</Description>
+        <PackageTags>circles;blockchain;indexing</PackageTags>
+        <RepositoryUrl>https://github.com/aboutcircles/circles-nethermind-plugin</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/aboutcircles/circles-nethermind-plugin</PackageProjectUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
+        <ProjectReference Include="..\Circles.Index.Query\Circles.Index.Query.csproj" />
+    </ItemGroup>
+
+</Project>

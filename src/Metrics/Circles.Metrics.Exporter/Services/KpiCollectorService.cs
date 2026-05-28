@@ -1335,12 +1335,19 @@ public class KpiCollectorService : BackgroundService
             BusinessKpiMetrics.PriceSource.WithLabels("fallback").Set(source == PriceService.PriceSource.FallbackManual ? 1 : 0);
             BusinessKpiMetrics.PriceSource.WithLabels("balancer").Set(source == PriceService.PriceSource.BalancerLive ? 1 : 0);
 
-            // Balancer market price (independent gauge, always set when available)
+            // Balancer market price (independent gauge). Always update so a Balancer
+            // outage doesn't leave the previously-published value visible indefinitely
+            // while circles_price_source{source="balancer"} drops to 0.
             if (_priceService.LastBalancerDcrcXdai > 0)
             {
                 BusinessKpiMetrics.CrcPriceBalancerXdai.Set(_priceService.LastBalancerDcrcXdai);
                 BusinessKpiMetrics.CrcPriceBalancerConvFactor.Set(
                     BalancerPriceService.GetConvFactor(DateTimeOffset.UtcNow));
+            }
+            else
+            {
+                BusinessKpiMetrics.CrcPriceBalancerXdai.Set(0);
+                BusinessKpiMetrics.CrcPriceBalancerConvFactor.Set(0);
             }
 
             if (_priceService.LastUpdate > DateTimeOffset.MinValue)

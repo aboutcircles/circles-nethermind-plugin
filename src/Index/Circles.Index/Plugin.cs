@@ -95,6 +95,8 @@ public class Plugin : INethermindPlugin
             new CirclesV2.PaymentGateway.LogParser(settings.PaymentGatewayFactoryAddresses.Select(o => new Address(o))
                 .ToImmutableHashSet()),
             new CirclesV2.OIC.LogParser(new(settings.OICContractAddress)),
+            new CirclesV2.ScoreGroup.LogParser(settings.ScoreGroupMintPolicies.Select(o => new Address(o))
+                .ToImmutableHashSet()),
             new CirclesV2.InvitationsAtScale.LogParser(
                 settings.InvitationAtScaleInvitationFarmAddresses.Select(a => new Address(a)).ToImmutableHashSet(),
                 settings.InvitationAtScaleInvitationModuleAddresses.Select(a => new Address(a)).ToImmutableHashSet(),
@@ -201,6 +203,14 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * port: " + connectionStringBuilder.Port);
         pluginLogger.Info(" * user: " + connectionStringBuilder.Username);
         pluginLogger.Info(" * write mode: " + settings.WriteMode);
+        if (settings.ReindexFromBlock.HasValue)
+            pluginLogger.Warn(" * REINDEX_FROM_BLOCK: " + settings.ReindexFromBlock.Value);
+        if (settings.ReindexTables.Length > 0)
+            pluginLogger.Warn(" * REINDEX_TABLES: " + string.Join(", ", settings.ReindexTables));
+        if (settings.ReindexAllTables)
+            pluginLogger.Warn(" * REINDEX_ALL_TABLES: true");
+        if (settings.ReindexAllowPartialDependencies)
+            pluginLogger.Warn(" * REINDEX_ALLOW_PARTIAL_DEPENDENCIES: true");
 
         if (settings.IndexReadonlyDbConnectionString != null)
         {
@@ -230,6 +240,7 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Invitation-at-scale referrals modules: " + string.Join(", ", settings.InvitationAtScaleReferralsModuleAddresses));
         pluginLogger.Info(" * V2 Invitation-at-scale quota grant modules: " + string.Join(", ", settings.InvitationAtScaleQuotaGrantModuleAddresses));
         pluginLogger.Info(" * V2 Base Group Router: " + settings.BaseGroupRouter);
+        pluginLogger.Info(" * V2 Score Group Mint Policies: " + string.Join(", ", settings.ScoreGroupMintPolicies));
         pluginLogger.Info(" * V2 Invitation Farms: " + string.Join(", ", settings.InvitationAtScaleInvitationFarmAddresses));
         pluginLogger.Info(" * V2 Invitation Modules: " + string.Join(", ", settings.InvitationAtScaleInvitationModuleAddresses));
         pluginLogger.Info(" * V2 Referrals Modules: " + string.Join(", ", settings.InvitationAtScaleReferralsModuleAddresses));

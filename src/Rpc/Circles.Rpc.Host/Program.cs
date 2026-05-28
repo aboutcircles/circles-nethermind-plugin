@@ -695,6 +695,7 @@ static async Task<object> DispatchSingleRequest(
             "circles_getTransferData" => await ReflectionHandler(request, rpcModule),
             "circles_getTokenHolders" => await ReflectionHandler(request, rpcModule),
             "circlesV2_findPath" => await HandleV2FindPath(request, rpcModule),
+            "circles_getScoreGroupMintLimits" => await ReflectionHandler(request, rpcModule),
             // System & Query Methods
             "circles_getBlockByTimestamp" => await HandleGetBlockByTimestamp(request, rpcModule),
             "circles_events" => await HandleEventsLegacy(request, rpcModule),

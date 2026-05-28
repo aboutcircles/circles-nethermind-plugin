@@ -18,14 +18,18 @@
     <ItemGroup>
         <PackageReference Include="Google.OrTools" Version="9.15.6755" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
-        <PackageReference Include="Npgsql" Version="9.0.3" />
+        <PackageReference Include="Npgsql" Version="10.0.1" />
     </ItemGroup>
 
     <ItemGroup>
         <None Remove="Data\Queries\balanceQuery.sql" />
         <None Remove="Data\Queries\trustQuery.sql" />
         <None Remove="Data\Queries\groupQuery.sql" />
+        <None Remove="Data\Queries\groupQuery.fallback.sql" />
         <None Remove="Data\Queries\groupTrustQuery.sql" />
+        <None Remove="Data\Queries\groupTrustQuery.fallback.sql" />
+        <None Remove="Data\Queries\groupRouterQuery.sql" />
+        <None Remove="Data\Queries\scoreRoutersQuery.sql" />
         <None Remove="Data\Queries\consentedFlowQuery.sql" />
         <None Remove="Data\Queries\balanceFullStateQuery.sql" />
         <None Remove="Data\Queries\trustFullStateQuery.sql" />
@@ -43,7 +47,11 @@
         <EmbeddedResource Include="Data\Queries\balanceQuery.sql" />
         <EmbeddedResource Include="Data\Queries\trustQuery.sql" />
         <EmbeddedResource Include="Data\Queries\groupQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\groupQuery.fallback.sql" />
         <EmbeddedResource Include="Data\Queries\groupTrustQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\groupTrustQuery.fallback.sql" />
+        <EmbeddedResource Include="Data\Queries\groupRouterQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\scoreRoutersQuery.sql" />
         <EmbeddedResource Include="Data\Queries\consentedFlowQuery.sql" />
         <EmbeddedResource Include="Data\Queries\balanceFullStateQuery.sql" />
         <EmbeddedResource Include="Data\Queries\trustFullStateQuery.sql" />
@@ -62,7 +70,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
-        <PackageReference Include="Nethermind.Numerics.Int256" Version="1.3.6" />
+        <PackageReference Include="Nethermind.Numerics.Int256" Version="1.5.0" />
     </ItemGroup>
 
 </Project>

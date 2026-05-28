@@ -51,7 +51,8 @@ public static class SnapshotBuilder
 
         var wrappers = mock.LoadWrapperMappings().Select(w => new PathfinderGraphWrapperMappingRow(
             WrapperAddress: w.WrapperAddress,
-            UnderlyingAvatar: w.UnderlyingAvatar
+            UnderlyingAvatar: w.UnderlyingAvatar,
+            CirclesType: w.CirclesType
         )).ToList();
 
         return new PathfinderGraphSnapshot(

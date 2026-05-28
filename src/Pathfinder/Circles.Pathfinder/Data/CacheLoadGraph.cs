@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Numerics;
+using Circles.Common;
 
 namespace Circles.Pathfinder.Data;
 
@@ -89,6 +90,41 @@ public sealed class CacheLoadGraph : ILoadGraph
             yield return (row.GroupAddress.ToLowerInvariant(), row.TrustedToken.ToLowerInvariant());
     }
 
+    public IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters()
+    {
+        var rows = _snapshot.GroupRouters ?? [];
+        foreach (var row in rows)
+            yield return (row.GroupAddress.ToLowerInvariant(), row.RouterAddress.ToLowerInvariant());
+    }
+
+    public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits()
+    {
+        var rows = _snapshot.ScoreGroupMintLimits ?? [];
+        foreach (var row in rows)
+            yield return (row.GroupAddress.ToLowerInvariant(), row.CollateralToken.ToLowerInvariant(), row.AvailableLimit);
+    }
+
+    public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
+    {
+        var rows = _snapshot.OperatorApprovals ?? [];
+        if (rows.Count == 0)
+            yield break;
+        var filter = new HashSet<string>(accounts.Select(a => a.ToLowerInvariant()));
+        foreach (var row in rows)
+        {
+            var account = row.Account.ToLowerInvariant();
+            if (filter.Contains(account))
+                yield return (account, row.Operator.ToLowerInvariant());
+        }
+    }
+
+    public IEnumerable<string> LoadScoreRouters()
+    {
+        var rows = _snapshot.ScoreRouters ?? [];
+        foreach (var row in rows)
+            yield return row.ToLowerInvariant();
+    }
+
     public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
     {
         var rows = _snapshot.ConsentedFlow ?? [];
@@ -103,10 +139,10 @@ public sealed class CacheLoadGraph : ILoadGraph
             yield return row.ToLowerInvariant();
     }
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
     {
         var rows = _snapshot.WrapperMappings ?? [];
         foreach (var row in rows)
-            yield return (row.WrapperAddress.ToLowerInvariant(), row.UnderlyingAvatar.ToLowerInvariant());
+            yield return (row.WrapperAddress.ToLowerInvariant(), row.UnderlyingAvatar.ToLowerInvariant(), row.CirclesType);
     }
 }

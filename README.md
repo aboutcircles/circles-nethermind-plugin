@@ -14,6 +14,8 @@ If you're developing the plugin, building packages, or running services locally,
 - **[Rpc](src/Rpc/Circles.Rpc.Host/README.md)** - Rpc service
 - **[Cache](src/Cache/README.md)** - Cache service
 - **[Metrics Exporter](src/Metrics/Circles.Metrics.Exporter/README.md)** - Prometheus metrics exporter
+- **[Score-group mint along path](docs/score-group-mint-along-path.md)** - Score-group routing, cache graph fields, and mint-limit capacity
+- **[Reindexing Guide](docs/partial-table-reindexing.md)** - Full and selected-table reindex/backfill procedures
 
 Quick commands for developers:
 

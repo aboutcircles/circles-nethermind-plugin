@@ -1,3 +1,4 @@
+using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
@@ -15,6 +16,7 @@ public class GraphFactoryTests
 {
     // Valid 42-char hex addresses (0x + 40 hex) — required for IsValidEthereumAddress checks
     private static readonly string RouterAddr = "0xf1ff000000000000000000000000000000000001";
+    private static readonly string ScoreRouterAddr = "0xf1ff000000000000000000000000000000000009";
     private static readonly string Alice = "0xf1aa000000000000000000000000000000000002";
     private static readonly string Bob = "0xf1bb000000000000000000000000000000000003";
     // Carol available for future multi-hop tests
@@ -497,6 +499,200 @@ public class GraphFactoryTests
     }
 
     [Test]
+    public void SelfMintViaPath_GroupTokenWithNoSupply_VirtualSinkSurvivesViaGroupEdge()
+    {
+        // Regression for self-mint via path returning maxFlow=0 against prod
+        // ScoreGroup 0x7CadB2E9… (2026-05-19). Reproduces shape: source==sink,
+        // toTokens=[group whose CRC nobody holds yet]. Pre-fix the virtualSink
+        // had zero inbound edges (TokenPool(groupToken) doesn't exist pre-mint)
+        // and got pruned, yielding maxFlow=0 for legitimate self-mint paths.
+        // Fix: Group → virtualSink fallback when pool is absent and t is a group.
+        var mock = new MockLoadGraph
+        {
+            Groups = new List<string> { GroupG },
+            // GroupG trusts TokenA as collateral
+            GroupTrusts = new List<(string, string)> { (GroupG, TokenA) }
+        };
+        var factory = MakeFactory(mock);
+
+        // Alice holds TokenA (collateral). Nobody holds GroupG's CRC yet.
+        var balance = MakeBalanceGraph((Alice, TokenA, 1000));
+        // Alice trusts both TokenA (for her own holdings) and GroupG (to receive
+        // the group's CRC after mint).
+        var trust = MakeTrust((Alice, TokenA), (Alice, GroupG));
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { GroupG }
+        };
+
+        var cg = factory.CreateCapacityGraph(balance, trust, request);
+
+        Assert.That(cg.VirtualSinkAddress, Is.Not.Null,
+            "Virtual sink must survive — Group → virtualSink edge should be added " +
+            "even when TokenPool(groupToken) is absent (no existing supply).");
+
+        int groupId = AddressIdPool.IdOf(GroupG);
+        int virtualSinkId = cg.VirtualSinkAddress!.Value;
+        var groupToVirtualSink = cg.Edges
+            .Where(e => e.From == groupId && e.To == virtualSinkId && e.Token == groupId)
+            .ToList();
+        Assert.That(groupToVirtualSink.Count, Is.EqualTo(1),
+            "Exactly one Group → virtualSink edge should exist for the group token.");
+        Assert.That(groupToVirtualSink[0].InitialCapacity, Is.EqualTo(long.MaxValue),
+            "Group → virtualSink capacity is uncapped; mint cap is enforced upstream " +
+            "by the pool_collateral → group edge.");
+    }
+
+    [Test]
+    public void SelfMintViaPath_GroupTokenWithExistingSupply_UsesPoolEdge()
+    {
+        // Counterpart to the above: when TokenPool(groupToken) DOES exist (some
+        // avatar holds the group's CRC), the existing pool → virtualSink path
+        // must still be used. The Group → virtualSink fallback must not fire.
+        var mock = new MockLoadGraph
+        {
+            Groups = new List<string> { GroupG },
+            GroupTrusts = new List<(string, string)> { (GroupG, TokenA) }
+        };
+        var factory = MakeFactory(mock);
+
+        // Bob already holds GroupG's CRC, so TokenPool(GroupG) will be created.
+        var balance = MakeBalanceGraph((Alice, TokenA, 1000), (Bob, GroupG, 500));
+        var trust = MakeTrust((Alice, TokenA), (Alice, GroupG), (Bob, GroupG));
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { GroupG }
+        };
+
+        var cg = factory.CreateCapacityGraph(balance, trust, request);
+
+        int groupId = AddressIdPool.IdOf(GroupG);
+        int virtualSinkId = cg.VirtualSinkAddress!.Value;
+
+        // Group → virtualSink fallback edge should NOT exist when pool path is viable.
+        var fallbackEdges = cg.Edges
+            .Where(e => e.From == groupId && e.To == virtualSinkId)
+            .ToList();
+        Assert.That(fallbackEdges.Count, Is.EqualTo(0),
+            "Group → virtualSink fallback must not fire when TokenPool(groupToken) exists.");
+    }
+
+    [Test]
+    public void SelfMintViaPath_FallbackActive_MintCapBindsThroughCollateralEdge()
+    {
+        // Review-gated regression: when the Group → virtualSink fallback fires
+        // (group token has no pool pre-mint), the mint cap must still bind the
+        // flow through the upstream pool_collateral → group edge. Verifies the
+        // fallback's `long.MaxValue` capacity is not the effective bottleneck.
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        // Alice trusts GroupG so it survives the sink-side toTokens filter and
+        // ends up in virtualSinkTrustedTokens.
+        mock.AddTrust(Alice, GroupG);
+        mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
+        mock.AddOperatorApproval(ScoreRouterAddr, Alice);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { GroupG }
+        };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        int groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        int poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        // Cap edge binds at the cached limit (25_000_000 from AddScoreGroupMintLimit).
+        var capEdge = cg.Edges.Single(e => e.From == poolId && e.To == groupId && e.Token == tokenAId);
+        Assert.That(capEdge.InitialCapacity, Is.EqualTo(25_000_000),
+            "pool_collateral → group capacity must equal ScoreGroupMintLimits cap.");
+
+        // Fallback edge exists and is uncapped (cap is enforced by the upstream collateral edge).
+        Assert.That(cg.VirtualSinkAddress, Is.Not.Null);
+        int virtualSinkId = cg.VirtualSinkAddress!.Value;
+        var fallbackEdge = cg.Edges.Single(e => e.From == groupId && e.To == virtualSinkId && e.Token == groupId);
+        Assert.That(fallbackEdge.InitialCapacity, Is.EqualTo(long.MaxValue),
+            "Group → virtualSink fallback edge is intentionally uncapped; cap is enforced by the upstream collateral edge.");
+    }
+
+    [Test]
+    public void SelfMintViaPath_FallbackActive_UnapprovedOperator_HasNoCollateralEdge()
+    {
+        // Review-gated regression: when source is NOT an approved operator of
+        // a score router, the per-request build filters out the
+        // pool_collateral → group edge. The fallback edge Group → virtualSink
+        // may still get created (it only checks pool absence + IsGroup), but
+        // the group node has no inbound edges, so max-flow returns 0.
+        // This proves the fallback does not enable false positives.
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddTrust(Alice, GroupG);
+        mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
+        // INTENTIONALLY OMIT mock.AddOperatorApproval(ScoreRouterAddr, Alice);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { GroupG }
+        };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        int groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        int poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        // pool_collateral → group edge must be filtered out when operator is unapproved.
+        var collateralEdges = cg.Edges
+            .Where(e => e.From == poolId && e.To == groupId && e.Token == tokenAId)
+            .ToList();
+        Assert.That(collateralEdges.Count, Is.EqualTo(0),
+            "pool_collateral → group must NOT be added when source is not an approved operator of the score router.");
+
+        // Group has zero inbound edges → no path source → group → virtualSink exists.
+        // Fallback edge (group → virtualSink) might be added, but it's unreachable.
+        var groupInbound = cg.Edges.Where(e => e.To == groupId).ToList();
+        Assert.That(groupInbound.Count, Is.EqualTo(0),
+            "Group node must have no inbound edges when source is unapproved — proves no false positive even if Group → virtualSink exists.");
+    }
+
+    [Test]
     public void GroupTrustedToken_IsAvatarNode_EvenWithNoUserTrust_DbPath()
     {
         // Token T is ONLY reachable via group trust (G trusts T).
@@ -810,6 +1006,325 @@ public class GraphFactoryTests
         int tokenBId = AddressIdPool.IdOf(TokenB.ToLowerInvariant());
         Assert.That(cg.AvatarNodes.ContainsKey(tokenBId), Is.True,
             "Group-trusted token should be registered as avatar node (DB path)");
+    }
+
+    [Test]
+    public void GraphFactory_GroupSpecificRouterTrust_AllowsScoreGroupCollateral()
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var cg = factory.CreateCapacityGraph(bg, trustLookup);
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var scoreRouterId = AddressIdPool.IdOf(ScoreRouterAddr.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.RouterForGroup(groupId), Is.EqualTo(scoreRouterId));
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.True,
+            "Score group collateral should be gated by the score router trust, not the base router trust.");
+    }
+
+    [Test]
+    public void GraphFactory_ScoreGroupMintLimit_CapsCollateralEdge()
+    {
+        // Score-group collateral edges are source-dependent (gated by Hub.isApprovedForAll
+        // on the score router); they are reconstructed per-request from the filtered path,
+        // not from the base snapshot. The test exercises the production path with Alice
+        // as an approved operator of the score router.
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
+        mock.AddOperatorApproval(ScoreRouterAddr, Alice);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob });
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        var edge = cg.Edges.Single(e => e.From == poolId && e.To == groupId && e.Token == tokenAId);
+        Assert.That(edge.InitialCapacity, Is.EqualTo(25_000_000));
+    }
+
+    private static HelperMock BuildScoreGroupMock(bool approveAlice)
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddScoreGroupMintLimit(GroupG, TokenA, "25000000000000000000");
+        if (approveAlice)
+            mock.AddOperatorApproval(ScoreRouterAddr, Alice);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+        return mock;
+    }
+
+    /// <summary>
+    /// Base snapshot is source-agnostic; score-router collateral edges are inherently
+    /// source-dependent (gated by Hub.isApprovedForAll on the router). Including them in
+    /// the shared snapshot causes pathfinder to emit reverting paths when the snapshot is
+    /// served directly to a request with a source. Strip them unconditionally.
+    /// </summary>
+    [Test]
+    public void GraphFactory_BaseSnapshot_StripsScoreRouterEdges_WhenSourceUnknown()
+    {
+        var mock = BuildScoreGroupMock(approveAlice: true);
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var cg = factory.CreateBaseCapacityGraph(bg, trustLookup);
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.False,
+            "Score-group collateral edges must not appear in the source-agnostic base snapshot.");
+    }
+
+    /// <summary>
+    /// Filtered request with a source that the score router has NOT approved must drop the
+    /// score-group collateral edge — emitting it would produce a path that reverts at
+    /// Hub.operateFlowMatrix's isApprovedForAll check.
+    /// </summary>
+    [Test]
+    public void GraphFactory_FilteredRequest_StripsScoreRouterEdges_ForUnapprovedSource()
+    {
+        var mock = BuildScoreGroupMock(approveAlice: false);
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob });
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.False,
+            "Unapproved source must not see score-group collateral edges.");
+    }
+
+    /// <summary>
+    /// C1 regression: when CachedGroupData carries a non-null OperatorApprovals dict, the
+    /// cached-rehydration path in LoadGroupsAndTrackRouter must hydrate the per-request
+    /// graph's OperatorApprovals so the score-router gate at AddTokenPoolOutEdges sees the
+    /// approval. Failure mode if the cache plumbing breaks: filtered requests fail-CLOSED
+    /// → maxFlow=0 for approved users.
+    /// </summary>
+    [Test]
+    public void GraphFactory_CachedGroupData_OperatorApprovals_Hydrated_PreservesApprovedRouterEdges()
+    {
+        var mock = BuildScoreGroupMock(approveAlice: true);
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+        int tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        int groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        int routerId = AddressIdPool.IdOf(ScoreRouterAddr.ToLowerInvariant());
+        int poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        var cached = new CachedGroupData(
+            GroupNodes: new HashSet<int> { groupId },
+            OrganizationNodes: new HashSet<int>(),
+            GroupTrustedTokens: new Dictionary<int, HashSet<int>> { [groupId] = new() { tokenAId } },
+            ConsentedAvatars: new HashSet<int>(),
+            RegisteredAvatarIds: new HashSet<int> { aliceId, tokenAId, groupId },
+            WrapperToAvatar: new Dictionary<int, int>(),
+            GroupRouters: new Dictionary<int, int> { [groupId] = routerId },
+            ScoreGroupMintLimits: new Dictionary<(int, int), long> { [(groupId, tokenAId)] = 25_000_000L },
+            OperatorApprovals: new Dictionary<int, HashSet<int>> { [routerId] = new() { aliceId } },
+            ScoreRouterIds: new HashSet<int> { routerId });
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob }, cached);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.True,
+            "Cached OperatorApprovals must hydrate the per-request graph so approved sources retain the score-router edge.");
+    }
+
+    /// <summary>
+    /// C1 regression: when CachedGroupData.OperatorApprovals is null (the pre-fix bug shape
+    /// at NetworkStateUpdaterService.cs lines 221/471/702), the cached path returns early
+    /// without loading approvals from DB. Approved users then lose their score-router edges
+    /// → maxFlow=0. This test pins the failure mode so it can't silently regress.
+    /// </summary>
+    [Test]
+    public void GraphFactory_CachedGroupData_NullOperatorApprovals_DropsApprovedRouterEdges_C1Regression()
+    {
+        var mock = BuildScoreGroupMock(approveAlice: true);
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+        int tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        int groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        int routerId = AddressIdPool.IdOf(ScoreRouterAddr.ToLowerInvariant());
+        int poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        var cached = new CachedGroupData(
+            GroupNodes: new HashSet<int> { groupId },
+            OrganizationNodes: new HashSet<int>(),
+            GroupTrustedTokens: new Dictionary<int, HashSet<int>> { [groupId] = new() { tokenAId } },
+            ConsentedAvatars: new HashSet<int>(),
+            RegisteredAvatarIds: new HashSet<int> { aliceId, tokenAId, groupId },
+            WrapperToAvatar: new Dictionary<int, int>(),
+            GroupRouters: new Dictionary<int, int> { [groupId] = routerId },
+            ScoreGroupMintLimits: new Dictionary<(int, int), long> { [(groupId, tokenAId)] = 25_000_000L },
+            OperatorApprovals: null,
+            ScoreRouterIds: new HashSet<int> { routerId });
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob }, cached);
+
+        Assert.That(cg.OperatorApprovals.Count, Is.EqualTo(0),
+            "Null OperatorApprovals in cache leaves the per-request graph empty — production must populate the field at NetworkStateUpdaterService.cs lines 221/471/702.");
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.False,
+            "With null cached approvals, even approved users lose score-router edges (C1 fail-CLOSED).");
+    }
+
+    /// <summary>
+    /// C2 regression: freshly-initialized score groups have an indexed GroupInitialized
+    /// event (and therefore a pathMintRouter) BEFORE any mint-limit row or operator
+    /// approval exists. The router must already be recognized as a score router so the
+    /// gate fires fail-CLOSED on unapproved sources; otherwise the user attempts a mint
+    /// path the contract immediately reverts.
+    /// </summary>
+    [Test]
+    public void GraphFactory_FreshlyInitializedScoreGroup_NoMintLimitYet_GateFiresClosed()
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        // intentionally NO AddScoreGroupMintLimit, NO AddOperatorApproval — mirrors
+        // the post-initialize / pre-first-mint window the C2 fix targets.
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob });
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.False,
+            "Freshly-initialized score router must be recognized (via ScoreRouterIds) and the gate must fail-CLOSED when no approval is present.");
+    }
+
+    /// <summary>
+    /// C2: a group with a custom router that is NOT a score-group router (no entry in
+    /// GroupInitialized) keeps its collateral edge — the operator-approval gate doesn't
+    /// apply. Pins the boundary between score and non-score groups.
+    /// </summary>
+    [Test]
+    public void GraphFactory_NonScoreGroupWithCustomRouter_EdgeKept()
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        // No AddScoreRouter: this router is not in CrcV2_ScoreGroup_GroupInitialized.
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup,
+            new FlowRequest { Source = Alice, Sink = Bob });
+
+        var tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        var groupId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var poolId = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolId && e.To == groupId && e.Token == tokenAId), Is.True,
+            "Non-score groups must not be subject to the score-router operator-approval gate.");
+    }
+
+    [Test]
+    public void GraphFactory_GroupRouterRows_DoNotAddUnsupportedGroups()
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenA);
+        mock.AddGroupRouter(GroupG, ScoreRouterAddr);
+        mock.AddGroupRouter(GroupH, ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var cg = factory.CreateCapacityGraph(bg, trustLookup);
+
+        var groupGId = AddressIdPool.IdOf(GroupG.ToLowerInvariant());
+        var groupHId = AddressIdPool.IdOf(GroupH.ToLowerInvariant());
+
+        Assert.That(cg.GroupRouters.ContainsKey(groupGId), Is.True);
+        Assert.That(cg.GroupRouters.ContainsKey(groupHId), Is.False,
+            "A router row must not create a group that was filtered out by LoadGroups.");
+        Assert.That(cg.GroupNodes.Contains(groupHId), Is.False);
     }
 
     #endregion
@@ -1265,8 +1780,8 @@ public class GraphFactoryTests
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts() => GroupTrusts;
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
         public IEnumerable<string> LoadRegisteredAvatars() => RegisteredAvatars;
-        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
-            => Array.Empty<(string, string)>();
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
+            => Array.Empty<(string, string, CirclesType)>();
     }
 
     #endregion
@@ -1360,6 +1875,240 @@ public class GraphFactoryTests
         int unregId = AddressIdPool.IdOf(UnregisteredToken);
         Assert.That(cg.AvatarNodes.ContainsKey(unregId), Is.False,
             "Unregistered token must NOT appear in filtered capacity graph");
+    }
+
+    #endregion
+
+    #region ScoreGroup wrapped-only guards
+
+    // ScoreGroup CRC is wrapped-only by design: the unwrapped ERC1155 may appear
+    // ONLY on the terminal Group→sink mint edge (recipient wraps off-graph). It
+    // must never be delivered to a non-sink intermediary, never sit as a holder
+    // balance, and never be forwarded transitively. A group is a "score group"
+    // iff its router is in ScoreRouterIds (canonical, immutable post-init).
+
+    private static readonly string ScoreGroupSg = "0xf15c000000000000000000000000000000000021";
+    private static readonly string Carol = "0xf1cc000000000000000000000000000000000004";
+
+    /// <summary>Builds a HelperMock whose GroupSg is a score group collateralised by TokenA.</summary>
+    private static HelperMock MakeScoreGroupMock()
+    {
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(Bob);
+        mock.AddRegisteredAvatar(Carol);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddRegisteredAvatar(ScoreGroupSg);
+        mock.AddGroup(ScoreGroupSg);
+        mock.AddGroupTrust(ScoreGroupSg, TokenA);
+        mock.AddGroupRouter(ScoreGroupSg, ScoreRouterAddr);
+        mock.AddScoreRouter(ScoreRouterAddr);
+        mock.AddTrust(ScoreRouterAddr, TokenA);
+        mock.AddScoreGroupMintLimit(ScoreGroupSg, TokenA, "25000000000000000000");
+        mock.AddOperatorApproval(ScoreRouterAddr, Alice);
+        return mock;
+    }
+
+    [Test]
+    public void ScoreGroupCrc_MintedOnlyToSink_NotToNonSinkTruster()
+    {
+        // Alice (collateral holder) → Bob (sink). Bob and Carol both trust the
+        // score group's CRC, but only the sink may receive the freshly minted
+        // unwrapped ERC1155 — Carol (a non-sink intermediary) must not.
+        var mock = MakeScoreGroupMock();
+        mock.AddTrust(Bob, ScoreGroupSg);
+        mock.AddTrust(Carol, ScoreGroupSg);
+        mock.AddBalance(AddressIdPool.IdOf(Alice), AddressIdPool.IdOf(TokenA), 100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Bob,
+            ToTokens = new List<string> { ScoreGroupSg }
+        };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int sgId = AddressIdPool.IdOf(ScoreGroupSg);
+        int bobId = AddressIdPool.IdOf(Bob);
+        int carolId = AddressIdPool.IdOf(Carol);
+
+        Assert.That(cg.IsScoreGroup(sgId), Is.True,
+            "GroupSg's router is a score router → it must be recognised as a score group.");
+
+        var toSink = cg.Edges.Where(e => e.From == sgId && e.To == bobId && e.Token == sgId).ToList();
+        Assert.That(toSink.Count, Is.EqualTo(1),
+            "The terminal Group→sink mint edge for the score-group CRC must exist.");
+
+        var toCarol = cg.Edges.Where(e => e.From == sgId && e.To == carolId && e.Token == sgId).ToList();
+        Assert.That(toCarol.Count, Is.EqualTo(0),
+            "Score-group CRC must NOT be minted to a non-sink intermediary.");
+    }
+
+    [Test]
+    public void RegularGroupCrc_StillMintedToNonSinkTruster_NegativeControl()
+    {
+        // Identical topology but GroupG is a REGULAR group (no score router).
+        // The guard must not affect it: Group→Carol (non-sink) still exists.
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(Bob);
+        mock.AddRegisteredAvatar(Carol);
+        mock.AddRegisteredAvatar(TokenA);
+        mock.AddRegisteredAvatar(GroupG);
+        mock.AddGroup(GroupG);
+        mock.AddTrust(Bob, GroupG);
+        mock.AddTrust(Carol, GroupG);
+        mock.AddBalance(AddressIdPool.IdOf(Alice), AddressIdPool.IdOf(TokenA), 100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+        var request = new FlowRequest { Source = Alice, Sink = Bob };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int groupId = AddressIdPool.IdOf(GroupG);
+        int carolId = AddressIdPool.IdOf(Carol);
+
+        Assert.That(cg.IsScoreGroup(groupId), Is.False,
+            "A group with no score router must not be treated as a score group.");
+        var toCarol = cg.Edges.Where(e => e.From == groupId && e.To == carolId && e.Token == groupId).ToList();
+        Assert.That(toCarol.Count, Is.EqualTo(1),
+            "Regular group CRC remains transitively mintable to non-sink trusters (unchanged behaviour).");
+    }
+
+    [Test]
+    public void ScoreGroupCrc_HolderBalance_NotRoutable()
+    {
+        // Bob already holds the score group's unwrapped CRC. It must not become
+        // routing liquidity: no Holder→TokenPool edge, no pool node at all.
+        var mock = MakeScoreGroupMock();
+        mock.AddBalance(AddressIdPool.IdOf(Bob), AddressIdPool.IdOf(ScoreGroupSg), 5_000_000);
+        mock.AddBalance(AddressIdPool.IdOf(Alice), AddressIdPool.IdOf(TokenA), 100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+        var request = new FlowRequest { Source = Alice, Sink = Carol };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int sgId = AddressIdPool.IdOf(ScoreGroupSg);
+        int bobId = AddressIdPool.IdOf(Bob);
+        int sgPool = AddressIdPool.TokenPoolIdOf(sgId);
+
+        Assert.That(cg.Nodes.ContainsKey(sgPool), Is.False,
+            "No TokenPool node may be created for an unwrapped score-group CRC balance.");
+        var holderEdges = cg.Edges.Where(e => e.From == bobId && e.Token == sgId).ToList();
+        Assert.That(holderEdges.Count, Is.EqualTo(0),
+            "A holder of unwrapped score-group CRC must have no outgoing routable edge for it.");
+    }
+
+    [Test]
+    public void RegularGroupCrc_HolderBalance_Routable_NegativeControl()
+    {
+        // Counterpart: a regular group's CRC held by Bob IS routable (pool node
+        // + holder edge present), proving the holder guard is score-group-scoped.
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(Bob);
+        mock.AddRegisteredAvatar(GroupG);
+        mock.AddGroup(GroupG);
+        mock.AddBalance(AddressIdPool.IdOf(Bob), AddressIdPool.IdOf(GroupG), 5_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+        var request = new FlowRequest { Source = Alice, Sink = Bob };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int groupId = AddressIdPool.IdOf(GroupG);
+        int bobId = AddressIdPool.IdOf(Bob);
+        int gPool = AddressIdPool.TokenPoolIdOf(groupId);
+
+        Assert.That(cg.Nodes.ContainsKey(gPool), Is.True,
+            "Regular group CRC balances still create a TokenPool node.");
+        var holderEdges = cg.Edges.Where(e => e.From == bobId && e.To == gPool && e.Token == groupId).ToList();
+        Assert.That(holderEdges.Count, Is.EqualTo(1),
+            "Regular group CRC remains routable from a holder (unchanged behaviour).");
+    }
+
+    [Test]
+    public void SelfMintViaPath_ScoreGroup_VirtualSinkFallbackSurvivesGuards()
+    {
+        // The wrapped-only guards must NOT break legitimate self-mint
+        // (source==sink, toTokens=[scoreGroup]). The Group→virtualSink fallback
+        // (PR #397) resolves to Group→sink, the one permitted terminal edge.
+        var mock = MakeScoreGroupMock();
+        mock.AddTrust(Alice, ScoreGroupSg); // recipient trusts SG so it survives the sink-side filter
+        mock.AddBalance(AddressIdPool.IdOf(Alice), AddressIdPool.IdOf(TokenA), 100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { ScoreGroupSg }
+        };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int sgId = AddressIdPool.IdOf(ScoreGroupSg);
+        int tokenAId = AddressIdPool.IdOf(TokenA);
+        int sgPool = AddressIdPool.TokenPoolIdOf(tokenAId);
+
+        Assert.That(cg.VirtualSinkAddress, Is.Not.Null,
+            "Self-mint must still produce a surviving virtual sink under the guards.");
+        int vSink = cg.VirtualSinkAddress!.Value;
+
+        var fallback = cg.Edges.Where(e => e.From == sgId && e.To == vSink && e.Token == sgId).ToList();
+        Assert.That(fallback.Count, Is.EqualTo(1),
+            "Group→virtualSink self-mint fallback must still fire for a score group.");
+
+        var capEdge = cg.Edges.Single(e => e.From == sgPool && e.To == sgId && e.Token == tokenAId);
+        Assert.That(capEdge.InitialCapacity, Is.EqualTo(25_000_000),
+            "Collateral mint inflow (pool(collateral)→group) is unaffected by the guards.");
+    }
+
+    [Test]
+    public void ScoreGroupReusingStandardRouter_DoesNotMisflagRegularGroups()
+    {
+        // Catastrophic-misfire guard: if a score group is ever initialized with
+        // the STANDARD group router as its pathMintRouter, ScoreRouterIds would
+        // contain the standard router id. Every regular group is assigned that
+        // same router, so without the RouterNode exclusion in IsScoreGroup the
+        // wrap-only guard would strip ALL regular-group routing. Verify the
+        // exclusion holds: a regular group on the standard router stays routable.
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(Bob);
+        mock.AddRegisteredAvatar(GroupG);
+        mock.AddGroup(GroupG);
+        // Regular group explicitly on the standard router (mirrors prod
+        // groupRouterQuery.sql ELSE @standardRouter behaviour).
+        mock.AddGroupRouter(GroupG, RouterAddr);
+        // Simulate the adverse on-chain fact: standard router shows up as a score
+        // router (a score group somewhere used it as pathMintRouter).
+        mock.AddScoreRouter(RouterAddr);
+        mock.AddTrust(Bob, GroupG); // Bob is a non-sink truster
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(factory.V2TrustGraph());
+        var request = new FlowRequest { Source = Alice, Sink = Carol };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int groupId = AddressIdPool.IdOf(GroupG);
+        int bobId = AddressIdPool.IdOf(Bob);
+
+        Assert.That(cg.IsScoreGroup(groupId), Is.False,
+            "A group on the standard router must NEVER be treated as a score group, " +
+            "even if the standard router id leaked into ScoreRouterIds.");
+        var toBob = cg.Edges.Where(e => e.From == groupId && e.To == bobId && e.Token == groupId).ToList();
+        Assert.That(toBob.Count, Is.EqualTo(1),
+            "Regular-group routing must survive a standard-router/score-router collision.");
     }
 
     #endregion

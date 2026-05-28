@@ -1,4 +1,5 @@
 using System.Numerics;
+using Circles.Common;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
 
@@ -359,12 +360,10 @@ public partial class CirclesRpcModule
                 if (await reader.ReadAsync())
                 {
                     var tokenOwner = reader.GetString(1);
-                    var circlesType = reader.GetInt32(2);
+                    var circlesType = (CirclesType)reader.GetInt32(2);
                     var isGroupToken = reader.GetBoolean(3);
 
-                    // Determine token type based on circlesType
-                    // circlesType = 0 for demurraged, 1 for inflationary
-                    var isInflationary = circlesType == 1;
+                    var isInflationary = circlesType == CirclesType.InflationaryCircles;
                     var tokenType = isInflationary
                         ? "CrcV2_ERC20WrapperDeployed_Inflationary"
                         : "CrcV2_ERC20WrapperDeployed_Demurraged";

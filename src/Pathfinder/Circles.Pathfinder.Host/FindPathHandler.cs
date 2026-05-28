@@ -175,8 +175,24 @@ internal sealed class FindPathHandler(
 
             if (balanceGraph is null)
             {
+                // Transient warmup (post-restart / reorg / upstream not ready), not a
+                // client error — 503 so load balancers drain & clients retry.
+                FindPathMetrics.SolverStatusTotal.WithLabels("not_ready").Inc();
                 log.LogWarning("Graphs not ready");
-                return Results.BadRequest("Graphs are not loaded yet.");
+                return Results.Text("Graphs are not loaded yet.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
+            if (!pool.HasCurrentSnapshot)
+            {
+                // Mirrors the capacity-graph leg of /ready (GraphReadinessHealthCheck
+                // also checks AccountTrusts; here we only need pool state). Without
+                // this gate, pool.Rent throws InvalidOperationException → generic
+                // catch → 500 for a recoverable warmup state.
+                FindPathMetrics.SolverStatusTotal.WithLabels("not_ready").Inc();
+                log.LogWarning("Capacity graph snapshot not ready — returning 503 (warmup)");
+                return Results.Text("Graphs are not loaded yet.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
             }
 
             using var h = await pool.Rent(request, balanceGraph, trustGraph);
@@ -196,11 +212,13 @@ internal sealed class FindPathHandler(
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
 
-                // Path audit: when HubContractValidator detected Hub.sol rule violations,
-                // the produced path would revert on-chain. Record metrics, log, then replace
-                // the broken transfers with the canonical empty response so the wallet can't
-                // submit a doomed tx. The API contract still returns MaxFlowResponse — never errors.
-                if (mfr.ValidationErrors > 0)
+                // Path audit: when HubContractValidator detected Hub.sol rule violations OR
+                // threw an unexpected exception, the produced path is unsafe (would either
+                // revert on-chain or could not be vouched for). Record metrics, log, then
+                // replace the broken transfers with the canonical empty response so the
+                // wallet can't submit a doomed tx. The API contract still returns
+                // MaxFlowResponse — never errors.
+                if (mfr.ValidationErrors > 0 || mfr.ValidatorException)
                 {
                     FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
@@ -208,12 +226,14 @@ internal sealed class FindPathHandler(
                         foreach (var rule in mfr.ValidationViolationRules)
                             FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule).Inc();
                     }
+                    if (mfr.ValidatorException)
+                        FindPathMetrics.PathAuditViolationsTotal.WithLabels("ValidatorException").Inc();
 
                     log.LogError(
-                        "Path audit: Hub.sol rule violations detected — replacing path with empty response. " +
-                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}",
+                        "Path audit: validator rejected response — replacing path with empty response. " +
+                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}, ValidatorException={ValidatorException}",
                         safeSource, safeSink, mfr.GraphBlock,
-                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
+                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors, mfr.ValidatorException);
 
                     FindPathMetrics.PathAuditBlockedTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
@@ -221,11 +241,14 @@ internal sealed class FindPathHandler(
                         foreach (var rule in mfr.ValidationViolationRules)
                             FindPathMetrics.PathAuditBlockedTotal.WithLabels(rule).Inc();
                     }
+                    if (mfr.ValidatorException)
+                        FindPathMetrics.PathAuditBlockedTotal.WithLabels("ValidatorException").Inc();
 
                     var emptyResponse = new MaxFlowResponse("0", new List<TransferPathStep>(), null)
                     {
                         ReqId = mfr.ReqId,
                         GraphBlock = mfr.GraphBlock,
+                        ConsentDroppedPaths = mfr.ConsentDroppedPaths,
                         ValidationErrors = mfr.ValidationErrors,
                         ValidationViolationRules = mfr.ValidationViolationRules,
                         ValidatorException = mfr.ValidatorException
@@ -236,10 +259,15 @@ internal sealed class FindPathHandler(
                 if (mfr.ValidatorException)
                     FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
 
-                // Simulation canary: enqueue for async eth_call validation.
-                // Skip when: simulated balances/trusts (not real state), or source is a Group/Organization
-                // (Hub.sol operateFlowMatrix requires isApprovedForAll(source, msg.sender).
-                // Groups/Orgs don't self-approve — canary would get OperatorNotApprovedForSource).
+                // Simulation canary: enqueue for async on-chain validation.
+                // Skip when:
+                //   - simulated balances/trusts (not real state),
+                //   - source is a Group/Organization (Hub.sol operateFlowMatrix requires
+                //     isApprovedForAll(source, msg.sender); Groups/Orgs don't self-approve →
+                //     false-positive OperatorNotApprovedForSource).
+                // withWrap=true is handled via eth_simulateV1 bundle inside the canary:
+                // source's Wrapper.unwrap() calls run before operateFlowMatrix in a single
+                // shared-state simulation, mirroring how the SDK builds the on-chain tx.
                 bool hasSimulated = (request.SimulatedBalances?.Count > 0)
                                     || (request.SimulatedTrusts?.Count > 0)
                                     || (request.SimulatedConsentedAvatars?.Count > 0);
@@ -252,6 +280,8 @@ internal sealed class FindPathHandler(
                                           || h.Graph.IsOrganization(sourceId);
                 }
 
+                bool withWrap = request.WithWrap ?? false;
+
                 if (simulationCanary != null
                     && mfr.Transfers.Count > 0
                     && !string.IsNullOrEmpty(request.Source)
@@ -260,6 +290,7 @@ internal sealed class FindPathHandler(
                     && !sourceUnsimulatable)
                 {
                     Dictionary<string, string>? wrapperMap = null;
+                    HashSet<string>? inflationaryWrappers = null;
                     try
                     {
                         if (h.Graph.WrapperToAvatar.Count > 0)
@@ -270,18 +301,32 @@ internal sealed class FindPathHandler(
                             {
                                 wrapperMap[AddressIdPool.StringOf(kv.Key)] = AddressIdPool.StringOf(kv.Value);
                             }
+                            // Build the inflationary-wrapper subset by resolving wrapper int IDs back
+                            // to addresses. Empty set is fine — the canary treats absence as "demurraged"
+                            // and skips the conversion step, preserving correctness for non-inflationary paths.
+                            if (h.Graph.InflationaryWrappers.Count > 0)
+                            {
+                                inflationaryWrappers = new HashSet<string>(
+                                    h.Graph.InflationaryWrappers.Count, StringComparer.OrdinalIgnoreCase);
+                                foreach (var wrapperId in h.Graph.InflationaryWrappers)
+                                    inflationaryWrappers.Add(AddressIdPool.StringOf(wrapperId));
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         log.LogError(ex, "Failed to build wrapper map for canary — skipping simulation (would produce false positives)");
                         wrapperMap = null;
+                        inflationaryWrappers = null;
                     }
 
                     if (wrapperMap == null && h.Graph.WrapperToAvatar.Count > 0)
                     {
                         // Wrapper resolution failed — simulation without it would produce
-                        // false-positive AvatarMustBeRegistered reverts. Skip entirely.
+                        // false-positive AvatarMustBeRegistered reverts (and would skip the
+                        // unwrap prefix for withWrap=true). Skip entirely and record the
+                        // reason so operators can spot map-build failures in metrics.
+                        SimulationCanaryService.RecordSkipped("wrapper_map_unavailable");
                     }
                     else
                     {
@@ -291,7 +336,9 @@ internal sealed class FindPathHandler(
                             Sink: request.Sink,
                             GraphBlock: mfr.GraphBlock,
                             Transfers: new List<TransferPathStep>(mfr.Transfers),
-                            WrapperToAvatar: wrapperMap));
+                            WrapperToAvatar: wrapperMap,
+                            WithWrap: withWrap,
+                            InflationaryWrappers: inflationaryWrappers));
                     }
                 }
 
@@ -336,6 +383,22 @@ internal sealed class FindPathHandler(
                 graphBlock, sw.ElapsedMilliseconds, 400,
                 request.WithWrap ?? false, request.QuantizedMode ?? false, "bad_request");
             return Results.BadRequest(ex.Message);
+        }
+        catch (GraphNotReadyException ex)
+        {
+            // Backstops the check-then-Rent TOCTOU window after the
+            // HasCurrentSnapshot gate above. Scoped to the dedicated
+            // GraphNotReadyException so genuine InvalidOperationExceptions from
+            // the solver still surface as 500 via the generic catch below.
+            FindPathMetrics.SolverStatusTotal.WithLabels("not_ready").Inc();
+            log.LogWarning(ex,
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                graphBlock, sw.ElapsedMilliseconds, 503,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "not_ready");
+            return Results.Text("Graphs are not loaded yet.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -408,8 +471,9 @@ internal sealed class FindPathHandler(
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
 
-                // Track Hub.sol rule violations (same as live path) — and replace with empty.
-                if (mfr.ValidationErrors > 0)
+                // Track Hub.sol rule violations or validator exceptions (same as live path)
+                // — and replace with empty.
+                if (mfr.ValidationErrors > 0 || mfr.ValidatorException)
                 {
                     FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
@@ -417,12 +481,14 @@ internal sealed class FindPathHandler(
                         foreach (var rule in mfr.ValidationViolationRules)
                             FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule).Inc();
                     }
+                    if (mfr.ValidatorException)
+                        FindPathMetrics.PathAuditViolationsTotal.WithLabels("ValidatorException").Inc();
 
                     log.LogError(
-                        "Historical path audit: Hub.sol rule violations — replacing path with empty response. " +
-                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}",
+                        "Historical path audit: validator rejected response — replacing path with empty response. " +
+                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}, ValidatorException={ValidatorException}",
                         safeSource, safeSink, blockNumber,
-                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
+                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors, mfr.ValidatorException);
 
                     FindPathMetrics.PathAuditBlockedTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
@@ -430,11 +496,14 @@ internal sealed class FindPathHandler(
                         foreach (var rule in mfr.ValidationViolationRules)
                             FindPathMetrics.PathAuditBlockedTotal.WithLabels(rule).Inc();
                     }
+                    if (mfr.ValidatorException)
+                        FindPathMetrics.PathAuditBlockedTotal.WithLabels("ValidatorException").Inc();
 
                     var emptyResponse = new MaxFlowResponse("0", new List<TransferPathStep>(), null)
                     {
                         ReqId = mfr.ReqId,
                         GraphBlock = mfr.GraphBlock,
+                        ConsentDroppedPaths = mfr.ConsentDroppedPaths,
                         ValidationErrors = mfr.ValidationErrors,
                         ValidationViolationRules = mfr.ValidationViolationRules,
                         ValidatorException = mfr.ValidatorException
@@ -442,6 +511,12 @@ internal sealed class FindPathHandler(
                     result = emptyResponse;
                     mfr = emptyResponse;
                 }
+
+                // Track validator exceptions on the historical path the same way the
+                // live path does — otherwise validator bugs disappear from telemetry
+                // whenever a request uses X-Max-Block-Number.
+                if (mfr.ValidatorException)
+                    FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
 
                 log.LogInformation(
                     "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",

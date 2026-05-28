@@ -107,11 +107,14 @@ If interrupted, run the same command again to resume from the last completed bat
 
 ## Option B: Full Reindex via `REINDEX_FROM_BLOCK`
 
-For major changes affecting many tables, set an environment variable and restart. The plugin handles everything automatically.
+For major changes affecting many tables, set the reindex block plus an explicit
+full-reindex confirmation flag and restart. The plugin handles the deletion and
+resync automatically.
 
 ### How It Works
 
-1. On startup, the StateMachine checks for `REINDEX_FROM_BLOCK` env var
+1. On startup, the StateMachine checks for `REINDEX_FROM_BLOCK` and
+   `REINDEX_ALL_TABLES=true`
 2. Executes `DELETE FROM table WHERE blockNumber >= X` on **ALL event tables**
 3. Sets internal `_reindexCleanupDone` flag (prevents re-deletion on retry/error)
 4. Reinitializes all caches from the cleaned database
@@ -140,6 +143,7 @@ source .env
 # For payment gateway: use 43610000 (before first gateway at 43,610,829)
 # For full V2 reindex: use 36501311 (V2 launch block)
 echo "REINDEX_FROM_BLOCK=43610000" >> .env
+echo "REINDEX_ALL_TABLES=true" >> .env
 
 # 5. Start the indexer - it will:
 #    - Delete ALL tables from block 43,610,000 onwards
@@ -152,12 +156,12 @@ echo "REINDEX_FROM_BLOCK=43610000" >> .env
 
 # 7. IMPORTANT: After reindex completes, REMOVE the env var!
 #    Otherwise it will re-delete data on next restart.
-# Edit .env and remove the REINDEX_FROM_BLOCK line
+# Edit .env and remove the REINDEX_FROM_BLOCK and REINDEX_ALL_TABLES lines
 ```
 
 ### What Gets Deleted
 
-When `REINDEX_FROM_BLOCK=43610000` is set:
+When `REINDEX_FROM_BLOCK=43610000` and `REINDEX_ALL_TABLES=true` are set:
 
 | Affected         | Action                                 |
 | ---------------- | -------------------------------------- |
@@ -178,6 +182,94 @@ Deleted 1234 rows from CrcV2_PaymentGateway_GatewayCreated
 ...
 [REINDEX] Data deletion complete. Will resync from specified block.
 ```
+
+## Option C: Selected Table Reindex via `REINDEX_TABLES`
+
+Use `REINDEX_TABLES` when new event tables were added and those tables can be
+backfilled independently from existing tables.
+
+```bash
+REINDEX_FROM_BLOCK=38900000
+REINDEX_TABLES=CrcV2_ScoreGroup_GroupInitialized,CrcV2_ScoreGroup_MerkleRootUpdated,CrcV2_ScoreGroup_HistoricalSupply,CrcV2_ScoreGroup_PersonalMinted,CrcV2_ScoreGroup_RouterMinted
+```
+
+### How It Works
+
+1. On startup, the StateMachine resolves each `REINDEX_TABLES` entry to a known
+   physical event table.
+2. It rejects unknown tables, views, and non-targetable system/pathfinder log
+   tables.
+3. It validates known dependency closures. For example, selecting any
+   `CrcV2_ScoreGroup_*` table requires selecting the complete score-group table
+   set unless `REINDEX_ALLOW_PARTIAL_DEPENDENCIES=true` is explicitly set.
+4. Before entering live sync or sending the initial live notification, it deletes
+   rows from only those tables with `blockNumber >= REINDEX_FROM_BLOCK`.
+5. It replays blocks from `REINDEX_FROM_BLOCK` to the current indexed
+   `System_Block` head and writes only events mapped to those selected tables.
+6. It does not write `System_Block` during the selected-table backfill.
+7. The following live notification causes cache/pathfinder consumers to refresh.
+
+### Dependency Rules
+
+`REINDEX_TABLES` is a table-selection mechanism with explicit dependency guards
+for known coupled table families. It does not infer arbitrary semantic
+dependencies from SQL views or application code.
+
+Safe uses:
+
+- Backfilling new, independent event tables.
+- Rebuilding all tables owned by one newly added parser.
+- Rebuilding a complete closed set of related tables when the operator knows the
+  dependency closure.
+
+Unsafe uses:
+
+- Reindexing a core transfer/balance/trust table without its derived tables.
+- Reindexing only one side of a parser that emits both raw and synthetic events.
+- Deleting a table that existing views or cache warmup logic depend on while
+  leaving related base tables at a different semantic version.
+
+Views are not selected directly; they update from their base tables. Caches are
+reinitialized from the database at process start, so an inconsistent table set
+can produce internally inconsistent cache state even when the database schema is
+valid.
+
+For score-group mint-along-path, the selected-table set is the five
+`CrcV2_ScoreGroup_*` tables listed above. The process fails closed if only part
+of that set is selected. Those tables are read by score-group router and
+capacity logic but do not replace existing transfer/trust/group base tables.
+
+For intentionally partial repairs, set:
+
+```bash
+REINDEX_ALLOW_PARTIAL_DEPENDENCIES=true
+```
+
+Use this only when the missing dependency tables are intentionally untouched and
+the resulting state has been reviewed.
+
+### Full Reindex Guard
+
+`REINDEX_FROM_BLOCK` without `REINDEX_TABLES` is a full table deletion from that
+block. It now requires an explicit confirmation flag:
+
+```bash
+REINDEX_FROM_BLOCK=38900000
+REINDEX_ALL_TABLES=true
+```
+
+Without `REINDEX_ALL_TABLES=true`, startup fails instead of silently deleting
+all event data from the block.
+
+### Operational Rules
+
+- Leave `REINDEX_TABLES` empty for normal operation.
+- Always remove `REINDEX_FROM_BLOCK`, `REINDEX_TABLES`, `REINDEX_ALL_TABLES`,
+  and `REINDEX_ALLOW_PARTIAL_DEPENDENCIES` after the reindex completes.
+- Prefer a full `REINDEX_FROM_BLOCK` when changing existing parser semantics or
+  any table used as a base for balance, trust, or transfer views.
+- Run staging verification after selected-table backfill before deploying the
+  same table set to production.
 
 ## Adding New Events to the Backfill Tool
 
@@ -253,7 +345,10 @@ docker build -t circles-backfill:local -f docker/backfill.Dockerfile .
 
 | Variable                     | Description                                | Example      |
 | ---------------------------- | ------------------------------------------ | ------------ |
-| `REINDEX_FROM_BLOCK`         | Delete all data >= this block and resync   | `43610000`   |
+| `REINDEX_FROM_BLOCK`         | Reindex start block                        | `43610000`   |
+| `REINDEX_TABLES`             | Optional selected physical table list      | `CrcV2_ScoreGroup_PersonalMinted` |
+| `REINDEX_ALL_TABLES`         | Required confirmation for full reindex     | `true`       |
+| `REINDEX_ALLOW_PARTIAL_DEPENDENCIES` | Override known dependency closure checks | `true` |
 | `CIRCLES_PLUGIN_DISABLED`    | Run Nethermind without indexing (RPC-only) | `true`       |
 | `POSTGRES_CONNECTION_STRING` | Database connection                        | `Server=...` |
 | `START_BLOCK`                | Initial sync start block (fresh DB only)   | `36501311`   |

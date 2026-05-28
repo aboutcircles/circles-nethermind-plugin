@@ -62,6 +62,9 @@ services:
       - IPFS_GATEWAYS=https://circles-profiles.myfilebase.com
       - IPFS_MAX_PARALLELISM=192
       - REINDEX_FROM_BLOCK=${REINDEX_FROM_BLOCK:-}
+      - REINDEX_TABLES=${REINDEX_TABLES:-}
+      - REINDEX_ALL_TABLES=${REINDEX_ALL_TABLES:-}
+      - REINDEX_ALLOW_PARTIAL_DEPENDENCIES=${REINDEX_ALLOW_PARTIAL_DEPENDENCIES:-}
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8545'"]
       interval: 60s

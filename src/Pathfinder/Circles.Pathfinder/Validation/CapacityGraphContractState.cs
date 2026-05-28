@@ -19,6 +19,14 @@ public sealed class CapacityGraphContractState : IContractState
     public string? RouterAddress =>
         _graph.RouterNode.HasValue ? AddressIdPool.StringOf(_graph.RouterNode.Value) : null;
 
+    public bool IsRouter(string address)
+    {
+        var lower = address.ToLowerInvariant();
+        if (!AddressIdPool.TryIdOf(lower, out int id))
+            return false;
+        return _graph.IsRouter(id);
+    }
+
     public bool IsGroup(string address)
     {
         var lower = address.ToLowerInvariant();
@@ -101,5 +109,77 @@ public sealed class CapacityGraphContractState : IContractState
         if (!_graph.WrapperToAvatar.TryGetValue(wrapperId, out int avatarId))
             return null;
         return AddressIdPool.StringOf(avatarId);
+    }
+
+    /// <summary>
+    /// Hub.isApprovedForAll(account, operator). Fail-closed when ScoreRouterIds is non-empty —
+    /// at least one CrcV2_ScoreGroup.GroupInitialized event has been indexed, so a score
+    /// policy is live and missing approval data must be treated as "not indexed yet", not
+    /// "no approvals exist". Legacy permissive behavior is preserved only when no score
+    /// routers are known to the cache (no policy active or indexer hasn't caught up — the
+    /// policy isn't in force regardless).
+    ///
+    /// DB-source mode: LoadGraph.LoadScoreRouters early-returns on empty ScoreGroupMintPolicies,
+    /// so ScoreRouterIds.Count &gt; 0 implies a policy is configured locally.
+    /// Cache-source mode: CacheLoadGraph.LoadScoreRouters yields whatever the upstream cache
+    /// producer ships, independent of local config. The gate therefore trusts the materialized
+    /// cache: if routers are present, treat the policy as in force regardless of local env.
+    /// </summary>
+    public bool IsApprovedForAll(string account, string @operator)
+    {
+        var scoreRoutersActive = _graph.ScoreRouterIds.Count > 0;
+
+        if (_graph.OperatorApprovals.Count == 0)
+            return !scoreRoutersActive;
+
+        var accountLower = account.ToLowerInvariant();
+        var operatorLower = @operator.ToLowerInvariant();
+
+        if (!AddressIdPool.TryIdOf(accountLower, out int accountId))
+            return !scoreRoutersActive;
+
+        if (!AddressIdPool.TryIdOf(operatorLower, out int operatorId))
+            return false;
+
+        return _graph.OperatorApprovals.TryGetValue(accountId, out var approvedOps)
+               && approvedOps.Contains(operatorId);
+    }
+
+    /// <summary>
+    /// True when the address is a known score-group mint router. Backed by the
+    /// CapacityGraph.ScoreRouterIds set, which is populated from
+    /// CrcV2_ScoreGroup.GroupInitialized.pathMintRouter — the contract-level source of
+    /// truth. Freshly-initialized groups with no mint-limit rows or operator approvals
+    /// yet are still classified correctly (both lag the initialize event in practice).
+    /// </summary>
+    public bool IsScoreRouter(string address)
+    {
+        var lower = address.ToLowerInvariant();
+        if (!AddressIdPool.TryIdOf(lower, out int id))
+            return false;
+        return _graph.ScoreRouterIds.Contains(id);
+    }
+
+    /// <summary>
+    /// Read the cached availableLimit for (group, collateral) from
+    /// CapacityGraph.ScoreGroupMintLimits, sourced via
+    /// circles_getScoreGroupMintLimits → LoadGraph.LoadScoreGroupMintLimits.
+    /// Returns null when the tuple has no cached entry (state-snapshot drift,
+    /// non-score group, or unknown address) — Rule 12 maps null → fail-closed
+    /// for score-router→group edges.
+    /// </summary>
+    public long? GetScoreGroupMintLimit(string group, string collateral)
+    {
+        var groupLower = group.ToLowerInvariant();
+        var collateralLower = collateral.ToLowerInvariant();
+
+        if (!AddressIdPool.TryIdOf(groupLower, out int groupId))
+            return null;
+        if (!AddressIdPool.TryIdOf(collateralLower, out int collateralId))
+            return null;
+
+        return _graph.ScoreGroupMintLimits.TryGetValue((groupId, collateralId), out var limit)
+            ? limit
+            : null;
     }
 }

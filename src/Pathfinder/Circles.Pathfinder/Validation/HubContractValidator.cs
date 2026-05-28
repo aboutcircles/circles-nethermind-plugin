@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Numerics;
+using Circles.Common;
 using Circles.Common.Dto;
 
 namespace Circles.Pathfinder.Validation;
@@ -12,7 +13,7 @@ namespace Circles.Pathfinder.Validation;
 public static class HubContractValidator
 {
     /// <summary>
-    /// Run all 11 validation rules against the transfer path.
+    /// Run all 12 validation rules against the transfer path.
     /// </summary>
     /// <param name="steps">The transfer steps produced by the pathfinder.</param>
     /// <param name="source">The sender address.</param>
@@ -36,11 +37,12 @@ public static class HubContractValidator
         ValidateAvatarRegistration(filtered, source, sink, state, violations);
         ValidateGroupRegistration(filtered, state, violations);
         ValidateTokenIdValidity(filtered, state, violations);
-        ValidateIsPermittedFlow(filtered, state, violations);
+        ValidateIsPermittedFlow(filtered, source, state, violations);
         ValidateFlowConservation(filtered, source, sink, violations);
         ValidateCollateralBeforeMint(filtered, state, violations);
         ValidateNoDuplicateEdges(filtered, violations);
         ValidateNoSelfTransfers(filtered, sink, violations);
+        ValidateScoreGroupMintLimits(filtered, state, violations);
 
         bool isValid = !violations.Any(v => v.Severity == "error");
         return new ValidationResult(isValid, violations);
@@ -206,8 +208,6 @@ public static class HubContractValidator
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
-
         // Collect all unique vertex addresses (From and To only — TokenOwner checked by Rule 11)
         var vertices = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -224,7 +224,7 @@ public static class HubContractValidator
         foreach (var vertex in vertices)
         {
             // Router is a contract address — always registered on-chain
-            if (router != null && vertex == router)
+            if (state.IsRouter(vertex))
                 continue;
 
             // Skip malformed addresses (already caught by Rule 2)
@@ -255,9 +255,6 @@ public static class HubContractValidator
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
-        if (router == null) return; // No router means no group minting in this path
-
         // Detect group-mint pattern: an address X is in a group mint flow when:
         //   1. Router→X edge exists where TokenOwner != X (collateral deposit — someone
         //      else's token is being sent to X, not X's own token being forwarded)
@@ -271,7 +268,7 @@ public static class HubContractValidator
         var receivesFromRouter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var step in steps)
         {
-            if (step.From.ToLowerInvariant() == router)
+            if (state.IsRouter(step.From))
             {
                 var to = step.To.ToLowerInvariant();
                 // Only track as collateral deposit when the token being sent is NOT
@@ -285,7 +282,7 @@ public static class HubContractValidator
         foreach (var step in steps)
         {
             var from = step.From.ToLowerInvariant();
-            if (step.TokenOwner.ToLowerInvariant() == from && from != router)
+            if (step.TokenOwner.ToLowerInvariant() == from && !state.IsRouter(from))
                 mintCandidates.Add(from);
         }
 
@@ -318,7 +315,6 @@ public static class HubContractValidator
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
         var checked_ = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (int i = 0; i < steps.Count; i++)
@@ -330,7 +326,7 @@ public static class HubContractValidator
                 continue;
             if (!tokenOwner.StartsWith("0x") || tokenOwner.Length != 42)
                 continue;
-            if (router != null && tokenOwner == router)
+            if (state.IsRouter(tokenOwner))
                 continue;
 
             // ERC20 wrapper tokens have contract addresses that aren't registered avatars.
@@ -372,29 +368,42 @@ public static class HubContractValidator
     // ────────────────────────────────────────────
     internal static void ValidateIsPermittedFlow(
         IReadOnlyList<TransferPathStep> steps,
+        string source,
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
-
+        var sourceLower = source.ToLowerInvariant();
         for (int i = 0; i < steps.Count; i++)
         {
             var from = steps[i].From.ToLowerInvariant();
             var to = steps[i].To.ToLowerInvariant();
             var tokenOwner = steps[i].TokenOwner.ToLowerInvariant();
 
+            // Resolve ERC20 wrapper to its underlying avatar before trust checks.
+            // Hub.sol resolves the token ID to the underlying avatar — without this
+            // step, a wrapped-token edge fails IsPermittedFlow against the wrapper
+            // contract address rather than the avatar that actually owns the token.
+            // Mirrors the resolution already done in Rule 3 (TokenIdValidity) and
+            // SimulationCanaryService.ResolveWrapperTokenOwners.
+            if (state.IsWrapperToken(tokenOwner))
+            {
+                var underlying = state.ResolveWrapperToAvatar(tokenOwner);
+                if (!string.IsNullOrWhiteSpace(underlying))
+                    tokenOwner = underlying.ToLowerInvariant();
+            }
+
             // Router→Group: internal group mint — Hub.sol uses Router as _sender,
             // isPermittedFlow does not apply (Hub.sol:723). Safe to skip.
-            if (router != null && from == router && state.IsGroup(to))
+            if (state.IsRouter(from) && state.IsGroup(to))
                 continue;
 
             // Avatar→Router: Hub.sol:665-676 runs the full isPermittedFlow check.
             // Router must trust the token owner AND, if sender is consented,
             // advancedUsageFlags[Router] must be non-zero — but Router never calls
             // setAdvancedUsageFlag, so consented senders into Router ALWAYS revert.
-            if (router != null && to == router)
+            if (state.IsRouter(to))
             {
-                if (!state.IsTrusted(router, tokenOwner))
+                if (!state.IsTrusted(to, tokenOwner))
                 {
                     violations.Add(new ValidationViolation(
                         "IsPermittedFlow",
@@ -409,6 +418,18 @@ public static class HubContractValidator
                     violations.Add(new ValidationViolation(
                         "IsPermittedFlow",
                         $"Edge {i}: Avatar→Router — consented sender '{from}' cannot route through Router (Router has no advancedUsageFlags)",
+                        i, "error"));
+                }
+
+                // ScoreGroupMintRouter requires ERC-1155 operator approval from Router→source
+                // (the path's source acts as msg.sender in operateFlowMatrix). Without it the
+                // Router→Group hop reverts on safeBatchTransferFrom. We surface this as a
+                // distinct rule so the SDK can offer "tap to approve" instead of a revert.
+                if (state.IsScoreRouter(to) && !state.IsApprovedForAll(to, sourceLower))
+                {
+                    violations.Add(new ValidationViolation(
+                        "ApproveCRCRequired",
+                        $"Edge {i}: Avatar→Router — score router '{to}' has not approved source '{sourceLower}' as ERC-1155 operator; call ScoreGroupMintRouter.setApprovalForCRC([source]) once before retrying",
                         i, "error"));
                 }
                 continue;
@@ -506,8 +527,7 @@ public static class HubContractValidator
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
-        if (router == null) return; // No router means no group minting in this path
+        if (state.RouterAddress == null) return; // No router means no group minting in this path
 
         // Track per-group: cumulative inbound from router, cumulative outbound to avatars
         var groupInbound = new Dictionary<string, BigInteger>();
@@ -523,7 +543,7 @@ public static class HubContractValidator
                 continue;
 
             // Router → Group (collateral deposit)
-            if (from == router && state.IsGroup(to))
+            if (state.IsRouter(from) && state.IsGroup(to))
             {
                 // Ordering check: no outbound should have been seen for this group yet
                 if (groupsWithOutboundSeen.Contains(to))
@@ -538,7 +558,7 @@ public static class HubContractValidator
                 groupInbound[to] = current + flow;
             }
             // Group → Avatar (mint)
-            else if (state.IsGroup(from) && from != router && to != router && !state.IsGroup(to))
+            else if (state.IsGroup(from) && !state.IsRouter(from) && !state.IsRouter(to) && !state.IsGroup(to))
             {
                 groupsWithOutboundSeen.Add(from);
 
@@ -608,6 +628,139 @@ public static class HubContractValidator
                     "NoSelfTransfers",
                     $"Edge {i}: self-transfer at '{from}'",
                     i, "warning"));
+            }
+        }
+    }
+
+    // ────────────────────────────────────────────
+    // Rule 12: ScoreGroupMintLimitsHonored
+    //
+    // OffchainScoreBasedMintPolicy.beforeMintPolicy router-branch math
+    // (OffchainScoreBasedMintPolicy.sol:237-249):
+    //
+    //   currentLimit = historicalSupplyOnToday(collateral)
+    //                + getMintedAmountOnToday(group, collateral)
+    //                − HUB.balanceOf(treasury, collateral)
+    //
+    // The mapping is keyed on (group, collateral) only — there is no
+    // per-intermediary accounting. Under typical usage where each
+    // intermediary supplies its own personal CRC token as collateral,
+    // (group, intermediary-token) maps 1:1 to a per-intermediary cap.
+    // In the rare case of two intermediaries supplying the same
+    // third-party token, they share a single cap.
+    //
+    // The pathfinder encodes this constraint at graph-build time as a
+    // single TokenPool(collateral)→group capacity edge (GraphFactory.cs:
+    // 999-1040, CapacityGraph.cs:37) sized to availableLimit. Rule 12
+    // is the post-flow second reader: any future encoding regression
+    // that returns a path whose cumulative Router→Group deposits exceed
+    // the cached availableLimit gets caught HERE instead of reverting
+    // on-chain during operateFlowMatrix.
+    //
+    // Scope: only edges where (from = score router) AND (to = group).
+    // Base-group routers and non-router from-vertices are out of scope.
+    //
+    // Units: TransferPathStep.Value is wei (10^18 base, per its DTO doc
+    // and V2Pathfinder.cs:454 via CirclesConverter.BlowUpToUInt256).
+    // CapacityGraph.ScoreGroupMintLimits stores values truncated to
+    // 6-decimal CRC (long) at GraphFactory.cs:739 via TruncateToInt64.
+    // We re-inflate the cached limit to wei via BlowUpToBigInteger before
+    // comparison so both operands share the same unit.
+    //
+    // Collateral keying: matches GraphFactory.cs:999 + GraphFactory.cs:1032
+    // exactly — raw TokenOwner address, no wrapper resolution. The
+    // ScoreGroupMintLimits cache is keyed on avatar addresses (per
+    // ScoreGroupMintLimits.cs BaseRowsSql joining V_CrcV2_TrustRelations
+    // → V_CrcV2_Avatars), so groups only trust avatars, not wrapper
+    // contracts — wrappers cannot appear as TokenOwner on a
+    // score-router→group hop. Resolving wrappers here would create
+    // a key mismatch with the cache and spuriously fail-close.
+    //
+    // Failure modes (all emitted as "error" — chain would revert):
+    //   - unparseable Value → reject (Rule 1 doesn't catch non-empty junk)
+    //   - cumulative > limit → reject (emitted on the EDGE that pushes
+    //     the running sum past the cap, not the bucket's first contributor)
+    //   - score-router→group hop with no cached limit → reject
+    //     (state-snapshot drift; safer to refuse than emit a chain-reverting path)
+    // ────────────────────────────────────────────
+    internal static void ValidateScoreGroupMintLimits(
+        IReadOnlyList<TransferPathStep> steps,
+        IContractState state,
+        List<ValidationViolation> violations)
+    {
+        var cumulative = new Dictionary<(string Group, string Collateral), BigInteger>();
+        var bucketAlreadyViolated = new HashSet<(string Group, string Collateral)>();
+
+        for (int i = 0; i < steps.Count; i++)
+        {
+            var from = steps[i].From.ToLowerInvariant();
+            var to = steps[i].To.ToLowerInvariant();
+
+            if (!state.IsScoreRouter(from) || !state.IsGroup(to))
+                continue;
+
+            // Score-router→group edges MUST carry a parseable Value.
+            // Rule 1 catches zero/empty but not negative or junk strings,
+            // so Rule 12 emits its own diagnostic within its own scope
+            // rather than rely on Rule 1's narrower checks.
+            if (!BigInteger.TryParse(steps[i].Value, out var flow))
+            {
+                violations.Add(new ValidationViolation(
+                    "ScoreGroupMintLimitsHonored",
+                    $"Edge {i}: score-router→group has unparseable Value '{steps[i].Value}' — refusing path",
+                    i, "error"));
+                continue;
+            }
+            if (flow == 0)
+                continue; // Zero is Rule 1's domain; no point double-reporting
+            if (flow < 0)
+            {
+                // Unreachable from BlowUpToUInt256 (unsigned), but a manually-constructed
+                // step could carry a negative — surface within Rule 12's scope rather
+                // than slip past as silent skip.
+                violations.Add(new ValidationViolation(
+                    "ScoreGroupMintLimitsHonored",
+                    $"Edge {i}: score-router→group has negative Value '{steps[i].Value}' — refusing path",
+                    i, "error"));
+                continue;
+            }
+
+            var collateral = steps[i].TokenOwner.ToLowerInvariant();
+            var key = (to, collateral);
+
+            cumulative.TryGetValue(key, out var current);
+            var next = current + flow;
+            cumulative[key] = next;
+
+            // Emit at most one violation per (group, collateral) bucket — the
+            // first edge that pushes the running sum past the cap.
+            if (bucketAlreadyViolated.Contains(key))
+                continue;
+
+            var cachedLimit = state.GetScoreGroupMintLimit(to, collateral);
+            if (cachedLimit == null)
+            {
+                violations.Add(new ValidationViolation(
+                    "ScoreGroupMintLimitsHonored",
+                    $"Edge {i}: score router → group '{to}' deposits collateral '{collateral}' " +
+                    "but no availableLimit is cached (state-snapshot drift) — refusing path",
+                    i, "error"));
+                bucketAlreadyViolated.Add(key);
+                continue;
+            }
+
+            // Inflate 6-decimal-CRC long back to wei to match Value's unit.
+            var limitWei = CirclesConverter.BlowUpToBigInteger(cachedLimit.Value);
+            if (next > limitWei)
+            {
+                violations.Add(new ValidationViolation(
+                    "ScoreGroupMintLimitsHonored",
+                    $"Edge {i}: cumulative score-router→group mint for " +
+                    $"(group={to}, collateral={collateral}) is {next} wei, " +
+                    $"exceeds on-chain availableLimit {limitWei} wei " +
+                    $"(cached as {cachedLimit.Value} at 6-decimal CRC precision)",
+                    i, "error"));
+                bucketAlreadyViolated.Add(key);
             }
         }
     }

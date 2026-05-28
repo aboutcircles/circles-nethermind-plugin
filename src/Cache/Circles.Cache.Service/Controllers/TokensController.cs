@@ -1,5 +1,6 @@
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
+using Circles.Common;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Circles.Cache.Service.Controllers;
@@ -141,8 +142,7 @@ public class TokensController : ControllerBase
         // 3. Check V2 ERC20 Wrapper
         if (_caches.Erc20WrapperAddresses.TryGetValue(tokenAddressLower, out var wrapperInfo))
         {
-            // circlesType: 0 = demurraged, 1 = inflationary
-            var isInflationary = wrapperInfo.CirclesType == 1;
+            var isInflationary = wrapperInfo.CirclesType == CirclesType.InflationaryCircles;
             var tokenType = isInflationary
                 ? "CrcV2_ERC20WrapperDeployed_Inflationary"
                 : "CrcV2_ERC20WrapperDeployed_Demurraged";

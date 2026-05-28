@@ -117,6 +117,10 @@ public static class OpenRpcGenerator
             "Get groups an avatar is a member of",
             "Inverse of `circles_getGroupMembers` — returns all groups that trust a given avatar address.\n\n**Common use case**: Show which groups a user belongs to in their profile view."),
 
+        ("circles_getScoreGroupMintLimits", "GetScoreGroupMintLimits", "Groups",
+            "Get per-collateral mint limits for a score-weighted group",
+            "Returns the available mint limit for each (group, collateral) pair governed by an on-chain score-weighted group mint policy. Server applies the on-chain demurrage policy at query time; clients may subtract their own safety margin before minting.\n\n**Common use case**: Pre-flight check before invoking a score-group mint — discover how much of the group token can be minted from each collateral the caller holds.\n\n**Params**:\n- `groupAddress` (required): The group token address.\n- `collateralToken` (optional): Restrict to a single collateral token; omit to return all collaterals."),
+
         // ── Transaction Methods ──────────────────────────────────────────────
         ("circles_getTransactionHistory", "GetTransactionHistory", "Transactions",
             "Get transaction history for an avatar",
@@ -421,6 +425,15 @@ public static class OpenRpcGenerator
                 "Maximum number of memberships to return. Default: 50, max: 200."),
             Param("cursor", false, "string",
                 "Cursor from a previous response's nextCursor field for pagination.")
+        ],
+        ["circles_getScoreGroupMintLimits"] =
+        [
+            Param("groupAddress", true, "string",
+                "Score-weighted group token address to query mint limits for.",
+                pattern: AddrPattern),
+            Param("collateralToken", false, "string",
+                "Optional collateral-token filter. When provided, restricts the response to the single (group, collateral) row matching this token. When omitted, returns all collaterals governed by the group's on-chain mint policy.",
+                pattern: AddrPattern)
         ],
         ["circles_getTransactionHistory"] =
         [
@@ -1113,6 +1126,28 @@ public static class OpenRpcGenerator
                 [
                     new() { Name = "memberAddress", Value = ExampleAddr1 },
                     new() { Name = "limit", Value = 50 },
+                ],
+            }
+        ],
+        ["circles_getScoreGroupMintLimits"] =
+        [
+            new()
+            {
+                Name = "All mint limits for a group",
+                Description = "Get available mint limits for every collateral governed by the group's score-weighted policy",
+                Params =
+                [
+                    new() { Name = "groupAddress", Value = ExampleGroup },
+                ],
+            },
+            new()
+            {
+                Name = "Mint limit for a single collateral",
+                Description = "Restrict the response to one (group, collateral) row",
+                Params =
+                [
+                    new() { Name = "groupAddress", Value = ExampleGroup },
+                    new() { Name = "collateralToken", Value = ExampleToken },
                 ],
             }
         ],
