@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Circles.Common;
@@ -574,7 +575,9 @@ public partial class CirclesRpcModule
         return await GetProfileByCidBatchInternal(cids);
     }
 
-    public async Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null)
+    private enum SearchProxyOutcome { Hit, Zero, Error }
+
+    public async Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null, string? groupType = null)
     {
         const int hardLimit = 100;
         if (limit > hardLimit)
@@ -582,12 +585,28 @@ public partial class CirclesRpcModule
             throw new ArgumentException($"limit must not exceed {hardLimit} (got {limit}).");
         }
 
+        string? groupTypeFilter = null;
+        if (!string.IsNullOrWhiteSpace(groupType))
+        {
+            var gt = groupType.Trim();
+            if (gt != "open" && gt != "closed")
+            {
+                throw new ArgumentException($"groupType must be 'open' or 'closed' (got '{groupType}').", nameof(groupType));
+            }
+            groupTypeFilter = gt;
+        }
+
+        var sw = Stopwatch.StartNew();
         string qText = text.Trim();
+        RpcMetrics.SearchProfilesQueryLength.Observe(qText.Length);
+
         string[] tokens = qText.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         if (!tokens.Any(o => o.Length > 1))
         {
-            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            var emptyResult = new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            RecordSearchProfilesPath("short_circuit_empty", sw.Elapsed, emptyResult);
+            return emptyResult;
         }
 
         if (tokens.Length > 3)
@@ -603,33 +622,75 @@ public partial class CirclesRpcModule
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
+        string path = "sql_only";
+
         // Try profile pinning service first (fast path)
         if (!string.IsNullOrEmpty(_settings.ProfilePinningServiceUrl))
         {
             try
             {
-                var proxyResult = await SearchProfilesViaProxy(qText, limit, offset, typeFilter);
-                if (proxyResult != null)
+                var (outcome, proxyResult) = await SearchProfilesViaProxy(qText, limit, offset, typeFilter, groupTypeFilter);
+                switch (outcome)
                 {
-                    return proxyResult;
+                    case SearchProxyOutcome.Hit:
+                        RecordSearchProfilesPath("proxy_hit", sw.Elapsed, proxyResult!);
+                        return proxyResult!;
+                    case SearchProxyOutcome.Zero:
+                        path = "proxy_zero_then_sql";
+                        break;
+                    case SearchProxyOutcome.Error:
+                        path = "proxy_error_then_sql";
+                        break;
                 }
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Profile pinning service proxy failed, falling back to SQL");
+                path = ClassifyProxyException(ex);
+                _logger?.LogWarning(ex, "Profile pinning service proxy failed ({Path}, groupType={GroupType}), falling back to SQL", path, groupTypeFilter);
             }
         }
 
+        // SQL fallback cannot honor a groupType filter — the chain index has no
+        // group_type column. Falling through would silently return rows from the
+        // wrong group type. Return authoritative empty instead.
+        if (groupTypeFilter != null)
+        {
+            var emptyResult = new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            _logger?.LogWarning(
+                "SearchProfiles groupType={GroupType} requested but pinning-service proxy did not return a result; returning empty (SQL fallback has no group_type column)",
+                groupTypeFilter);
+            RecordSearchProfilesPath(path, sw.Elapsed, emptyResult);
+            return emptyResult;
+        }
+
         // Fallback: direct SQL search
-        return await SearchProfilesViaSql(qText, limit, offset, typeFilter);
+        var sqlResult = await SearchProfilesViaSql(qText, limit, offset, typeFilter);
+        RecordSearchProfilesPath(path, sw.Elapsed, sqlResult);
+        return sqlResult;
     }
+
+    private static void RecordSearchProfilesPath(string path, TimeSpan elapsed, ProfileSearchResult result)
+    {
+        RpcMetrics.SearchProfilesPathTotal.WithLabels(path).Inc();
+        RpcMetrics.SearchProfilesDuration.WithLabels(path).Observe(elapsed.TotalSeconds);
+        if (result.Total == 0)
+        {
+            RpcMetrics.SearchProfilesZeroResultsTotal.WithLabels(path).Inc();
+        }
+    }
+
+    private static string ClassifyProxyException(Exception ex) => ex switch
+    {
+        OperationCanceledException => "proxy_timeout_then_sql",
+        _ => "proxy_error_then_sql",
+    };
 
     /// <summary>
     /// Fast path: proxy search to the profile-pinning service REST API.
-    /// Returns null if the service is unavailable or returns an error.
+    /// Returns an outcome indicating Hit/Zero/Error so the caller can label metrics.
     /// </summary>
-    private async Task<ProfileSearchResult?> SearchProfilesViaProxy(
-        string qText, int limit, int offset, string[]? typeFilter)
+    private async Task<(SearchProxyOutcome outcome, ProfileSearchResult? result)> SearchProfilesViaProxy(
+        string qText, int limit, int offset, string[]? typeFilter, string? groupType = null)
     {
         var baseUrl = _settings.ProfilePinningServiceUrl!.TrimEnd('/');
 
@@ -647,13 +708,18 @@ public partial class CirclesRpcModule
             url += $"&type={Uri.EscapeDataString(typeFilter[0])}";
         }
 
+        if (!string.IsNullOrEmpty(groupType))
+        {
+            url += $"&groupType={Uri.EscapeDataString(groupType)}";
+        }
+
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var response = await HttpClient.GetAsync(url, cts.Token);
 
         if (!response.IsSuccessStatusCode)
         {
             _logger?.LogWarning("Profile pinning service returned {StatusCode}", response.StatusCode);
-            return null;
+            return (SearchProxyOutcome.Error, null);
         }
 
         var json = await response.Content.ReadAsStringAsync(cts.Token);
@@ -661,8 +727,7 @@ public partial class CirclesRpcModule
 
         if (proxyResults == null || proxyResults.Length == 0)
         {
-            // Return null to fall through to SQL fallback
-            return null;
+            return (SearchProxyOutcome.Zero, null);
         }
 
         // Safety net: server handles offset, but cap to requested limit
@@ -676,7 +741,7 @@ public partial class CirclesRpcModule
 
         if (addresses.Length == 0)
         {
-            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            return (SearchProxyOutcome.Hit, new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>()));
         }
 
         // Batch avatar info lookup (single DB call instead of N+1)
@@ -700,6 +765,28 @@ public partial class CirclesRpcModule
             if (proxyEntry.TryGetProperty("location", out var locEl) && locEl.ValueKind != JsonValueKind.Null)
                 profileDict["location"] = locEl.GetString();
 
+            // Extended group-profile fields (proxy returns flat shape — see pinning service
+            // ProfileResponse). Keys are omitted by the proxy when unset, so the same is true here.
+            // Numeric fields come back as JS numbers thanks to the `::float8` cast applied
+            // in the pinning service's repositories/profiles.ts (migration 017 follow-up).
+            if (proxyEntry.TryGetProperty("externalWebsite", out var extWebEl) && extWebEl.ValueKind != JsonValueKind.Null)
+                profileDict["externalWebsite"] = extWebEl.GetString();
+            if (proxyEntry.TryGetProperty("minRepScore", out var minRepEl) && minRepEl.ValueKind == JsonValueKind.Number)
+                profileDict["minRepScore"] = minRepEl.GetDouble();
+            if (proxyEntry.TryGetProperty("membershipFee", out var feeEl) && feeEl.ValueKind == JsonValueKind.Number)
+                profileDict["membershipFee"] = feeEl.GetDouble();
+            if (proxyEntry.TryGetProperty("additionalCriteria", out var critEl) && critEl.ValueKind == JsonValueKind.Array)
+                profileDict["additionalCriteria"] = critEl.EnumerateArray()
+                    .Where(e => e.ValueKind == JsonValueKind.String)
+                    .Select(e => e.GetString())
+                    .ToArray();
+            if (proxyEntry.TryGetProperty("groupType", out var gtEl) && gtEl.ValueKind != JsonValueKind.Null)
+                profileDict["groupType"] = gtEl.GetString();
+            if (proxyEntry.TryGetProperty("contactEmail", out var emailEl) && emailEl.ValueKind != JsonValueKind.Null)
+                profileDict["contactEmail"] = emailEl.GetString();
+            if (proxyEntry.TryGetProperty("contactWebsite", out var contWebEl) && contWebEl.ValueKind != JsonValueKind.Null)
+                profileDict["contactWebsite"] = contWebEl.GetString();
+
             if (profileDict.Count > 0)
             {
                 profile = JsonSerializer.SerializeToElement(profileDict);
@@ -712,7 +799,7 @@ public partial class CirclesRpcModule
             ));
         }
 
-        return new ProfileSearchResult(Total: results.Count, Results: results.ToArray());
+        return (SearchProxyOutcome.Hit, new ProfileSearchResult(Total: results.Count, Results: results.ToArray()));
     }
 
     /// <summary>

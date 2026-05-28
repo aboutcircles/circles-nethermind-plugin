@@ -610,6 +610,49 @@ public class CirclesRpcModuleTests
             Throws.InstanceOf<ArgumentException>());
     }
 
+    [Test]
+    public void SearchProfiles_WithInvalidGroupType_Throws()
+    {
+        RequireModule();
+
+        Assert.That(async () => await _module!.SearchProfiles("test", limit: 10, groupType: "garbage"),
+            Throws.InstanceOf<ArgumentException>());
+    }
+
+    [Test]
+    public void SearchProfiles_WithEmptyGroupType_DoesNotThrow()
+    {
+        RequireModule();
+
+        // Whitespace/empty groupType should be treated as "no filter", not an error.
+        Assert.That(async () => await _module!.SearchProfiles("test", limit: 10, groupType: ""),
+            Throws.Nothing);
+        Assert.That(async () => await _module!.SearchProfiles("test", limit: 10, groupType: "   "),
+            Throws.Nothing);
+    }
+
+    [Test]
+    public async Task SearchProfiles_WithValidGroupTypeOpen_ReturnsResult()
+    {
+        RequireModule();
+
+        var result = await _module!.SearchProfiles("test", limit: 10, groupType: "open");
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.InstanceOf<ProfileSearchResult>());
+    }
+
+    [Test]
+    public async Task SearchProfiles_WithValidGroupTypeClosed_ReturnsResult()
+    {
+        RequireModule();
+
+        var result = await _module!.SearchProfiles("test", limit: 10, groupType: "closed");
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.InstanceOf<ProfileSearchResult>());
+    }
+
     #endregion
 
     #region GetTokenInfo Tests

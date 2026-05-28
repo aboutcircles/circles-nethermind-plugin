@@ -129,4 +129,55 @@ public static class RpcMetrics
         {
             Buckets = new[] { 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 50.0 }
         });
+
+    // ---- circles_searchProfiles instrumentation (Phase 4 measurement) ----
+    // Path label values (kept here so dashboards/alerts can reference one source):
+    //   proxy_hit              proxy returned >=1 result, no SQL ran
+    //   proxy_zero_then_sql    proxy returned [], SQL ran as fallback
+    //   proxy_error_then_sql   proxy non-2xx, SQL ran as fallback
+    //   proxy_timeout_then_sql proxy threw timeout/transport, SQL ran as fallback
+    //   sql_only               ProfilePinningServiceUrl unset, SQL ran directly
+    //   short_circuit_empty    all tokens <=1 char, returned empty without searching
+
+    /// <summary>
+    /// Total circles_searchProfiles requests, labelled by which code path served them.
+    /// </summary>
+    public static readonly Counter SearchProfilesPathTotal = Metrics.CreateCounter(
+        "circles_search_profiles_path_total",
+        "Total circles_searchProfiles requests by served path",
+        new CounterConfiguration { LabelNames = new[] { "path" } });
+
+    /// <summary>
+    /// End-to-end circles_searchProfiles duration (RPC entry → return), by path.
+    /// Includes the proxy attempt latency for *_then_sql paths.
+    /// </summary>
+    public static readonly Histogram SearchProfilesDuration = Metrics.CreateHistogram(
+        "circles_search_profiles_duration_seconds",
+        "circles_searchProfiles end-to-end duration in seconds",
+        new HistogramConfiguration
+        {
+            LabelNames = new[] { "path" },
+            Buckets = new[] { 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 20.0 }
+        });
+
+    /// <summary>
+    /// Distribution of search query lengths after trim, observed for every request
+    /// (including short-circuit-empty rejections).
+    /// </summary>
+    public static readonly Histogram SearchProfilesQueryLength = Metrics.CreateHistogram(
+        "circles_search_profiles_query_length_chars",
+        "Distribution of circles_searchProfiles query lengths in characters",
+        new HistogramConfiguration
+        {
+            Buckets = new[] { 1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0 }
+        });
+
+    /// <summary>
+    /// Total circles_searchProfiles requests that returned zero results, by path.
+    /// Useful for spotting paths where the proxy is "successful" but useless.
+    /// </summary>
+    public static readonly Counter SearchProfilesZeroResultsTotal = Metrics.CreateCounter(
+        "circles_search_profiles_zero_results_total",
+        "Total circles_searchProfiles requests that returned an empty result set",
+        new CounterConfiguration { LabelNames = new[] { "path" } });
 }

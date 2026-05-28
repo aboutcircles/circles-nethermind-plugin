@@ -105,7 +105,8 @@ public interface ICirclesRpcModule
     /// <param name="limit">Maximum results to return (default: 20, max: 100)</param>
     /// <param name="offset">Number of results to skip</param>
     /// <param name="types">Filter by avatar types (e.g., "CrcV2_RegisterHuman", "CrcV2_RegisterGroup")</param>
-    Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null);
+    /// <param name="groupType">Filter by group type: "open" or "closed". Only matches profiles whose stored group_type equals this value.</param>
+    Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null, string? groupType = null);
 
     // ========================================================================
     // SDK Enablement Methods
