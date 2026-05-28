@@ -26,7 +26,7 @@ public static class SnapshotBuilder
             TokenAddress: AddressIdPool.StringOf(b.TokenAddress),
             LastActivity: 0,
             IsWrapped: b.IsWrapped,
-            CirclesType: b.IsStatic ? "static" : "demurraged"
+            DemurrageMode: b.IsStatic ? "static" : "demurraged"
         )).ToList();
 
         var trust = mock.LoadV2Trust().Select(t => new PathfinderGraphTrustRow(
@@ -81,7 +81,7 @@ public static class SnapshotBuilder
             TokenAddress: b.Token.ToLowerInvariant(),
             LastActivity: 0,
             IsWrapped: b.IsWrapped,
-            CirclesType: b.IsStatic ? "static" : "demurraged"
+            DemurrageMode: b.IsStatic ? "static" : "demurraged"
         )).ToList();
 
         var trust = (subgraph.Trust ?? [])

@@ -42,8 +42,10 @@ internal sealed class SimulationCanaryService : BackgroundService
     private readonly ILogger<SimulationCanaryService> _log;
     private readonly string _rpcUrl;
 
-    // Metrics
-    private static readonly Counter SimulationTotal = Metrics.CreateCounter(
+    // Metrics. Counters that tests read are `internal` (see InternalsVisibleTo on
+    // Circles.Pathfinder.Tests); promoting them is the existing pattern in this repo
+    // (cf. GraphUpdateMetrics.DriftEntries usage in CacheSourceDriftResetTests).
+    internal static readonly Counter SimulationTotal = Metrics.CreateCounter(
         "circles_canary_simulation_total",
         "Total eth_call/eth_simulateV1 simulations attempted",
         new CounterConfiguration { LabelNames = new[] { "result", "prefix" } });
@@ -70,6 +72,25 @@ internal sealed class SimulationCanaryService : BackgroundService
         "circles_canary_simulation_skipped_total",
         "Work items skipped before enqueue, by reason",
         new CounterConfiguration { LabelNames = new[] { "reason" } });
+
+    // Observability for the 1ppt over-ask added in PR #426 (covers the on-chain
+    // Math64x64 floor-floor roundtrip loss for InflationaryCircles wrappers).
+    // Counter ticks once per inflationary unwrap whose raw resolver amount is
+    // large enough to trigger a non-zero bump (I ≥ 1e12 wei). If Hub.sol's
+    // conversion math ever changes and the gap exceeds 1 ppt, this counter
+    // diverges from `circles_canary_simulation_total{result="success",prefix="unwrap"}`
+    // and ERC1155InsufficientBalance reverts return — the divergence is the
+    // operator signal that points at the bump as suspect.
+    //
+    // Deliberately a SEPARATE counter (not a SimulationTotal label): bump-applied
+    // events are per-arithmetic-step (multiple per work item possible), while
+    // SimulationTotal is per-simulation-outcome (one per work item). Folding them
+    // would double-count. Also deliberately UNLABELLED — adding a {wrapper} label
+    // would explode cardinality (one series per wrapper address ever seen). Per-
+    // wrapper detail is in the DEBUG log on the bump path, not in the metric.
+    internal static readonly Counter InflationaryBumpApplied = Metrics.CreateCounter(
+        "circles_canary_inflationary_bump_applied_total",
+        "Inflationary unwrap amounts where the floor-floor roundtrip over-ask was non-zero");
 
     public static void RecordSkipped(string reason) => SimulationSkipped.WithLabels(reason).Inc();
 
@@ -835,7 +856,9 @@ internal sealed class SimulationCanaryService : BackgroundService
     /// </summary>
     internal static IReadOnlyList<ResolvedUnwrapCall> ApplyInflationaryAmounts(
         IReadOnlyList<DemurragedUnwrapCall> calls,
-        IReadOnlyList<BigInteger?> inflationaryAmountsForInflationaryCalls)
+        IReadOnlyList<BigInteger?> inflationaryAmountsForInflationaryCalls,
+        ILogger? log = null,
+        string? reqIdForLog = null)
     {
         var resolved = new List<ResolvedUnwrapCall>(calls.Count);
         int infIdx = 0;
@@ -851,9 +874,24 @@ internal sealed class SimulationCanaryService : BackgroundService
                 ? inflationaryAmountsForInflationaryCalls[infIdx]
                 : null;
             infIdx++;
-            resolved.Add(resolvedAmount.HasValue
-                ? ResolvedUnwrapCall.FromInflated(src, ApplyInflationaryRoundtripBump(resolvedAmount.Value))
-                : ResolvedUnwrapCall.FromDemurraged(src));
+            if (!resolvedAmount.HasValue)
+            {
+                resolved.Add(ResolvedUnwrapCall.FromDemurraged(src));
+                continue;
+            }
+            var bumped = ApplyInflationaryRoundtripBump(resolvedAmount.Value);
+            var delta = bumped - resolvedAmount.Value;
+            if (delta > 0)
+            {
+                InflationaryBumpApplied.Inc();
+                if (log != null && log.IsEnabled(LogLevel.Debug))
+                {
+                    log.LogDebug(
+                        "[{ReqId}] SimulationCanary: inflationary roundtrip bump applied wrapper={Wrapper} from={From} rawInflated={RawInflated} bumped={Bumped} delta={Delta}",
+                        reqIdForLog ?? "-", src.Wrapper, src.From, resolvedAmount.Value, bumped, delta);
+                }
+            }
+            resolved.Add(ResolvedUnwrapCall.FromInflated(src, bumped));
         }
         return resolved;
     }
@@ -1071,6 +1109,30 @@ internal sealed class SimulationCanaryService : BackgroundService
             return PromoteAllDemurraged(calls);
         }
 
+        // Step 3.5: top-level RPC error short-circuit. When the JSON-RPC layer
+        // itself rejects the batch (parse error, method not found, internal error
+        // upstream), the response carries `{"error": {"code": …, "message": …}}`
+        // at the root with no `result` field. Without this check ExtractInflationaryAmounts
+        // would log one per-call partial-failure warning per inflationary entry and
+        // emit N `inflation_resolve_partial` counter ticks — noisy and misleading,
+        // since the root cause is a single batch rejection, not N independent failures.
+        // `"error": null` is a valid JSON-RPC success-shape emitted by some servers
+        // alongside a populated `result` — guard explicitly so we don't false-positive
+        // on it and trigger the per-batch fallback when the batch actually succeeded.
+        if (json.ValueKind == JsonValueKind.Object
+            && json.TryGetProperty("error", out var rpcErr)
+            && rpcErr.ValueKind != JsonValueKind.Null)
+        {
+            var errMsg = rpcErr.ValueKind == JsonValueKind.Object && rpcErr.TryGetProperty("message", out var m)
+                ? m.GetString()
+                : rpcErr.ToString();
+            _log.LogWarning(
+                "[{ReqId}] SimulationCanary: ResolveInflationaryAmounts: eth_simulateV1 batch rejected at RPC layer: {Error}",
+                item.ReqId, errMsg);
+            SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Inc();
+            return PromoteAllDemurraged(calls);
+        }
+
         // Step 4: extract per-position results; ApplyInflationaryAmounts substitutes only
         // inflationary positions (demurraged calls pass through unchanged).
         var inflationaryAmounts = ExtractInflationaryAmounts(json, inflationaryIndices.Count);
@@ -1092,7 +1154,7 @@ internal sealed class SimulationCanaryService : BackgroundService
             SimulationTotal.WithLabels("inflation_resolve_partial", "unwrap").Inc();
         }
 
-        return ApplyInflationaryAmounts(calls, inflationaryAmounts);
+        return ApplyInflationaryAmounts(calls, inflationaryAmounts, _log, item.ReqId);
     }
 
     /// <summary>

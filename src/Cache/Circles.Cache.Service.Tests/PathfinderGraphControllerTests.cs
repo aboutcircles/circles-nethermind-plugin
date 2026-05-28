@@ -241,7 +241,7 @@ public class PathfinderGraphControllerTests
 
         response!.Balances.Should().HaveCount(1);
         response.Balances![0].IsWrapped.Should().BeTrue();
-        response.Balances[0].CirclesType.Should().Be("demurraged");
+        response.Balances[0].DemurrageMode.Should().Be("demurraged");
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public class PathfinderGraphControllerTests
 
         response!.Balances.Should().HaveCount(1);
         response.Balances![0].IsWrapped.Should().BeTrue();
-        response.Balances[0].CirclesType.Should().Be("static");
+        response.Balances[0].DemurrageMode.Should().Be("static");
     }
 
     [Fact]
@@ -303,7 +303,7 @@ public class PathfinderGraphControllerTests
         response!.Balances.Should().HaveCount(1);
         response.Balances![0].TokenAddress.Should().Be(wrapperAddress);
         response.Balances[0].IsWrapped.Should().BeTrue();
-        response.Balances[0].CirclesType.Should().Be("static");
+        response.Balances[0].DemurrageMode.Should().Be("static");
     }
 
     // ── BuildTrust ─────────────────────────────────────────────────────
