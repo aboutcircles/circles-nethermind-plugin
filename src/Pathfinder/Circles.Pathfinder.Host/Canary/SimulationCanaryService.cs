@@ -306,8 +306,47 @@ internal sealed class SimulationCanaryService : BackgroundService
     /// <para>Splitting this from <see cref="DemurragedUnwrapCall"/> makes the unit conversion
     /// step compile-time mandatory: passing a <see cref="DemurragedUnwrapCall"/> to
     /// <see cref="SimulateBundleAsync"/> is a type error — the exact regression class of PR #408.</para>
+    /// <para>The constructor is private: instances can only be produced via
+    /// <see cref="FromDemurraged"/> (1:1 lift for <see cref="CirclesType.DemurrageCircles"/> or as
+    /// resolver-failure fallback) or <see cref="FromInflated"/> (substitute the γ^day-converted
+    /// amount for an <see cref="CirclesType.InflationaryCircles"/> wrapper). Both factories take
+    /// a <see cref="DemurragedUnwrapCall"/> as input — the resolver pipeline is the only path
+    /// that can yield a Resolved call, so a future contributor cannot accidentally bypass unit
+    /// discrimination by synthesizing one in the bundle assembler.</para>
     /// </summary>
-    internal readonly record struct ResolvedUnwrapCall(string From, string Wrapper, BigInteger Amount);
+    internal readonly record struct ResolvedUnwrapCall
+    {
+        public string From { get; }
+        public string Wrapper { get; }
+        public BigInteger Amount { get; }
+
+        private ResolvedUnwrapCall(string from, string wrapper, BigInteger amount)
+        {
+            From = from;
+            Wrapper = wrapper;
+            Amount = amount;
+        }
+
+        /// <summary>
+        /// Lift a <see cref="DemurragedUnwrapCall"/> 1:1. Used for
+        /// <see cref="CirclesType.DemurrageCircles"/> wrappers (unwrap argument == demurraged
+        /// amount) and as the fallback when the inflationary resolver RPC fails for one wrapper
+        /// — the canary still attempts the bundle, which produces the prior false-positive class
+        /// for that one inflationary entry rather than silently skipping coverage.
+        /// </summary>
+        internal static ResolvedUnwrapCall FromDemurraged(DemurragedUnwrapCall call)
+            => new(call.From, call.Wrapper, call.DemurragedAmount);
+
+        /// <summary>
+        /// Lift a <see cref="DemurragedUnwrapCall"/> through the inflationary conversion (γ^day)
+        /// for a <see cref="CirclesType.InflationaryCircles"/> wrapper. The caller is responsible
+        /// for sourcing <paramref name="inflatedAmount"/> from
+        /// <c>convertDemurrageToInflationaryValue</c> at the simulation block — the type system
+        /// does not enforce that the amount actually matches the wrapper's day-index conversion.
+        /// </summary>
+        internal static ResolvedUnwrapCall FromInflated(DemurragedUnwrapCall call, BigInteger inflatedAmount)
+            => new(call.From, call.Wrapper, inflatedAmount);
+    }
 
     /// <summary>
     /// For each transfer whose TokenOwner is a known wrapper, attribute one unwrap call
@@ -788,14 +827,16 @@ internal sealed class SimulationCanaryService : BackgroundService
             var src = calls[i];
             if (src.WrapperType != CirclesType.InflationaryCircles)
             {
-                resolved.Add(new ResolvedUnwrapCall(src.From, src.Wrapper, src.DemurragedAmount));
+                resolved.Add(ResolvedUnwrapCall.FromDemurraged(src));
                 continue;
             }
             BigInteger? resolvedAmount = infIdx < inflationaryAmountsForInflationaryCalls.Count
                 ? inflationaryAmountsForInflationaryCalls[infIdx]
                 : null;
             infIdx++;
-            resolved.Add(new ResolvedUnwrapCall(src.From, src.Wrapper, resolvedAmount ?? src.DemurragedAmount));
+            resolved.Add(resolvedAmount.HasValue
+                ? ResolvedUnwrapCall.FromInflated(src, resolvedAmount.Value)
+                : ResolvedUnwrapCall.FromDemurraged(src));
         }
         return resolved;
     }
@@ -893,7 +934,7 @@ internal sealed class SimulationCanaryService : BackgroundService
     /// with new result labels (<c>block_lookup_failed</c>, <c>inflation_resolve_failed</c>).
     /// </para>
     /// </summary>
-    private async Task<IReadOnlyList<ResolvedUnwrapCall>> ResolveInflationaryAmountsAsync(
+    internal async Task<IReadOnlyList<ResolvedUnwrapCall>> ResolveInflationaryAmountsAsync(
         CanaryWorkItem item,
         IReadOnlyList<DemurragedUnwrapCall> calls,
         string blockTag,
@@ -1017,10 +1058,7 @@ internal sealed class SimulationCanaryService : BackgroundService
     {
         var resolved = new List<ResolvedUnwrapCall>(calls.Count);
         for (int i = 0; i < calls.Count; i++)
-        {
-            var c = calls[i];
-            resolved.Add(new ResolvedUnwrapCall(c.From, c.Wrapper, c.DemurragedAmount));
-        }
+            resolved.Add(ResolvedUnwrapCall.FromDemurraged(calls[i]));
         return resolved;
     }
 }
