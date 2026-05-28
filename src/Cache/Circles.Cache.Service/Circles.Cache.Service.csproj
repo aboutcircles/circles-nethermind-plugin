@@ -40,7 +40,7 @@
     <PackageReference Include="Nethermind.Numerics.Int256" Version="1.5.0" />
 
     <!-- OpenAPI documentation -->
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.4.18" />
   </ItemGroup>
 
