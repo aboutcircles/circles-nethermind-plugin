@@ -31,14 +31,17 @@ public class QueryCommandTimeoutTests
             return;
         }
 
-        var sourceFile = Path.Combine(sourceDir, "CirclesRpcModule.cs");
-        if (!File.Exists(sourceFile))
+        // CirclesRpcModule is split across multiple partial-class files (main file
+        // + RpcModule/CirclesRpcModule.*.cs). Concatenate them all so the source grep
+        // is resilient to where the Query method actually lives.
+        var sourceFiles = Directory.GetFiles(sourceDir, "CirclesRpcModule*.cs", SearchOption.AllDirectories);
+        if (sourceFiles.Length == 0)
         {
-            Assert.Inconclusive("Could not find CirclesRpcModule.cs source to verify CommandTimeout");
+            Assert.Inconclusive("Could not find CirclesRpcModule source files to verify CommandTimeout");
             return;
         }
 
-        var source = File.ReadAllText(sourceFile);
+        var source = string.Join("\n", sourceFiles.Select(File.ReadAllText));
 
         // The Query method creates NpgsqlCommand with finalSql. Verify CommandTimeout is set.
         // Look for the pattern: var finalSql = $"SELECT {columns} FROM {fromClause} ..."
