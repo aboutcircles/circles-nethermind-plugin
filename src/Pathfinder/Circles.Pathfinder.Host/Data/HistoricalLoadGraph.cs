@@ -328,8 +328,11 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         return results.Select(a => a.ToLowerInvariant()).ToList();
     }
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
-        => Array.Empty<(string, string, int)>();
+    // Historical canary path: wrapper mappings are not yet block-filtered, so the canary
+    // is effectively skipped for historical requests. Acceptable today because the canary's
+    // job is detecting LIVE graph drift; historical traffic doesn't broadcast on-chain.
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
+        => Array.Empty<(string, string, CirclesType)>();
 
     /// <summary>
     /// Executes a query with @mintPolicy parameter and returns a list of strings from column 0.

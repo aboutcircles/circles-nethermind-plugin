@@ -178,7 +178,7 @@ public class BalancesController : ControllerBase
                         isErc20 = true;
                         isWrapped = true;
                         tokenOwner = wrapperInfo.Value.Avatar;
-                        isInflationary = wrapperInfo.Value.CirclesType == 1;
+                        isInflationary = wrapperInfo.Value.CirclesType == CirclesType.InflationaryCircles;
                         tokenType = isInflationary
                             ? "CrcV2_ERC20WrapperDeployed_Inflationary"
                             : "CrcV2_ERC20WrapperDeployed_Demurraged";
@@ -333,7 +333,7 @@ public class BalancesController : ControllerBase
                         continue;
 
                     var wrapperInfo = _caches.GetWrapperInfo(tokenId);
-                    var isInflationary = wrapperInfo?.CirclesType == 1;
+                    var isInflationary = wrapperInfo?.CirclesType == CirclesType.InflationaryCircles;
 
                     total += isInflationary ? balance : ApplyV2Demurrage(key, balance);
                 }
@@ -401,7 +401,7 @@ public class BalancesController : ControllerBase
                         continue;
 
                     var wrapperInfo = _caches.GetWrapperInfo(tokenId);
-                    var isInflationary = wrapperInfo?.CirclesType == 1;
+                    var isInflationary = wrapperInfo?.CirclesType == CirclesType.InflationaryCircles;
 
                     v2Total += isInflationary ? balance : ApplyV2Demurrage(key, balance);
                 }

@@ -592,9 +592,9 @@ public class CacheWarmupService : BackgroundService
             INNER JOIN registered_avatars ra ON ra.avatar = e.""avatar""
             WHERE e.""blockNumber"" <= @toBlock";
 
-        // Key by wrapper address (not avatar) to support avatars with multiple wrappers
-        // An avatar can have both demurraged (circlesType=0) and inflationary (circlesType=1) wrappers
-        var wrappers = new Dictionary<string, (string Avatar, int CirclesType)>();
+        // Key by wrapper address (not avatar) to support avatars with multiple wrappers —
+        // an avatar can have both DemurrageCircles and InflationaryCircles wrappers deployed.
+        var wrappers = new Dictionary<string, (string Avatar, CirclesType CirclesType)>();
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
@@ -605,7 +605,7 @@ public class CacheWarmupService : BackgroundService
         {
             var avatar = reader.GetString(0);
             var erc20Wrapper = reader.GetString(1);
-            var circlesType = reader.GetInt32(2);
+            var circlesType = (CirclesType)reader.GetInt32(2);
 
             // Key by wrapper address for direct lookup
             var wrapperKey = erc20Wrapper.ToLowerInvariant();
@@ -1902,7 +1902,7 @@ public class CacheWarmupService : BackgroundService
                 var blockNumber = wrapperReader.GetInt64(0);
                 var avatar = wrapperReader.GetString(1);
                 var erc20Wrapper = wrapperReader.GetString(2);
-                var circlesType = wrapperReader.GetInt32(3);
+                var circlesType = (CirclesType)wrapperReader.GetInt32(3);
 
                 // Key by wrapper address (not avatar) to support avatars with multiple wrappers
                 var wrapperKey = erc20Wrapper.ToLowerInvariant();
@@ -1924,7 +1924,7 @@ public class CacheWarmupService : BackgroundService
         _caches.V1TokenOwnerByToken.Seed(new Dictionary<string, string>());
         _caches.V1AvatarToCidMap.Seed(new Dictionary<string, string>());
         _caches.V2Avatars.Seed(new Dictionary<string, (string, long)>());
-        _caches.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, int)>());
+        _caches.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, CirclesType)>());
         _caches.Groups.Seed(new Dictionary<string, (string, string, string)>());
         _caches.GroupMemberships.Seed(new Dictionary<string, (string, long)>());
         _caches.V2AvatarToCidMap.Seed(new Dictionary<string, string>());

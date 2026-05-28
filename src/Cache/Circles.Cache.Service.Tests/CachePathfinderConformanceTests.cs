@@ -66,8 +66,8 @@ public class CachePathfinderConformanceTests
         caches.Groups.Add(Block, NonRouterGroup, ("NonRouterGroup", "0xothermint", "NRG"));
 
         // --- Wrappers ---
-        caches.UpsertWrapper(Block, Wrapper1, Human1, 0); // valid: underlying is registered
-        caches.UpsertWrapper(Block, WrapperUnregistered, Unregistered, 0); // INVALID: underlying is unregistered
+        caches.UpsertWrapper(Block, Wrapper1, Human1, CirclesType.DemurrageCircles); // valid: underlying is registered
+        caches.UpsertWrapper(Block, WrapperUnregistered, Unregistered, CirclesType.DemurrageCircles); // INVALID: underlying is unregistered
 
         // --- V2 Balances ---
         // Valid: registered account, registered token owner (native)

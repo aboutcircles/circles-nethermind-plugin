@@ -265,9 +265,9 @@ public class DomainLifecycleTests
         var wrapper = "0xwrapper0000000000000000000000000000000000";
         var avatar = "0xavatar00000000000000000000000000000000000";
 
-        _cache.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, int)>
+        _cache.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, CirclesType)>
         {
-            [wrapper] = (avatar, 0)
+            [wrapper] = (avatar, CirclesType.DemurrageCircles)
         }, atBlockNo: 99);
         _cache.RebuildSecondaryIndexes();
 
@@ -275,7 +275,7 @@ public class DomainLifecycleTests
 
         // Add at block 100
         var wrapper2 = "0xwrapper2000000000000000000000000000000000";
-        _cache.UpsertWrapper(100, wrapper2, "0xavatar2", 1);
+        _cache.UpsertWrapper(100, wrapper2, "0xavatar2", CirclesType.InflationaryCircles);
 
         _cache.GetWrapperInfo(wrapper2).Should().NotBeNull();
 
@@ -400,7 +400,7 @@ public class DomainLifecycleTests
         _cache.V1TrustRelations.Add(100, $"{addr}:{truster}", 50L);
         _cache.V2TrustRelations.Add(100, $"{addr}:{truster}", 999999L);
         _cache.GroupMemberships.Add(100, $"{group}:{member}", (member, 999999L));
-        _cache.Erc20WrapperAddresses.Add(100, wrapper, ("0xavatar", 0));
+        _cache.Erc20WrapperAddresses.Add(100, wrapper, ("0xavatar", CirclesType.DemurrageCircles));
 
         // Rebuild and verify
         _cache.RebuildSecondaryIndexes();

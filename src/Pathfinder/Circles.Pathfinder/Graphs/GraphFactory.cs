@@ -817,8 +817,6 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
     // Load ERC20 wrapper→avatar reverse mappings for DTO output resolution.
     // Also populates InflationaryWrappers for the canary's unit-discrimination logic.
-    // circlesType: 0 = DemurrageCircles (unwrap takes demurraged units),
-    //              1 = InflationaryCircles (unwrap takes inflationary units).
     private void LoadWrapperMappings(CapacityGraph capacityGraph, CachedGroupData? cached = null)
     {
         if (cached != null)
@@ -840,7 +838,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             int wrapperId = AddressIdPool.IdOf(wrapperAddr.ToLowerInvariant());
             int avatarId = AddressIdPool.IdOf(avatarAddr.ToLowerInvariant());
             capacityGraph.WrapperToAvatar[wrapperId] = avatarId;
-            if (circlesType == 1)
+            if (circlesType == CirclesType.InflationaryCircles)
                 capacityGraph.InflationaryWrappers.Add(wrapperId);
         }
 

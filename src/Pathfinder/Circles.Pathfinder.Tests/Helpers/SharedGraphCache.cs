@@ -1,3 +1,4 @@
+using Circles.Common;
 using System.Collections.Concurrent;
 using Circles.Common.TestUtils;
 using Circles.Pathfinder.Data;
@@ -296,6 +297,6 @@ internal class CachedLoadGraph(CachedGraphData data) : ILoadGraph
     public IEnumerable<string>
         LoadRegisteredAvatars() => data.RegisteredAvatars;
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)>
-        LoadWrapperMappings() => Array.Empty<(string, string, int)>();
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)>
+        LoadWrapperMappings() => Array.Empty<(string, string, CirclesType)>();
 }

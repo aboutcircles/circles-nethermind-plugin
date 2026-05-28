@@ -1,3 +1,4 @@
+using Circles.Common;
 using Circles.Pathfinder.Data;
 using Nethermind.Int256;
 
@@ -19,7 +20,7 @@ public class MockLoadGraph : ILoadGraph
     private readonly List<string> _scoreRouters = new();
     private readonly List<(string Avatar, bool HasConsentedFlow)> _consentedFlags = new();
     private readonly List<string> _registeredAvatars = new();
-    private readonly List<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> _wrapperMappings = new();
+    private readonly List<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> _wrapperMappings = new();
     private string? _routerAddress;
 
     /// <summary>
@@ -210,7 +211,7 @@ public class MockLoadGraph : ILoadGraph
         return _registeredAvatars;
     }
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
     {
         return _wrapperMappings;
     }
@@ -224,11 +225,11 @@ public class MockLoadGraph : ILoadGraph
     }
 
     /// <summary>
-    /// Add a wrapper→avatar mapping for testing.
-    /// circlesType: 0 = DemurrageCircles (default, unwrap takes demurraged units),
-    ///              1 = InflationaryCircles (unwrap takes inflationary units).
+    /// Add a wrapper→avatar mapping for testing. Default flavor is
+    /// <see cref="CirclesType.DemurrageCircles"/> — pass
+    /// <see cref="CirclesType.InflationaryCircles"/> for s-prefix wrappers.
     /// </summary>
-    public void AddWrapperMapping(string wrapperAddress, string underlyingAvatar, int circlesType = 0)
+    public void AddWrapperMapping(string wrapperAddress, string underlyingAvatar, CirclesType circlesType = CirclesType.DemurrageCircles)
     {
         _wrapperMappings.Add((wrapperAddress.ToLowerInvariant(), underlyingAvatar.ToLowerInvariant(), circlesType));
     }

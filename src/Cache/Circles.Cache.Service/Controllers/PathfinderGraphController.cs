@@ -232,7 +232,7 @@ public class PathfinderGraphController : ControllerBase
             if (_caches.Erc20WrapperAddresses.TryGetValue(tokenAddress, out var wrapperInfo))
             {
                 isWrapped = true;
-                isStatic = wrapperInfo.CirclesType == 1;
+                isStatic = wrapperInfo.CirclesType == CirclesType.InflationaryCircles;
             }
 
             // Convert decimal Circles → attoCircles BigInteger

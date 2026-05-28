@@ -1,3 +1,5 @@
+using Circles.Common;
+
 namespace Circles.Cache.Service.Models;
 
 /// <summary>
@@ -233,7 +235,7 @@ public record PathfinderConsentedFlowRow(
 public record PathfinderWrapperMappingRow(
     string WrapperAddress,
     string UnderlyingAvatar,
-    int CirclesType = 0
+    CirclesType CirclesType = CirclesType.DemurrageCircles
 );
 
 public record PathfinderOperatorApprovalRow(

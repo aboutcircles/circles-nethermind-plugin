@@ -71,11 +71,11 @@ public class CapacityGraph : IGraph<CapacityEdge>
     // Used at DTO output layer to resolve wrapper addresses to registered avatars
     public Dictionary<int, int> WrapperToAvatar { get; } = new Dictionary<int, int>();
 
-    // Subset of WrapperToAvatar keys whose CrcV2_ERC20WrapperDeployed.circlesType == 1
-    // (InflationaryCircles, `s-` symbol prefix). The canary needs this to discriminate
-    // unwrap() argument units: DemurrageCircles.unwrap takes demurraged 1155 units 1:1,
-    // InflationaryCircles.unwrap takes inflationary ERC20 units (= demurraged * β^day).
-    // Verified on-chain by direct probes at 2026-05-27 — see PR description for evidence.
+    // Subset of WrapperToAvatar keys flagged as CirclesType.InflationaryCircles
+    // (`s-` symbol prefix). The canary needs this to discriminate unwrap() argument units:
+    // DemurrageCircles.unwrap takes demurraged 1155 units 1:1, InflationaryCircles.unwrap
+    // takes inflationary ERC20 units (= demurraged * β^day). Verified on-chain by direct
+    // probes 2026-05-27 — see PR description for evidence.
     public HashSet<int> InflationaryWrappers { get; } = new HashSet<int>();
 
     // Trust lookup for consented flow validation (truster -> set of trustees)

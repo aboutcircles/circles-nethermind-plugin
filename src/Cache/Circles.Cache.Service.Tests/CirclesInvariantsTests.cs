@@ -290,7 +290,7 @@ public class CirclesInvariantsTests
     public void CacheWrapperLookup_ResolvesWrapperToAvatar()
     {
         var caches = new CacheContainer(rollbackCapacity: 4);
-        caches.UpsertWrapper(1, Wrapper1, Human1, 0);
+        caches.UpsertWrapper(1, Wrapper1, Human1, CirclesType.DemurrageCircles);
 
         var lookup = new CacheWrapperLookup(caches);
 
