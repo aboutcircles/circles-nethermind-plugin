@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Numerics;
 using System.Text.RegularExpressions;
 using Circles.Cache.Service.Caches;
@@ -31,6 +32,8 @@ public class BalancesController : ControllerBase
     private const uint V2_INFLATION_DAY_ZERO = 1_602_720_000;
 
     private string GetRemoteIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    private static string FormatDecimal(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Applies V2 demurrage to a cached balance using the stored lastActivity timestamp.
@@ -127,7 +130,7 @@ public class BalancesController : ControllerBase
 
                     balances.Add(new TokenBalanceResponse(
                         TokenId: tokenId,
-                        Balance: balance.ToString(),
+                        Balance: FormatDecimal(balance),
                         TokenOwner: tokenOwner,
                         Version: 1,
                         TokenType: "CrcV1_Signup",
@@ -175,7 +178,7 @@ public class BalancesController : ControllerBase
                         isErc20 = true;
                         isWrapped = true;
                         tokenOwner = wrapperInfo.Value.Avatar;
-                        isInflationary = wrapperInfo.Value.CirclesType == 1;
+                        isInflationary = wrapperInfo.Value.CirclesType == CirclesType.InflationaryCircles;
                         tokenType = isInflationary
                             ? "CrcV2_ERC20WrapperDeployed_Inflationary"
                             : "CrcV2_ERC20WrapperDeployed_Demurraged";
@@ -218,7 +221,7 @@ public class BalancesController : ControllerBase
 
                     balances.Add(new TokenBalanceResponse(
                         TokenId: tokenId,
-                        Balance: displayBalance.ToString(),
+                        Balance: FormatDecimal(displayBalance),
                         TokenOwner: tokenOwner,
                         Version: 2,
                         TokenType: tokenType,
@@ -285,7 +288,7 @@ public class BalancesController : ControllerBase
             }
 
             return Ok(new TotalBalanceResponse(
-                totalCircles.ToString(),
+                FormatDecimal(totalCircles),
                 lastBlock,
                 timestamp
             ));
@@ -330,14 +333,14 @@ public class BalancesController : ControllerBase
                         continue;
 
                     var wrapperInfo = _caches.GetWrapperInfo(tokenId);
-                    var isInflationary = wrapperInfo?.CirclesType == 1;
+                    var isInflationary = wrapperInfo?.CirclesType == CirclesType.InflationaryCircles;
 
                     total += isInflationary ? balance : ApplyV2Demurrage(key, balance);
                 }
             }
 
             return Ok(new TotalBalanceResponse(
-                total.ToString(),
+                FormatDecimal(total),
                 lastBlock,
                 timestamp
             ));
@@ -398,7 +401,7 @@ public class BalancesController : ControllerBase
                         continue;
 
                     var wrapperInfo = _caches.GetWrapperInfo(tokenId);
-                    var isInflationary = wrapperInfo?.CirclesType == 1;
+                    var isInflationary = wrapperInfo?.CirclesType == CirclesType.InflationaryCircles;
 
                     v2Total += isInflationary ? balance : ApplyV2Demurrage(key, balance);
                 }
@@ -407,7 +410,7 @@ public class BalancesController : ControllerBase
             var total = v1Total + v2Total;
 
             return Ok(new TotalBalanceResponse(
-                total.ToString(),
+                FormatDecimal(total),
                 lastBlock,
                 timestamp
             ));

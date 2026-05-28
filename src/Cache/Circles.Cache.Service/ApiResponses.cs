@@ -1,3 +1,5 @@
+using Circles.Common;
+
 namespace Circles.Cache.Service.Models;
 
 /// <summary>
@@ -173,6 +175,8 @@ public record PathfinderGraphResponse(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<PathfinderGroupRow>? Groups,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderGroupRouterRow>? GroupRouters,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<PathfinderGroupTrustRow>? GroupTrusts,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<PathfinderConsentedFlowRow>? ConsentedFlow,
@@ -181,7 +185,13 @@ public record PathfinderGraphResponse(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<string>? Organizations,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<PathfinderWrapperMappingRow>? WrapperMappings
+    IReadOnlyList<PathfinderWrapperMappingRow>? WrapperMappings,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderScoreGroupMintLimitRow>? ScoreGroupMintLimits,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? ScoreRouters,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderOperatorApprovalRow>? OperatorApprovals
 );
 
 public record PathfinderBalanceRow(
@@ -201,6 +211,17 @@ public record PathfinderTrustRow(
 
 public record PathfinderGroupRow(string GroupAddress);
 
+public record PathfinderGroupRouterRow(
+    string GroupAddress,
+    string RouterAddress
+);
+
+public record PathfinderScoreGroupMintLimitRow(
+    string GroupAddress,
+    string CollateralToken,
+    string AvailableLimit
+);
+
 public record PathfinderGroupTrustRow(
     string GroupAddress,
     string TrustedToken
@@ -213,5 +234,11 @@ public record PathfinderConsentedFlowRow(
 
 public record PathfinderWrapperMappingRow(
     string WrapperAddress,
-    string UnderlyingAvatar
+    string UnderlyingAvatar,
+    CirclesType CirclesType = CirclesType.DemurrageCircles
+);
+
+public record PathfinderOperatorApprovalRow(
+    string Account,
+    string Operator
 );

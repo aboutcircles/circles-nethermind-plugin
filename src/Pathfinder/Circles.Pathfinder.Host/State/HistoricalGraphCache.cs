@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Circles.Common;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host.Data;
@@ -29,6 +30,10 @@ public sealed class HistoricalGraphCache
 
     private readonly ConcurrentDictionary<long, CachedHistoricalGraph> _cache = new();
     private readonly ConcurrentDictionary<long, SemaphoreSlim> _loadLocks = new();
+
+    // Serializes capacity-check + publish so concurrent loads of different blocks
+    // can't both observe free capacity, both skip eviction, and both insert past _maxEntries.
+    private readonly object _cacheMutationGate = new();
 
     /// <summary>
     /// Limits concurrent historical graph loads to prevent DB/memory exhaustion.
@@ -84,31 +89,37 @@ public sealed class HistoricalGraphCache
                 return cached.Factory;
             }
 
-            // Evict oldest if at capacity (bounded loop)
-            var evictionAttempts = 0;
-            while (_cache.Count >= _maxEntries && evictionAttempts++ < _maxEntries + 1)
-            {
-                EvictOldest();
-            }
-
             // Acquire global load semaphore to limit concurrent DB pressure
             await _globalLoadSemaphore.WaitAsync();
+            GraphFactory factory;
             try
             {
-                var factory = await Task.Run(() => LoadGraph(blockNumber));
+                factory = await Task.Run(() => LoadGraph(blockNumber));
+            }
+            finally
+            {
+                _globalLoadSemaphore.Release();
+            }
+
+            // Atomic capacity-check + publish: holding _cacheMutationGate ensures
+            // two concurrent loads of different blocks can't both bypass eviction
+            // and grow the cache past _maxEntries.
+            lock (_cacheMutationGate)
+            {
+                var evictionAttempts = 0;
+                while (_cache.Count >= _maxEntries && evictionAttempts++ < _maxEntries + 1)
+                {
+                    EvictOldest();
+                }
 
                 _cache[blockNumber] = new CachedHistoricalGraph
                 {
                     Factory = factory,
                     LastAccessedTicks = DateTimeOffset.UtcNow.Ticks
                 };
+            }
 
-                return factory;
-            }
-            finally
-            {
-                _globalLoadSemaphore.Release();
-            }
+            return factory;
         }
         finally
         {
@@ -190,8 +201,12 @@ public sealed class HistoricalGraphCache
 
         if (oldestKey >= 0 && _cache.TryRemove(oldestKey, out _))
         {
-            if (_loadLocks.TryRemove(oldestKey, out var evictedLock))
-                evictedLock.Dispose();
+            // Drop the per-block load lock entry but DO NOT dispose it: a duplicate-load
+            // waiter may still hold a reference and call Release() in its finally block,
+            // which would throw ObjectDisposedException. Leaving the SemaphoreSlim to GC
+            // is correct — SemaphoreSlim.Dispose docs explicitly forbid disposing while
+            // any thread can still access it.
+            _loadLocks.TryRemove(oldestKey, out _);
 
             _logger.LogInformation("Evicted historical graph for block {Block}", oldestKey);
         }
@@ -216,7 +231,7 @@ internal sealed class MaterializedLoadGraph(
     List<(string GroupAddress, string TrustedToken)> groupTrusts,
     List<(string Avatar, bool HasConsentedFlow)> consentedFlags,
     List<string> registeredAvatars,
-    List<(string WrapperAddress, string UnderlyingAvatar)> wrapperMappings) : ILoadGraph
+    List<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> wrapperMappings) : ILoadGraph
 {
     public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
         LoadV2Balances() => balances;
@@ -235,6 +250,6 @@ internal sealed class MaterializedLoadGraph(
 
     public IEnumerable<string> LoadRegisteredAvatars() => registeredAvatars;
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)>
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)>
         LoadWrapperMappings() => wrapperMappings;
 }

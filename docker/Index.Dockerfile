@@ -19,6 +19,7 @@ COPY src/Index/Circles.Index.CirclesV2.LBP/Circles.Index.CirclesV2.LBP.csproj ./
 COPY src/Index/Circles.Index.CirclesV2.NameRegistry/Circles.Index.CirclesV2.NameRegistry.csproj ./Index/Circles.Index.CirclesV2.NameRegistry/
 COPY src/Index/Circles.Index.CirclesV2.OIC/Circles.Index.CirclesV2.OIC.csproj ./Index/Circles.Index.CirclesV2.OIC/
 COPY src/Index/Circles.Index.CirclesV2.PaymentGateway/Circles.Index.CirclesV2.PaymentGateway.csproj ./Index/Circles.Index.CirclesV2.PaymentGateway/
+COPY src/Index/Circles.Index.CirclesV2.ScoreGroup/Circles.Index.CirclesV2.ScoreGroup.csproj ./Index/Circles.Index.CirclesV2.ScoreGroup/
 COPY src/Index/Circles.Index.CirclesV2.StandardTreasury/Circles.Index.CirclesV2.StandardTreasury.csproj ./Index/Circles.Index.CirclesV2.StandardTreasury/
 COPY src/Index/Circles.Index.CirclesV2.TokenOffers/Circles.Index.CirclesV2.TokenOffers.csproj ./Index/Circles.Index.CirclesV2.TokenOffers/
 COPY src/Index/Circles.Index.CirclesViews/Circles.Index.CirclesViews.csproj ./Index/Circles.Index.CirclesViews/
@@ -43,7 +44,7 @@ RUN dotnet publish \
     -o /circles-nethermind-plugin \
     --no-restore
 
-FROM nethermind/nethermind:1.36.2 AS base
+FROM nethermind/nethermind:1.37.2 AS base
 
 # Install psql for manual DB operations (runs as root, compose sets runtime user)
 RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*

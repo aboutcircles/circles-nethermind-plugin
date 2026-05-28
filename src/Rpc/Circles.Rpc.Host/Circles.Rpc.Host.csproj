@@ -18,16 +18,16 @@
 
 
   <ItemGroup>
-    <PackageReference Include="Nethereum.Util" Version="5.0.0" />
-    <PackageReference Include="Nethermind.Numerics.Int256" Version="1.3.6" />
+    <PackageReference Include="Nethereum.Util" Version="5.8.0" />
+    <PackageReference Include="Nethermind.Numerics.Int256" Version="1.5.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
-    <PackageReference Include="Npgsql.OpenTelemetry" Version="9.0.3" />
+    <PackageReference Include="Npgsql.OpenTelemetry" Version="10.0.1" />
     <PackageReference Include="prometheus-net" Version="8.2.1" />
     <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.3" />
@@ -35,8 +35,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Autofac" Version="9.0.0" />
-    <PackageReference Include="Npgsql" Version="9.0.3" />
+    <PackageReference Include="Autofac" Version="9.1.0" />
+    <PackageReference Include="Npgsql" Version="10.0.1" />
   </ItemGroup>
 
   <ItemGroup>

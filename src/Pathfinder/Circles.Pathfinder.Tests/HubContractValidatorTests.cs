@@ -17,6 +17,7 @@ public class HubContractValidatorTests
     private const string Carol = "0x0000000000000000000000000000000000000003";
     private const string Dave = "0x0000000000000000000000000000000000000004";
     private const string Router = "0x0000000000000000000000000000000000000099";
+    private const string ScoreRouter = "0x0000000000000000000000000000000000000098";
     private const string GroupA = "0x00000000000000000000000000000000000000a1";
     private const string GroupB = "0x00000000000000000000000000000000000000a2";
 
@@ -35,6 +36,8 @@ public class HubContractValidatorTests
     private class MockContractState : IContractState
     {
         public string? Router { get; set; }
+        public HashSet<string> Routers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> ScoreRouters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Groups { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Consented { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<(string Truster, string CirclesId)> Trusts { get; set; } = new();
@@ -42,7 +45,24 @@ public class HubContractValidatorTests
         public HashSet<string> Registered { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public bool RegisterAll { get; set; } = true; // Default: all considered registered
 
+        // Keys are lowercased (group, collateral) tuples. Null entries simulate "not cached"
+        // for Rule 12's fail-closed branch — distinct from "absent key" which returns null too,
+        // both mapping to GetScoreGroupMintLimit() == null at the interface level.
+        public Dictionary<(string Group, string Collateral), long> ScoreGroupMintLimits { get; set; }
+            = new();
+
+        // (account, operator) tuples lowercased. Membership grants approval — but only when
+        // StrictApprovals is true. Default behavior is permissive (returns true regardless),
+        // matching the IContractState default so existing tests don't have to seed anything.
+        public HashSet<(string Account, string Operator)> Approvals { get; set; } = new();
+        public bool StrictApprovals { get; set; }
+
         public string? RouterAddress => Router;
+        public bool IsRouter(string address) =>
+            (Router != null && string.Equals(Router, address, StringComparison.OrdinalIgnoreCase))
+            || Routers.Contains(address)
+            || ScoreRouters.Contains(address);
+        public bool IsScoreRouter(string address) => ScoreRouters.Contains(address);
         public bool IsGroup(string address) => Groups.Contains(address);
         public bool HasAdvancedUsageFlags(string address) => Consented.Contains(address);
         public bool IsRegistered(string address) => RegisterAll || Registered.Contains(address);
@@ -54,6 +74,20 @@ public class HubContractValidatorTests
         {
             if (TrustAll) return true;
             return Trusts.Contains((truster.ToLowerInvariant(), circlesId.ToLowerInvariant()));
+        }
+
+        public long? GetScoreGroupMintLimit(string group, string collateral)
+        {
+            return ScoreGroupMintLimits.TryGetValue(
+                (group.ToLowerInvariant(), collateral.ToLowerInvariant()), out var limit)
+                ? limit
+                : null;
+        }
+
+        public bool IsApprovedForAll(string account, string @operator)
+        {
+            if (!StrictApprovals) return true;
+            return Approvals.Contains((account.ToLowerInvariant(), @operator.ToLowerInvariant()));
         }
     }
 
@@ -172,7 +206,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Alice) }; // Alice sends Alice-token to Bob
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty);
     }
 
@@ -182,7 +216,7 @@ public class HubContractValidatorTests
         var state = new MockContractState { Router = Router }; // No trusts, TrustAll=false
         var steps = new[] { Step(Alice, Bob, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations.Count, Is.EqualTo(1));
         Assert.That(violations[0].Rule, Is.EqualTo("IsPermittedFlow"));
     }
@@ -198,7 +232,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Carol) }; // Consented: checks From trusts To
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty);
     }
 
@@ -213,7 +247,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Carol) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations.Any(v => v.Message.Contains("advancedUsageFlags")), Is.True);
     }
 
@@ -228,7 +262,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Bob, Carol) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations.Any(v => v.Message.Contains("does not trust")), Is.True);
     }
 
@@ -242,7 +276,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Router, GroupA, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty, "Router→Group should bypass isPermittedFlow (internal group mint)");
     }
 
@@ -256,7 +290,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Router, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty, "Avatar→Router should pass when Router trusts tokenOwner");
     }
 
@@ -270,7 +304,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Alice, Router, Alice) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Has.Count.EqualTo(1));
         Assert.That(violations[0].Message, Does.Contain("Avatar→Router"));
         Assert.That(violations[0].Message, Does.Contain("does not trust token owner"));
@@ -288,7 +322,7 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Router, Alice, Bob) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Is.Empty, "Router→NonGroup should use standard validation and pass when trusted");
     }
 
@@ -302,8 +336,65 @@ public class HubContractValidatorTests
         };
         var steps = new[] { Step(Router, Alice, Bob) };
         var violations = new List<ValidationViolation>();
-        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: "", state, violations);
         Assert.That(violations, Has.Count.EqualTo(1), "Router→NonGroup with no trust should fail standard validation");
+    }
+
+    // ═══════════════════════════════════════════
+    // Rule: ApproveCRCRequired (Avatar→ScoreRouter requires ERC-1155 operator approval)
+    // ═══════════════════════════════════════════
+
+    [Test]
+    public void ApproveCRCRequired_ScoreRouterEdge_WithApproval_DoesNotEmit()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            Trusts = { (ScoreRouter.ToLowerInvariant(), Alice.ToLowerInvariant()) },
+            Approvals = { (ScoreRouter.ToLowerInvariant(), Alice.ToLowerInvariant()) },
+        };
+        var steps = new[] { Step(Alice, ScoreRouter, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: Alice, state, violations);
+        Assert.That(violations.Any(v => v.Rule == "ApproveCRCRequired"), Is.False,
+            "ApproveCRCRequired must not fire when ScoreRouter has approved source");
+    }
+
+    [Test]
+    public void ApproveCRCRequired_ScoreRouterEdge_WithoutApproval_Emits()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            Trusts = { (ScoreRouter.ToLowerInvariant(), Alice.ToLowerInvariant()) },
+            StrictApprovals = true,
+        };
+        var steps = new[] { Step(Alice, ScoreRouter, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: Alice, state, violations);
+        var violation = violations.SingleOrDefault(v => v.Rule == "ApproveCRCRequired");
+        Assert.That(violation, Is.Not.Null, "ApproveCRCRequired must fire when ScoreRouter has no approval for source");
+        Assert.That(violation!.Message, Does.Contain("setApprovalForCRC"),
+            "Message should guide the SDK to call setApprovalForCRC");
+    }
+
+    [Test]
+    public void ApproveCRCRequired_NonScoreRouterEdge_NoEmission_EvenWithoutApproval()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            // Router is the standard router but NOT a score router.
+            Trusts = { (Router, Alice.ToLowerInvariant()) },
+            StrictApprovals = true, // Alice not in Approvals → unapproved, but Router is not a score router.
+        };
+        var steps = new[] { Step(Alice, Router, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, source: Alice, state, violations);
+        Assert.That(violations.Any(v => v.Rule == "ApproveCRCRequired"), Is.False,
+            "ApproveCRCRequired is scoped to score-router edges; standard routers must not trip it");
     }
 
     // ═══════════════════════════════════════════
@@ -476,6 +567,30 @@ public class HubContractValidatorTests
         var violations = new List<ValidationViolation>();
         HubContractValidator.ValidateCollateralBeforeMint(steps, state, violations);
         Assert.That(violations, Is.Empty);
+    }
+
+    [Test]
+    public void Rule6_GroupSpecificScoreRouterCountsAsCollateral()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            Routers = { ScoreRouter },
+            TrustAll = true,
+            Groups = { GroupA },
+        };
+        var steps = new[]
+        {
+            Step(Alice, ScoreRouter, Alice, "100"),
+            Step(ScoreRouter, GroupA, Alice, "100"),
+            Step(GroupA, Bob, GroupA, "100"),
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateCollateralBeforeMint(steps, state, violations);
+
+        Assert.That(violations, Is.Empty,
+            "A group-specific score router must satisfy the same collateral-before-mint rule as the base router.");
     }
 
     // ═══════════════════════════════════════════
@@ -915,5 +1030,274 @@ public class HubContractValidatorTests
             AddressIdPool.StringOf(groupId),
             AddressIdPool.StringOf(untrustedId)), Is.False,
             "Group not trusting token should return false");
+    }
+
+    // ═══════════════════════════════════════════
+    // Rule 12: ScoreGroupMintLimitsHonored
+    // Mirrors OffchainScoreBasedMintPolicy.beforeMintPolicy's router branch:
+    // cumulative router→group deposits per (group, collateral) ≤ availableLimit.
+    //
+    // Units convention (mirrors production):
+    //   TransferPathStep.Value: wei (10^18 per CRC, per V2Pathfinder.cs:454)
+    //   ScoreGroupMintLimits cached value: 6-decimal CRC (10^6 per CRC,
+    //     per GraphFactory.cs:739 / CirclesConverter.TruncateToInt64)
+    // The validator inflates the cached limit to wei via BlowUpToBigInteger.
+    // Tests use whole-CRC values where possible: 1 CRC = 1_000_000 cached,
+    // 1 CRC = "1000000000000000000" as wei Value string.
+    // ═══════════════════════════════════════════
+
+    private const string Wei_0_4_CRC = "400000000000000000";   // 0.4 CRC in wei
+    private const string Wei_0_5_CRC = "500000000000000000";   // 0.5 CRC in wei
+    private const string Wei_1_0_CRC = "1000000000000000000";  // 1 CRC in wei
+    private const long Cached_0_5_CRC = 500_000L;              // 0.5 CRC at 6dp
+    private const long Cached_0_7_CRC = 700_000L;              // 0.7 CRC at 6dp
+    private const long Cached_1_0_CRC = 1_000_000L;            // 1 CRC at 6dp
+
+    [Test]
+    public void Rule12_SingleIntermediaryWithinLimit_Passes()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            TrustAll = true,
+            Groups = { GroupA },
+            ScoreGroupMintLimits = { [(GroupA.ToLowerInvariant(), Alice.ToLowerInvariant())] = Cached_1_0_CRC },
+        };
+        var steps = new[]
+        {
+            Step(Alice, ScoreRouter, Alice, Wei_0_5_CRC),
+            Step(ScoreRouter, GroupA, Alice, Wei_0_5_CRC),
+            Step(GroupA, Bob, GroupA, Wei_0_5_CRC),
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateScoreGroupMintLimits(steps, state, violations);
+
+        Assert.That(violations, Is.Empty,
+            "0.5 CRC cumulative Alice-collateral ≤ 1 CRC availableLimit must pass.");
+    }
+
+    [Test]
+    public void Rule12_TwoIntermediariesSameCollateralOverLimit_FailsWithError()
+    {
+        // Same-token sharing case: both Bob and Carol push Alice-collateral
+        // through the score router into GroupA. They share the (GroupA, Alice)
+        // cap, and their cumulative deposit exceeds it. The violation must
+        // point at the SECOND deposit edge — the one that crosses the cap.
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            TrustAll = true,
+            Groups = { GroupA },
+            ScoreGroupMintLimits = { [(GroupA.ToLowerInvariant(), Alice.ToLowerInvariant())] = Cached_0_7_CRC },
+        };
+        // Two 0.4 CRC deposits → 0.8 CRC cumulative > 0.7 CRC cap
+        var steps = new[]
+        {
+            Step(Bob, ScoreRouter, Alice, Wei_0_4_CRC),       // edge 0
+            Step(ScoreRouter, GroupA, Alice, Wei_0_4_CRC),    // edge 1 — first router→group, within cap
+            Step(Carol, ScoreRouter, Alice, Wei_0_4_CRC),     // edge 2
+            Step(ScoreRouter, GroupA, Alice, Wei_0_4_CRC),    // edge 3 — second router→group, pushes over
+            Step(GroupA, Dave, GroupA, "800000000000000000"), // edge 4 — 0.8 CRC mint
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateScoreGroupMintLimits(steps, state, violations);
+
+        var rule12 = violations.Where(v => v.Rule == "ScoreGroupMintLimitsHonored").ToList();
+        Assert.That(rule12.Count, Is.EqualTo(1),
+            "Exactly one violation per (group, collateral) bucket.");
+        Assert.That(rule12[0].Severity, Is.EqualTo("error"));
+        Assert.That(rule12[0].EdgeIndex, Is.EqualTo(3),
+            "Violation must point at the edge that pushes cumulative past the cap, not the bucket's first contributor.");
+        Assert.That(rule12[0].Message,
+            Does.Contain("800000000000000000")        // cumulative in wei
+            .And.Contain("700000000000000000"));      // limit inflated to wei
+    }
+
+    [Test]
+    public void Rule12_TwoIntermediariesIndependentCollateralsWithinLimits_Passes()
+    {
+        // Per-intermediary case: each intermediary contributes its own personal
+        // CRC token as collateral. (GroupA, Bob) and (GroupA, Carol) are
+        // independent rows on-chain, each with its own cap.
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            TrustAll = true,
+            Groups = { GroupA },
+            ScoreGroupMintLimits =
+            {
+                [(GroupA.ToLowerInvariant(), Bob.ToLowerInvariant())] = Cached_0_5_CRC,
+                [(GroupA.ToLowerInvariant(), Carol.ToLowerInvariant())] = Cached_0_5_CRC,
+            },
+        };
+        var steps = new[]
+        {
+            Step(Bob, ScoreRouter, Bob, Wei_0_4_CRC),
+            Step(ScoreRouter, GroupA, Bob, Wei_0_4_CRC),
+            Step(Carol, ScoreRouter, Carol, Wei_0_4_CRC),
+            Step(ScoreRouter, GroupA, Carol, Wei_0_4_CRC),
+            Step(GroupA, Dave, GroupA, "800000000000000000"),
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateScoreGroupMintLimits(steps, state, violations);
+
+        Assert.That(violations, Is.Empty,
+            "Independent (group, intermediary-token) rows each at 0.4 of 0.5 CRC cap must pass.");
+    }
+
+    [Test]
+    public void Rule12_NoCachedLimitForScoreRouterEdge_FailsClosed()
+    {
+        // State-snapshot drift: a score-router→group edge exists but no
+        // availableLimit row was emitted. Refuse the path (chain would revert).
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            TrustAll = true,
+            Groups = { GroupA },
+            // ScoreGroupMintLimits intentionally empty
+        };
+        var steps = new[]
+        {
+            Step(Alice, ScoreRouter, Alice, Wei_0_5_CRC),
+            Step(ScoreRouter, GroupA, Alice, Wei_0_5_CRC),
+            Step(GroupA, Bob, GroupA, Wei_0_5_CRC),
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateScoreGroupMintLimits(steps, state, violations);
+
+        var rule12 = violations.Where(v => v.Rule == "ScoreGroupMintLimitsHonored").ToList();
+        Assert.That(rule12.Count, Is.EqualTo(1));
+        Assert.That(rule12[0].Severity, Is.EqualTo("error"));
+        Assert.That(rule12[0].Message, Does.Contain("no availableLimit").Or.Contain("state-snapshot drift"));
+    }
+
+    [Test]
+    public void Rule12_NoScoreRouterEdges_NoOp()
+    {
+        // Base-group flows (regular router, no score router on path) must
+        // not be touched by Rule 12, regardless of whether any limits are
+        // cached. The validator scopes by IsScoreRouter().
+        var state = new MockContractState
+        {
+            Router = Router,
+            TrustAll = true,
+            Groups = { GroupA },
+        };
+        var steps = new[]
+        {
+            Step(Alice, Router, Alice, Wei_0_5_CRC),
+            Step(Router, GroupA, Alice, Wei_0_5_CRC),
+            Step(GroupA, Bob, GroupA, Wei_0_5_CRC),
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateScoreGroupMintLimits(steps, state, violations);
+
+        Assert.That(violations, Is.Empty,
+            "Non-score routers must not trigger Rule 12.");
+    }
+
+    [Test]
+    public void Rule12_ExactLimitBoundary_Passes()
+    {
+        // Cumulative == limit (exact-edge boundary) — strict-greater compare,
+        // so this must pass. Regression: ensures we never silently switch
+        // to >= which would reject paths that the contract would accept.
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            TrustAll = true,
+            Groups = { GroupA },
+            ScoreGroupMintLimits = { [(GroupA.ToLowerInvariant(), Alice.ToLowerInvariant())] = Cached_1_0_CRC },
+        };
+        var steps = new[]
+        {
+            Step(Alice, ScoreRouter, Alice, Wei_1_0_CRC),
+            Step(ScoreRouter, GroupA, Alice, Wei_1_0_CRC), // exactly == 1 CRC limit
+            Step(GroupA, Bob, GroupA, Wei_1_0_CRC),
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateScoreGroupMintLimits(steps, state, violations);
+
+        Assert.That(violations, Is.Empty, "Cumulative == limit must pass (strict-greater compare).");
+    }
+
+    [Test]
+    public void Rule12_UnparseableValueOnScoreRouterEdge_FailsWithError()
+    {
+        // Silent-failure guard: BigInteger.TryParse failures on score-router
+        // edges must surface as a Rule 12 violation, not slip past via
+        // "continue". Rule 1 doesn't catch non-empty junk strings.
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            TrustAll = true,
+            Groups = { GroupA },
+            ScoreGroupMintLimits = { [(GroupA.ToLowerInvariant(), Alice.ToLowerInvariant())] = Cached_1_0_CRC },
+        };
+        var steps = new[]
+        {
+            Step(Alice, ScoreRouter, Alice, "not-a-number"),
+            Step(ScoreRouter, GroupA, Alice, "0xdeadbeef"),
+            Step(GroupA, Bob, GroupA, Wei_0_5_CRC),
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateScoreGroupMintLimits(steps, state, violations);
+
+        var rule12 = violations.Where(v => v.Rule == "ScoreGroupMintLimitsHonored").ToList();
+        Assert.That(rule12.Any(v => v.Message.Contains("unparseable")), Is.True,
+            "Unparseable Value on a score-router→group edge must produce a Rule 12 error.");
+    }
+
+    [Test]
+    public void Rule12_WrapperTokenOwnerKeyedAsRaw_MatchesGraphFactory()
+    {
+        // Regression: Rule 12 must NOT resolve wrapper→underlying. The
+        // ScoreGroupMintLimits cache is keyed by raw token id (matching
+        // GraphFactory.cs:999 + GraphFactory.cs:1032). If a wrapper ever
+        // appeared as TokenOwner on a score-router→group hop, the cache
+        // lookup must use the wrapper address directly so it matches what
+        // GraphFactory stored. Resolving here would create a spurious
+        // "no availableLimit cached" fail-close.
+        const string WrapperAddr = "0x0000000000000000000000000000000000000088";
+        var state = new MockContractState
+        {
+            Router = Router,
+            ScoreRouters = { ScoreRouter },
+            TrustAll = true,
+            Groups = { GroupA },
+            Wrappers = { [WrapperAddr] = Alice }, // wrapper→underlying mapping exists…
+            ScoreGroupMintLimits =
+            {
+                // …but the cache is keyed under the WRAPPER address, not Alice.
+                [(GroupA.ToLowerInvariant(), WrapperAddr.ToLowerInvariant())] = Cached_1_0_CRC,
+            },
+        };
+        var steps = new[]
+        {
+            Step(Alice, ScoreRouter, WrapperAddr, Wei_0_5_CRC),
+            Step(ScoreRouter, GroupA, WrapperAddr, Wei_0_5_CRC),
+            Step(GroupA, Bob, GroupA, Wei_0_5_CRC),
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateScoreGroupMintLimits(steps, state, violations);
+
+        Assert.That(violations, Is.Empty,
+            "Wrapper-keyed lookup must succeed without wrapper resolution; " +
+            "if Rule 12 resolved to Alice, the lookup would miss and fail-close.");
     }
 }

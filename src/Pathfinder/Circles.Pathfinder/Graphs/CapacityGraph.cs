@@ -13,7 +13,12 @@ public sealed record CachedGroupData(
     Dictionary<int, HashSet<int>> GroupTrustedTokens,
     HashSet<int> ConsentedAvatars,
     HashSet<int> RegisteredAvatarIds,
-    Dictionary<int, int> WrapperToAvatar);
+    Dictionary<int, int> WrapperToAvatar,
+    Dictionary<int, int>? GroupRouters = null,
+    Dictionary<(int GroupAddress, int CollateralToken), long>? ScoreGroupMintLimits = null,
+    Dictionary<int, HashSet<int>>? OperatorApprovals = null,
+    HashSet<int>? ScoreRouterIds = null,
+    HashSet<int>? InflationaryWrappers = null);
 
 public class CapacityGraph : IGraph<CapacityEdge>
 {
@@ -28,6 +33,27 @@ public class CapacityGraph : IGraph<CapacityEdge>
     public HashSet<int> GroupNodes { get; } = new HashSet<int>();
     public HashSet<int> OrganizationNodes { get; } = new HashSet<int>();
     public int? RouterNode { get; set; }
+    public HashSet<int> RouterNodes { get; } = new HashSet<int>();
+    public Dictionary<int, int> GroupRouters { get; } = new Dictionary<int, int>();
+    public Dictionary<(int GroupAddress, int CollateralToken), long> ScoreGroupMintLimits { get; } = new();
+
+    /// <summary>
+    /// ERC-1155 operator approvals from Hub.ApprovalForAll, keyed by the account (typically a
+    /// ScoreGroupMintRouter) that granted the approval. The value set contains the operator
+    /// node IDs that the account currently approves. Used to gate Avatar→Router edges:
+    /// Hub.operateFlowMatrix reverts if the path includes a Router→Group hop and the caller
+    /// (the operator) is not in this set for that router.
+    /// </summary>
+    public Dictionary<int, HashSet<int>> OperatorApprovals { get; } = new();
+
+    /// <summary>
+    /// Score-group mint routers, keyed by address ID. Source of truth: the
+    /// CrcV2_ScoreGroup.GroupInitialized event's pathMintRouter field (immutable
+    /// post-init). Used by IsScoreRouter and by AddTokenPoolOutEdges to recognize a
+    /// freshly-initialized score group even when no mint-limit rows or operator
+    /// approvals exist yet — both of which lag the initialize event in practice.
+    /// </summary>
+    public HashSet<int> ScoreRouterIds { get; } = new();
 
     // Track which tokens each group trusts
     public Dictionary<int, HashSet<int>> GroupTrustedTokens { get; } = new Dictionary<int, HashSet<int>>();
@@ -44,6 +70,13 @@ public class CapacityGraph : IGraph<CapacityEdge>
     // Reverse mapping: ERC20 wrapper contract address ID → underlying avatar address ID
     // Used at DTO output layer to resolve wrapper addresses to registered avatars
     public Dictionary<int, int> WrapperToAvatar { get; } = new Dictionary<int, int>();
+
+    // Subset of WrapperToAvatar keys flagged as CirclesType.InflationaryCircles
+    // (`s-` symbol prefix). The canary needs this to discriminate unwrap() argument units:
+    // DemurrageCircles.unwrap takes demurraged 1155 units 1:1, InflationaryCircles.unwrap
+    // takes inflationary ERC20 units (= demurraged * β^day). Verified on-chain by direct
+    // probes 2026-05-27 — see PR description for evidence.
+    public HashSet<int> InflationaryWrappers { get; } = new HashSet<int>();
 
     // Trust lookup for consented flow validation (truster -> set of trustees)
     public IReadOnlyDictionary<int, HashSet<int>>? TrustLookup { get; set; }
@@ -84,19 +117,65 @@ public class CapacityGraph : IGraph<CapacityEdge>
         GroupNodes.Add(groupAddress);
     }
 
+    public void SetGroupRouter(int groupAddress, int routerAddress)
+    {
+        AddGroup(groupAddress);
+        SetRouter(routerAddress);
+        GroupRouters[groupAddress] = routerAddress;
+    }
+
     // Track the router node ID for post-processing.
     // Note: Router is added as an avatar node but has no edges in the capacity graph during construction.
     // It's only used during path post-processing to insert router steps between Avatar→Group transfers.
     public void SetRouter(int routerAddress)
     {
         AddAvatar(routerAddress);
-        RouterNode = routerAddress;
+        RouterNodes.Add(routerAddress);
+        RouterNode ??= routerAddress;
     }
 
     // Helper methods
     public bool IsGroup(int nodeAddress) => GroupNodes.Contains(nodeAddress);
     public bool IsOrganization(int nodeAddress) => OrganizationNodes.Contains(nodeAddress);
-    public bool IsRouter(int nodeAddress) => RouterNode.HasValue && RouterNode.Value == nodeAddress;
+    public bool IsRouter(int nodeAddress) => RouterNodes.Contains(nodeAddress);
+
+    /// <summary>
+    /// True when <paramref name="nodeAddress"/> is a score-group avatar (its CRC
+    /// token id == the avatar address). Derived from the canonical ScoreRouterIds
+    /// set (sourced from CrcV2_ScoreGroup.GroupInitialized.pathMintRouter, immutable
+    /// post-init, does not lag mint-limit rows) joined via the group→router map —
+    /// the same signal AddTokenPoolOutEdges uses to recognize a score router. No
+    /// separate propagation path, so every graph-load mode (per-request DB, cached,
+    /// cache snapshot, incremental) gets it for free once GroupRouters and
+    /// ScoreRouterIds are populated.
+    ///
+    /// ScoreGroup CRC is wrapped-only by design: the unwrapped ERC1155 may appear
+    /// solely on the terminal Group→sink mint edge — never as a holder balance or a
+    /// transient hop. The graph-construction guards consult this predicate.
+    ///
+    /// The standard group router (<see cref="RouterNode"/>) is explicitly excluded:
+    /// every regular group is assigned the standard router, so if a score group were
+    /// ever initialized with the standard router as its pathMintRouter, ScoreRouterIds
+    /// would contain it and this predicate would fire for ALL regular groups, silently
+    /// stripping their routing. A score group that genuinely reused the standard router
+    /// is anyway indistinguishable from a regular group here, so excluding it is the
+    /// safe, non-lossy choice. A collision is logged at load (see GraphFactory).
+    /// </summary>
+    public bool IsScoreGroup(int nodeAddress) =>
+        GroupRouters.TryGetValue(nodeAddress, out var routerId)
+        && routerId != RouterNode
+        && ScoreRouterIds.Contains(routerId);
+
+    public int RouterForGroup(int groupAddress)
+    {
+        if (GroupRouters.TryGetValue(groupAddress, out var routerAddress))
+            return routerAddress;
+
+        if (RouterNode.HasValue)
+            return RouterNode.Value;
+
+        throw new InvalidOperationException("No router is configured for group minting.");
+    }
 
     public void AddCapacityEdge(int from, int to, int token, long capacity)
     {

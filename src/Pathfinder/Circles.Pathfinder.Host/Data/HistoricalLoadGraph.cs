@@ -91,7 +91,9 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         SELECT t1.truster, t1.trustee FROM active_trust t1
         INNER JOIN registered_avatars a1 ON a1.avatar = t1.truster
         INNER JOIN registered_avatars a2 ON a2.avatar = t1.trustee
-        LEFT JOIN "CrcV2_RegisterGroup" t2 ON t2."group" = t1.truster
+        LEFT JOIN "CrcV2_RegisterGroup" t2
+            ON t2."group" = t1.truster
+           AND t2."blockNumber" <= {0}
         WHERE t2."group" IS NULL
         """;
 
@@ -326,8 +328,11 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         return results.Select(a => a.ToLowerInvariant()).ToList();
     }
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
-        => Array.Empty<(string, string)>();
+    // Historical canary path: wrapper mappings are not yet block-filtered, so the canary
+    // is effectively skipped for historical requests. Acceptable today because the canary's
+    // job is detecting LIVE graph drift; historical traffic doesn't broadcast on-chain.
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
+        => Array.Empty<(string, string, CirclesType)>();
 
     /// <summary>
     /// Executes a query with @mintPolicy parameter and returns a list of strings from column 0.

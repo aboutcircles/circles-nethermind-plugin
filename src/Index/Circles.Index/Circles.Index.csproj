@@ -28,7 +28,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Autofac" Version="9.0.0" />
+    <PackageReference Include="Autofac" Version="9.1.0" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.3" />
   </ItemGroup>
 
@@ -81,6 +81,9 @@
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
     <ProjectReference Include="..\Circles.Index.CirclesV2.PaymentGateway\Circles.Index.CirclesV2.PaymentGateway.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV2.ScoreGroup\Circles.Index.CirclesV2.ScoreGroup.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
     <ProjectReference Include="..\Circles.Index.CirclesViews\Circles.Index.CirclesViews.csproj">

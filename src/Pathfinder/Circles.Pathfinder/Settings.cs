@@ -140,4 +140,29 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_STANDARD_MINT_POLICY")?.ToLowerInvariant()
         ?? "0xcdfc5135aec0afbf102c108e7f5c8a88c6112842";
 
+    /// <summary>
+    /// Additional mint policies whose groups participate in pathfinding.
+    /// Score groups are included only when an indexed
+    /// CrcV2_ScoreGroup_GroupInitialized event provides their path mint router.
+    /// </summary>
+    public string[] ScoreGroupMintPolicies { get; set; } =
+        Environment.GetEnvironmentVariable("V2_SCORE_GROUP_MINT_POLICIES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToArray()
+        ?? [];
+
+    /// <summary>
+    /// Score-group treasury "aggregator" → sub-treasury address list. Required
+    /// when the on-chain treasury is a ScoreTreasury router/splitter that
+    /// forwards collateral to score-keyed sub-treasuries rather than custody-ing
+    /// it itself. Without this mapping <c>Hub.balanceOf(treasury, collateral)</c>
+    /// returns 0 and the mint-cap formula over-approves router/migration mints.
+    /// Format: <c>aggregator:sub1,sub2;aggregator:sub3,sub4</c>; addresses are
+    /// lowercased. Aggregators not in this map keep single-treasury behavior.
+    /// </summary>
+    public Dictionary<string, string[]> ScoreTreasurySubTreasuries { get; set; } =
+        Circles.Common.EnvParsers.ParseAggregatorMap(
+            "SCORE_TREASURY_SUBTREASURIES",
+            Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES"));
 }

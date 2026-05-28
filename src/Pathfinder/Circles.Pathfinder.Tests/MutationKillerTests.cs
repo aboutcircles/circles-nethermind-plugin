@@ -1,3 +1,4 @@
+using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Edges;
@@ -1378,8 +1379,8 @@ public class MutationKillerTests
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts() => GroupTrusts;
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
         public IEnumerable<string> LoadRegisteredAvatars() => Enumerable.Empty<string>();
-        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
-            => Array.Empty<(string, string)>();
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
+            => Array.Empty<(string, string, CirclesType)>();
     }
 
     #endregion

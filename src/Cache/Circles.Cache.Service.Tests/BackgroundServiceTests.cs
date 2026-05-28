@@ -1,3 +1,4 @@
+using Circles.Common;
 using Circles.Cache.Service;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Services;
@@ -694,7 +695,7 @@ public class NotificationListenerServiceTests
         caches.V1TokenOwnerByToken.Seed(new Dictionary<string, string>(), blockNo);
         caches.V1AvatarToCidMap.Seed(new Dictionary<string, string>(), blockNo);
         caches.V2Avatars.Seed(new Dictionary<string, (string, long)>(), blockNo);
-        caches.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, int)>(), blockNo);
+        caches.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, CirclesType)>(), blockNo);
         caches.Groups.Seed(new Dictionary<string, (string, string, string)>(), blockNo);
         caches.GroupMemberships.Seed(new Dictionary<string, (string Member, long ExpiryTime)>(), blockNo);
         caches.V2AvatarToCidMap.Seed(new Dictionary<string, string>(), blockNo);

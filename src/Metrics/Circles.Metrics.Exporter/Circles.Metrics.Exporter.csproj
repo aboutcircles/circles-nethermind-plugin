@@ -19,7 +19,7 @@
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.3" />
 
     <!-- PostgreSQL -->
-    <PackageReference Include="Npgsql" Version="9.0.3" />
+    <PackageReference Include="Npgsql" Version="10.0.1" />
 
     <!-- Monitoring -->
     <PackageReference Include="prometheus-net" Version="8.2.1" />

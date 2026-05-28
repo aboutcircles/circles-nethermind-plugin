@@ -1,3 +1,4 @@
+using Circles.Common;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Controllers;
 using Circles.Cache.Service.Models;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 using FluentAssertions;
+using System.Globalization;
 using System.Net;
 using Npgsql;
 
@@ -217,7 +219,7 @@ public class ControllerTests
         // V1 balance is converted from CRC to Circles (approx 2.1x inflation factor)
         // V2 balance remains 200, V1 100 CRC becomes ~211 Circles
         // Total should be > 300 (would be 300 if no conversion applied)
-        var balance = decimal.Parse(response!.Balance);
+        var balance = decimal.Parse(response!.Balance, CultureInfo.InvariantCulture);
         balance.Should().BeGreaterThan(300m, "V1 CRC should be converted to time-circles with inflation factor > 1");
         balance.Should().BeLessThan(450m, "Converted balance should be within reasonable range (200 V2 + ~211-250 V1)");
     }
@@ -244,7 +246,7 @@ public class ControllerTests
         response.Should().NotBeNull();
         // Raw CRC sum is 150, but CRC→Circles conversion applies ~2.1x inflation factor
         // V2 balance (200) should NOT be included
-        var balance = decimal.Parse(response!.Balance);
+        var balance = decimal.Parse(response!.Balance, CultureInfo.InvariantCulture);
         balance.Should().BeGreaterThan(150m, "V1 CRC should be converted to time-circles with inflation factor > 1");
         balance.Should().BeLessThan(350m, "Converted balance should be within reasonable range (~316 for 150 CRC)");
     }
@@ -578,7 +580,7 @@ public class ControllerTests
     {
         var wrapper = "0xwrapper0000000000000000000000000000000000";
         var avatar = "0xavatar00000000000000000000000000000000000";
-        _cache.UpsertWrapper(2000, wrapper, avatar, 1); // inflationary
+        _cache.UpsertWrapper(2000, wrapper, avatar, CirclesType.InflationaryCircles); // inflationary
 
         var controller = CreateTokensController();
         var result = controller.GetTokenInfo(wrapper);
@@ -673,7 +675,7 @@ public class ControllerTests
         // Register account, wrapper underlying, and ERC1155 token owner
         _cache.V2Avatars.Add(2000, address, ("CrcV2_RegisterHuman", 12345L));
         _cache.V2Avatars.Add(2000, "0xunderlying", ("CrcV2_RegisterHuman", 12345L));
-        _cache.UpsertWrapper(2000, wrapperAddr, "0xunderlying", 0); // demurraged wrapper
+        _cache.UpsertWrapper(2000, wrapperAddr, "0xunderlying", CirclesType.DemurrageCircles); // demurraged wrapper
         _cache.V2Avatars.Add(2000, erc1155Id, ("CrcV2_RegisterHuman", 12345L));
 
         // Add balances for both — both are hex addresses starting with "0x"

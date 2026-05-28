@@ -1,3 +1,4 @@
+using Circles.Common;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
@@ -642,8 +643,8 @@ public class ArithmeticSafetyTests
 
         public IEnumerable<string> LoadRegisteredAvatars()
             => Enumerable.Empty<string>();
-        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
-            => Array.Empty<(string, string)>();
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
+            => Array.Empty<(string, string, CirclesType)>();
     }
 
     #endregion

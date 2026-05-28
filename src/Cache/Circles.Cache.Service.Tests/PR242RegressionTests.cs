@@ -179,7 +179,7 @@ public class PR242RegressionTests
         var wrapper = "0xwrapper0000000000000000000000000000000000";
         var avatar = "0xavatar00000000000000000000000000000000000";
 
-        _cache.UpsertWrapper(100, wrapper, avatar, 0);
+        _cache.UpsertWrapper(100, wrapper, avatar, CirclesType.DemurrageCircles);
 
         // Without RebuildSecondaryIndexes, wrapper info should be available
         var info = _cache.GetWrapperInfo(wrapper);

@@ -1,3 +1,4 @@
+using Circles.Common;
 using System.Numerics;
 using Circles.Pathfinder.Data;
 
@@ -826,8 +827,8 @@ public class IncrementalLoadGraphTests
         var balances = CreateBalanceState();
         var settings = new Settings();
         var stubInner = new StubLoadGraph();
-        stubInner.WrapperMappings.Add((Wrapper1, Bob));
-        stubInner.WrapperMappings.Add((Wrapper2, Bob));
+        stubInner.WrapperMappings.Add((Wrapper1, Bob, 0));
+        stubInner.WrapperMappings.Add((Wrapper2, Bob, 0));
 
         var incGraph = new IncrementalLoadGraph(balances, trusts, avatars, stubInner, settings, 0);
         var results = incGraph.LoadV2Trust().ToList();
@@ -912,6 +913,46 @@ public class IncrementalLoadGraphTests
         Assert.That(results[0].HasConsentedFlow, Is.True);
     }
 
+    [Test]
+    public void LoadScoreRouters_DelegatesToInner()
+    {
+        // C2 regression: a missing override would silently fall through to the
+        // ILoadGraph default-empty implementation, leaving CapacityGraph.ScoreRouterIds
+        // empty and disabling the score-router gate in production.
+        const string router = "0xf1ff000000000000000000000000000000000077";
+        var stubInner = new StubLoadGraph();
+        stubInner.ScoreRouterAddresses.Add(router);
+
+        var incGraph = new IncrementalLoadGraph(
+            CreateBalanceState(), CreateTrustState(), CreateAvatarState(),
+            stubInner, new Settings(), 0);
+
+        var results = incGraph.LoadScoreRouters().ToList();
+
+        Assert.That(results, Is.EqualTo(new[] { router }));
+    }
+
+    [Test]
+    public void LoadOperatorApprovals_DelegatesToInner()
+    {
+        // C1 regression: a missing override would silently disable the operator-
+        // approval gate in production by returning the ILoadGraph default-empty list.
+        const string router = "0xf1ff000000000000000000000000000000000077";
+        const string avatar = "0xf1aa000000000000000000000000000000000088";
+        var stubInner = new StubLoadGraph();
+        stubInner.OperatorApprovalRows.Add((router, avatar));
+
+        var incGraph = new IncrementalLoadGraph(
+            CreateBalanceState(), CreateTrustState(), CreateAvatarState(),
+            stubInner, new Settings(), 0);
+
+        var results = incGraph.LoadOperatorApprovals(new[] { router }).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].Account.ToLowerInvariant(), Is.EqualTo(router));
+        Assert.That(results[0].Operator.ToLowerInvariant(), Is.EqualTo(avatar));
+    }
+
     /// <summary>
     /// Stub ILoadGraph for testing delegation.
     /// </summary>
@@ -920,7 +961,9 @@ public class IncrementalLoadGraphTests
         public List<string> Groups { get; } = new();
         public List<(string GroupAddress, string TrustedToken)> GroupTrustEntries { get; } = new();
         public List<(string Avatar, bool HasConsentedFlow)> ConsentedFlags { get; } = new();
-        public List<(string WrapperAddress, string UnderlyingAvatar)> WrapperMappings { get; } = new();
+        public List<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> WrapperMappings { get; } = new();
+        public List<string> ScoreRouterAddresses { get; } = new();
+        public List<(string Account, string Operator)> OperatorApprovalRows { get; } = new();
 
         public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
             LoadV2Balances() => Enumerable.Empty<(string, int, int, bool, bool)>();
@@ -936,7 +979,16 @@ public class IncrementalLoadGraphTests
 
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
         public IEnumerable<string> LoadRegisteredAvatars() => Enumerable.Empty<string>();
-        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
             => WrapperMappings;
+
+        public IEnumerable<string> LoadScoreRouters() => ScoreRouterAddresses;
+
+        public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
+        {
+            var filter = new HashSet<string>(accounts.Select(a => a.ToLowerInvariant()));
+            return OperatorApprovalRows.Where(r => filter.Contains(r.Account.ToLowerInvariant()));
+        }
     }
+
 }

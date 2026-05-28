@@ -56,7 +56,7 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
         // Single volatile read — snapshot and groupData are always consistent.
         var state = _state;
         if (state == null)
-            throw new InvalidOperationException("No capacity graph available yet.");
+            throw new GraphNotReadyException("No capacity graph available yet.");
 
         if (RequestNeedsFiltering(r))
         {
@@ -178,3 +178,13 @@ public readonly struct CapacityGraphHandle(CapacityGraph g) : IDisposable
         // GC reclaims when no longer referenced.
     }
 }
+
+/// <summary>
+/// Thrown when the capacity-graph snapshot has not been loaded yet (warmup,
+/// post-restart, reorg). A recoverable, retryable condition — distinct from a
+/// solver/data fault. Derives from InvalidOperationException only for
+/// backward-compatible fallthrough; the request path catches this exact type
+/// and maps it to HTTP 503 so genuine InvalidOperationExceptions from the
+/// solver still surface as 500.
+/// </summary>
+public sealed class GraphNotReadyException(string message) : InvalidOperationException(message);

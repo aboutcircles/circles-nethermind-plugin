@@ -70,7 +70,7 @@ app.MapGet("/ready", () => Results.Ok("Ready"));
 app.MapMetrics();
 
 // Pricing API endpoint (cache-through: PG → Balancer/CoinGecko → PG)
-app.MapGet("/pricing", async (string? date, PriceCacheRepository priceCache, BalancerPriceService balancer, PriceService prices, ILogger<Program> logger) =>
+app.MapGet("/pricing", async (string? date, PriceCacheRepository priceCache, BalancerPriceService balancer, PriceService prices, ILogger<Program> logger, CancellationToken ct) =>
 {
     DateOnly targetDate;
     if (string.IsNullOrEmpty(date))
@@ -82,9 +82,14 @@ app.MapGet("/pricing", async (string? date, PriceCacheRepository priceCache, Bal
         return Results.BadRequest(new { error = "Invalid date format. Use YYYY-MM-DD." });
     }
 
+    if (targetDate > DateOnly.FromDateTime(DateTime.UtcNow))
+    {
+        return Results.BadRequest(new { error = "Future dates are not supported." });
+    }
+
     // Step 1: Check PG cache
     PriceCacheRepository.DailyPrice? cached = null;
-    try { cached = await priceCache.GetAsync(targetDate); }
+    try { cached = await priceCache.GetAsync(targetDate, ct); }
     catch (Exception ex) { logger.LogWarning(ex, "PG cache lookup failed for {Date}", targetDate); }
 
     if (cached is not null)
@@ -105,8 +110,8 @@ app.MapGet("/pricing", async (string? date, PriceCacheRepository priceCache, Bal
     // Step 2: Fetch price from Balancer
     var isToday = targetDate == DateOnly.FromDateTime(DateTime.UtcNow);
     var scrcXdai = isToday
-        ? await balancer.GetScrcXdaiPriceAsync()
-        : await balancer.GetHistoricScrcXdaiPriceAsync(targetDate);
+        ? await balancer.GetScrcXdaiPriceAsync(ct)
+        : await balancer.GetHistoricScrcXdaiPriceAsync(targetDate, ct);
 
     if (scrcXdai <= 0)
     {
@@ -130,14 +135,14 @@ app.MapGet("/pricing", async (string? date, PriceCacheRepository priceCache, Bal
     var dcrcXdai = BalancerPriceService.ConvertScrcToDcrcPrice(scrcXdai, timestamp);
 
     // Step 3: Fetch xDAI/EUR from CoinGecko
-    var xdaiEur = await prices.GetXdaiEurRateAsync(targetDate);
+    var xdaiEur = await prices.GetXdaiEurRateAsync(targetDate, ct);
     var dcrcEur = xdaiEur > 0 ? dcrcXdai * xdaiEur : 0;
     var source = isToday ? "balancer_live" : "balancer_historic";
 
     // Step 4: Store in PG
     try
     {
-        await priceCache.UpsertAsync(targetDate, scrcXdai, convFactor, dcrcXdai, xdaiEur, dcrcEur, source);
+        await priceCache.UpsertAsync(targetDate, scrcXdai, convFactor, dcrcXdai, xdaiEur, dcrcEur, source, ct);
     }
     catch (Exception ex)
     {

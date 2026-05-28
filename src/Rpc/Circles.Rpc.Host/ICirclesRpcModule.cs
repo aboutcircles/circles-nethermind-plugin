@@ -392,6 +392,17 @@ public interface ICirclesRpcModule
     Task<JsonElement> FindPathV2(FlowRequest flowRequest);
 
     /// <summary>
+    /// Returns per-(group, collateral) mint headroom for score-group mint policies.
+    /// Pre-flight handle for SDKs that want to validate Branch B headroom before
+    /// submitting an operateFlowMatrix. When <paramref name="collateralToken"/> is
+    /// supplied, returns just the single matching row; otherwise returns every
+    /// collateral the group currently trusts that has non-zero available capacity.
+    /// </summary>
+    /// <param name="groupAddress">Score group address to inspect.</param>
+    /// <param name="collateralToken">Optional collateral CRC token (avatar address). Filters the result to one row.</param>
+    Task<ScoreGroupMintLimitsResponse> GetScoreGroupMintLimits(string groupAddress, string? collateralToken = null);
+
+    /// <summary>
     /// Gets a snapshot of the entire Circles trust network.
     /// This method proxies the request to an external Pathfinder service.
     /// Returns the raw pathfinder response to match production behavior.
@@ -653,6 +664,21 @@ public record PagedEventsResponse(
     [property: JsonPropertyName("hasMore")] bool HasMore,
     [property: JsonPropertyName("nextCursor")] string? NextCursor
 );
+
+/// <summary>
+/// Single per-(group, collateral) row in a score-group mint-limits RPC response.
+/// </summary>
+public record ScoreGroupMintLimitRpcRow(
+    [property: JsonPropertyName("group")] string Group,
+    [property: JsonPropertyName("collateral")] string Collateral,
+    [property: JsonPropertyName("available")] string Available);
+
+/// <summary>
+/// Response for circles_getScoreGroupMintLimits.
+/// </summary>
+public record ScoreGroupMintLimitsResponse(
+    [property: JsonPropertyName("group")] string Group,
+    [property: JsonPropertyName("rows")] ScoreGroupMintLimitRpcRow[] Rows);
 
 /// <summary>
 /// Health check response.

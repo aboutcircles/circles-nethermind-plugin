@@ -320,19 +320,42 @@ public class FuzzDifferentialTests
         var pfExcl = new V2Pathfinder(settings: new Settings { ExcludeConsentedIntermediaries = true });
         var pfVal = new V2Pathfinder(settings: new Settings { ExcludeConsentedIntermediaries = false });
 
-        MaxFlowResponse resultExcl, resultVal;
+        // Compute each mode independently so a one-sided BAD_INPUT can't mask a
+        // mode-specific regression. The skip budget is only consumed when *both*
+        // modes reject the same graph for the same reason (degenerate generator).
+        bool exclBadInput = false, valBadInput = false;
+        MaxFlowResponse? resultExcl = null, resultVal = null;
+
         try
         {
             resultExcl = pfExcl.ComputeMaxFlowWithPath(graph, new FlowRequest { Source = srcAddr, Sink = snkAddr }, target);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            exclBadInput = true;
+        }
+
+        try
+        {
             resultVal = pfVal.ComputeMaxFlowWithPath(graph, new FlowRequest { Source = srcAddr, Sink = snkAddr }, target);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            valBadInput = true;
+        }
+
+        if (exclBadInput && valBadInput)
         {
             int skips = Interlocked.Increment(ref _consentFuzzSkipCount);
             Assert.That(skips, Is.LessThanOrEqualTo(ConsentFuzzMaxSkips),
                 $"Consent fuzz skipped {skips} iterations with BAD_INPUT — graph generator is producing degenerate graphs");
             return;
         }
+
+        Assert.That(exclBadInput, Is.False,
+            "Exclusion mode threw BAD_INPUT while validation mode did not — mode-specific regression");
+        Assert.That(valBadInput, Is.False,
+            "Validation mode threw BAD_INPUT while exclusion mode did not — mode-specific regression");
 
         var state = new CapacityGraphContractState(graph);
 

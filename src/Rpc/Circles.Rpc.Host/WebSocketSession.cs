@@ -25,6 +25,11 @@ public sealed class WebSocketSession : IAsyncDisposable
     // Track subscriptions for cleanup
     private readonly List<string> _circlesSubIds = new();
     private readonly List<string> _ethSubIds = new();
+    // Tracks proxy IDs the proxy evicted before the session could record them in
+    // _ethSubIds (race: notification forwarder can fail and trigger OnEvicted while
+    // SubscribeAsync is still returning to the caller). Any pending Add must
+    // consult this set first, otherwise the id leaks permanently.
+    private readonly HashSet<string> _preEvictedEthIds = new();
     private readonly object _subListLock = new();
 
     public WebSocketSession(
@@ -265,10 +270,41 @@ public sealed class WebSocketSession : IAsyncDisposable
 
         try
         {
-            var proxyId = await _nethermindProxy.SubscribeAsync(_clientWs, _sendLock, @params, ct);
+            var proxyId = await _nethermindProxy.SubscribeAsync(_clientWs, _sendLock, @params, ct,
+                onEvicted: evictedId =>
+                {
+                    // Proxy evicted (send timeout or re-subscribe failure) — drop our
+                    // local tracking so the per-session subscription limit and
+                    // eth_unsubscribe handling stay consistent with proxy state.
+                    // If the eviction races ahead of the SubscribeAsync return, record
+                    // the id as pre-evicted so the pending Add below is suppressed.
+                    lock (_subListLock)
+                    {
+                        if (!_ethSubIds.Remove(evictedId))
+                            _preEvictedEthIds.Add(evictedId);
+                    }
+                });
 
+            bool evictedBeforeRegistration;
             lock (_subListLock)
-                _ethSubIds.Add(proxyId);
+            {
+                evictedBeforeRegistration = _preEvictedEthIds.Remove(proxyId);
+                if (!evictedBeforeRegistration)
+                    _ethSubIds.Add(proxyId);
+            }
+
+            if (evictedBeforeRegistration)
+            {
+                // Proxy already evicted this subscription (e.g. notification forward
+                // failed before SubscribeAsync returned). The proxy has cleaned up
+                // upstream; surface failure to the client instead of returning a
+                // proxy id that no longer maps to anything.
+                _logger.LogWarning(
+                    "eth_subscribe: proxy={ProxyId} evicted before session could register",
+                    proxyId);
+                await SendErrorAsync(id, -32000, "eth_subscribe failed: subscription evicted before registration", ct);
+                return;
+            }
 
             await SendResultAsync(id, proxyId, ct);
         }

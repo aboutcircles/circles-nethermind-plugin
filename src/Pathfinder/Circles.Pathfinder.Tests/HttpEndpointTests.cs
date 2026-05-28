@@ -120,17 +120,19 @@ public class HttpEndpointTests
     }
 
     [Test]
-    public async Task FindMaxFlow_GraphsNotReady_Returns400()
+    public async Task FindMaxFlow_GraphsNotReady_Returns503()
     {
+        // Warmup is a transient server-side state, not a client error — must be a
+        // retryable 503 so load balancers drain the node, never 500/400.
         var resp = await _client!.GetAsync(
             $"/findMaxFlow?from={ValidAddr(1)}&to={ValidAddr(2)}&amount=100");
-        Assert.That(resp.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        Assert.That(resp.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
         var body = await resp.Content.ReadAsStringAsync();
         Assert.That(body, Does.Contain("Graphs are not loaded"));
     }
 
     [Test]
-    public async Task FindMaxFlow_TooManySimulatedBalances_Returns400()
+    public async Task FindMaxFlow_FewSimulatedBalances_PassesValidationThen503()
     {
         // The GET endpoint accepts simulatedBalances as a query param JSON string.
         // 1001 entries with full addresses would exceed URI length limits, so we test
@@ -141,8 +143,9 @@ public class HttpEndpointTests
 
         var resp = await _client!.GetAsync(
             $"/findMaxFlow?from={ValidAddr(1)}&to={ValidAddr(2)}&amount=100&simulatedBalances={Uri.EscapeDataString(json)}");
-        // With 1 entry, should pass validation and fail on "graphs not loaded"
-        Assert.That(resp.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        // With 1 entry, should pass size validation and fall through to the
+        // transient "graphs not loaded" warmup state → retryable 503.
+        Assert.That(resp.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
         var body = await resp.Content.ReadAsStringAsync();
         Assert.That(body, Does.Contain("Graphs are not loaded"));
     }
@@ -180,11 +183,11 @@ public class HttpEndpointTests
     }
 
     [Test]
-    public async Task FindPath_Get_GraphsNotReady_Returns400()
+    public async Task FindPath_Get_GraphsNotReady_Returns503()
     {
         var resp = await _client!.GetAsync(
             $"/findPath?from={ValidAddr(1)}&to={ValidAddr(2)}&amount=100");
-        Assert.That(resp.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        Assert.That(resp.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
         var body = await resp.Content.ReadAsStringAsync();
         Assert.That(body, Does.Contain("Graphs are not loaded"));
     }
@@ -289,7 +292,7 @@ public class HttpEndpointTests
     }
 
     [Test]
-    public async Task FindPath_Post_GraphsNotReady_Returns400()
+    public async Task FindPath_Post_GraphsNotReady_Returns503()
     {
         var request = new FlowRequest
         {
@@ -299,7 +302,7 @@ public class HttpEndpointTests
         };
 
         var resp = await _client!.PostAsJsonAsync("/findPath", request);
-        Assert.That(resp.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        Assert.That(resp.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
         var body = await resp.Content.ReadAsStringAsync();
         Assert.That(body, Does.Contain("Graphs are not loaded"));
     }

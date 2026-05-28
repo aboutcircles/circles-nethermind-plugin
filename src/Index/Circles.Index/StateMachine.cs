@@ -85,32 +85,42 @@ public class StateMachine(
                     {
                         case EnterState:
                             {
-                                // Handle REINDEX_FROM_BLOCK for full reindexing (only once per process lifetime)
-                                //
-                                // IMPORTANT: Partial table reindexing is NOT supported because it creates data
-                                // inconsistency between tables and caches. All tables must be at the same block height.
-                                //
-                                // Use REINDEX_FROM_BLOCK=12000000 to reindex ALL tables from that block.
-                                // Remove the env var after reindexing completes to avoid re-deleting data on restart.
-
-                                if (!_reindexCleanupDone && context.Settings.ReindexFromBlock.HasValue)
-                                {
-                                    var reindexFromBlock = context.Settings.ReindexFromBlock.Value;
-                                    context.Logger.Info($"[REINDEX] Reindexing ALL tables from block {reindexFromBlock:N0}");
-
-                                    // Delete from all tables
-                                    await context.Database.DeleteAllGreaterOrEqualBlock(reindexFromBlock);
-
-                                    context.Logger.Info("[REINDEX] Data deletion complete. Will resync from specified block.");
-                                    _reindexCleanupDone = true;
-                                }
-
                                 // Determine the effective resume point by checking both System_Block and all event tables.
                                 // This is critical: we must use the SAME block for cleanup and sync start to avoid
                                 // cache conflicts (caches track block numbers and require monotonically increasing blocks).
                                 context.Logger.Info("Initializing: Finding the safe resume point...");
 
                                 var latestBlock = context.Database.LatestBlock() ?? 0;
+
+                                if (!_reindexCleanupDone && context.Settings.ReindexFromBlock.HasValue)
+                                {
+                                    var reindexFromBlock = context.Settings.ReindexFromBlock.Value;
+                                    var targetedTables = ResolveReindexTableIds();
+
+                                    if (targetedTables.Count > 0)
+                                    {
+                                        context.Logger.Info("[REINDEX] Initializing parser caches before selected-table backfill...");
+                                        await InitializeCaches(latestBlock);
+                                        await TargetedReindex(reindexFromBlock, latestBlock, targetedTables);
+                                    }
+                                    else
+                                    {
+                                        if (!context.Settings.ReindexAllTables)
+                                        {
+                                            throw new InvalidOperationException(
+                                                "REINDEX_FROM_BLOCK without REINDEX_TABLES is a full-table reindex. " +
+                                                "Set REINDEX_ALL_TABLES=true to confirm this destructive operation.");
+                                        }
+
+                                        context.Logger.Info($"[REINDEX] Reindexing ALL tables from block {reindexFromBlock:N0}");
+                                        await context.Database.DeleteAllGreaterOrEqualBlock(reindexFromBlock);
+                                        context.Logger.Info("[REINDEX] Data deletion complete. Will resync from specified block.");
+                                        latestBlock = context.Database.LatestBlock() ?? 0;
+                                    }
+
+                                    _reindexCleanupDone = true;
+                                }
+
                                 var firstGap = context.Database.FirstGap();
                                 var safeResumeBlock = context.Database.GetSafeResumeBlock();
 
@@ -479,6 +489,113 @@ public class StateMachine(
             await Task.Yield();
         }
     }
+
+    private async IAsyncEnumerable<long> BlocksInRange(long fromBlock, long toBlock)
+    {
+        var start = Math.Max(fromBlock, context.Settings.StartBlock);
+        for (long i = start; i <= toBlock; i++)
+        {
+            yield return i;
+            await Task.Yield();
+        }
+    }
+
+    private async Task<Range<long>> TargetedReindex(
+        long fromBlock,
+        long toBlock,
+        HashSet<(string Namespace, string Table)> tableIds)
+    {
+        if (tableIds.Count == 0 || toBlock < fromBlock)
+            return new Range<long>();
+
+        context.Logger.Info(
+            $"[REINDEX] Backfilling selected tables from {fromBlock:N0} to {toBlock:N0}: " +
+            $"{string.Join(", ", tableIds.Select(PhysicalTableName))}");
+
+        await context.Database.DeleteTablesGreaterOrEqualBlock(fromBlock, tableIds.Select(PhysicalTableName).ToArray());
+
+        ImportFlow flow = new(blockTree, receiptFinder, context, tableIds, writeBlocks: false);
+        var importedBlockRange = await flow.Run(BlocksInRange(fromBlock, toBlock), cancellationToken);
+        await context.Sink.Flush();
+        await flow.FlushBlocks();
+
+        context.Logger.Info(
+            $"[REINDEX] Selected table backfill complete for range {importedBlockRange.Min}-{importedBlockRange.Max}. " +
+            "Remove REINDEX_FROM_BLOCK and REINDEX_TABLES before restarting.");
+
+        return importedBlockRange;
+    }
+
+    private HashSet<(string Namespace, string Table)> ResolveReindexTableIds()
+    {
+        var result = new HashSet<(string Namespace, string Table)>();
+        if (context.Settings.ReindexTables.Length == 0)
+            return result;
+
+        var byPhysicalName = context.Database.Schema.Tables.Keys
+            .Where(id => !id.Namespace.StartsWith("System", StringComparison.OrdinalIgnoreCase)
+                         && !id.Namespace.StartsWith("V_", StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(PhysicalTableName, id => id, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var rawTableName in context.Settings.ReindexTables)
+        {
+            var tableName = rawTableName.Trim();
+            if (!byPhysicalName.TryGetValue(tableName, out var tableId))
+            {
+                throw new ArgumentException(
+                    $"Unknown or non-targetable REINDEX_TABLES entry '{tableName}'. " +
+                    $"Use physical table names such as CrcV2_ScoreGroup_HistoricalSupply.");
+            }
+
+            result.Add(tableId);
+        }
+
+        ValidateReindexDependencies(result);
+        return result;
+    }
+
+    private void ValidateReindexDependencies(HashSet<(string Namespace, string Table)> selected)
+    {
+        if (context.Settings.ReindexAllowPartialDependencies)
+        {
+            context.Logger.Warn(
+                "[REINDEX] REINDEX_ALLOW_PARTIAL_DEPENDENCIES=true; known dependency closure checks are disabled.");
+            return;
+        }
+
+        var dependencyGroups = new[]
+        {
+            new[]
+            {
+                ("CrcV2_ScoreGroup", "GroupInitialized"),
+                ("CrcV2_ScoreGroup", "MerkleRootUpdated"),
+                ("CrcV2_ScoreGroup", "HistoricalSupply"),
+                ("CrcV2_ScoreGroup", "PersonalMinted"),
+                ("CrcV2_ScoreGroup", "RouterMinted")
+            }
+        };
+
+        foreach (var group in dependencyGroups)
+        {
+            var groupSet = group.ToHashSet();
+            if (!selected.Overlaps(groupSet) || groupSet.IsSubsetOf(selected))
+                continue;
+
+            var missing = groupSet
+                .Except(selected)
+                .Select(PhysicalTableName)
+                .OrderBy(x => x)
+                .ToArray();
+
+            throw new InvalidOperationException(
+                "REINDEX_TABLES selects part of a known dependent table group. " +
+                "Add the missing tables or set REINDEX_ALLOW_PARTIAL_DEPENDENCIES=true only for an intentionally partial repair. " +
+                $"Missing: {string.Join(", ", missing)}");
+        }
+    }
+
+    private static string PhysicalTableName((string Namespace, string Table) tableId) =>
+        $"{tableId.Namespace}_{tableId.Table}";
 
     private async Task<Range<long>> Sync(long toBlock)
     {

@@ -1,3 +1,4 @@
+using Circles.Common;
 using Circles.Pathfinder.Data;
 using Nethermind.Int256;
 
@@ -13,9 +14,13 @@ public class MockLoadGraph : ILoadGraph
     private readonly List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> _balances = new();
     private readonly List<string> _groups = new();
     private readonly List<(string GroupAddress, string TrustedToken)> _groupTrusts = new();
+    private readonly List<(string GroupAddress, string RouterAddress)> _groupRouters = new();
+    private readonly List<(string GroupAddress, string CollateralToken, string AvailableLimit)> _scoreGroupMintLimits = new();
+    private readonly List<(string Account, string Operator)> _operatorApprovals = new();
+    private readonly List<string> _scoreRouters = new();
     private readonly List<(string Avatar, bool HasConsentedFlow)> _consentedFlags = new();
     private readonly List<string> _registeredAvatars = new();
-    private readonly List<(string WrapperAddress, string UnderlyingAvatar)> _wrapperMappings = new();
+    private readonly List<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> _wrapperMappings = new();
     private string? _routerAddress;
 
     /// <summary>
@@ -106,6 +111,38 @@ public class MockLoadGraph : ILoadGraph
             _trusts.Add((_routerAddress, trustedToken.ToLowerInvariant(), 100));
     }
 
+    public void AddGroupRouter(string groupAddress, string routerAddress)
+    {
+        _groupRouters.Add((groupAddress.ToLowerInvariant(), routerAddress.ToLowerInvariant()));
+    }
+
+    public void AddScoreGroupMintLimit(string groupAddress, string collateralToken, string availableLimit)
+    {
+        _scoreGroupMintLimits.Add((groupAddress.ToLowerInvariant(), collateralToken.ToLowerInvariant(), availableLimit));
+    }
+
+    /// <summary>
+    /// Record an ERC-1155 ApprovalForAll. `account` is the ERC-1155 owner who called
+    /// setApprovalForAll, `operator` is the address it approved. For score-router paths,
+    /// `account` is the router and `operator` is the avatar approved to move tokens via
+    /// the router (mirrors ScoreGroupMintRouter.setApprovalForCRC).
+    /// </summary>
+    public void AddOperatorApproval(string account, string @operator)
+    {
+        _operatorApprovals.Add((account.ToLowerInvariant(), @operator.ToLowerInvariant()));
+    }
+
+    /// <summary>
+    /// Register a score-group mint router. Mirrors the production source of truth
+    /// CrcV2_ScoreGroup.GroupInitialized.pathMintRouter — set once at initializeGroup,
+    /// immutable thereafter, distinct rows per (policy, group) collapse to a single
+    /// router via the production DISTINCT clause.
+    /// </summary>
+    public void AddScoreRouter(string routerAddress)
+    {
+        _scoreRouters.Add(routerAddress.ToLowerInvariant());
+    }
+
     /// <summary>
     /// Add a consented flow flag using integer node ID.
     /// </summary>
@@ -146,6 +183,24 @@ public class MockLoadGraph : ILoadGraph
         return _groupTrusts;
     }
 
+    public IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters()
+    {
+        return _groupRouters;
+    }
+
+    public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits()
+    {
+        return _scoreGroupMintLimits;
+    }
+
+    public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
+    {
+        var filter = new HashSet<string>(accounts.Select(a => a.ToLowerInvariant()));
+        return _operatorApprovals.Where(row => filter.Contains(row.Account)).ToList();
+    }
+
+    public IEnumerable<string> LoadScoreRouters() => _scoreRouters.Distinct().ToList();
+
     public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
     {
         return _consentedFlags;
@@ -156,7 +211,7 @@ public class MockLoadGraph : ILoadGraph
         return _registeredAvatars;
     }
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
     {
         return _wrapperMappings;
     }
@@ -170,11 +225,13 @@ public class MockLoadGraph : ILoadGraph
     }
 
     /// <summary>
-    /// Add a wrapper→avatar mapping for testing.
+    /// Add a wrapper→avatar mapping for testing. Default flavor is
+    /// <see cref="CirclesType.DemurrageCircles"/> — pass
+    /// <see cref="CirclesType.InflationaryCircles"/> for s-prefix wrappers.
     /// </summary>
-    public void AddWrapperMapping(string wrapperAddress, string underlyingAvatar)
+    public void AddWrapperMapping(string wrapperAddress, string underlyingAvatar, CirclesType circlesType = CirclesType.DemurrageCircles)
     {
-        _wrapperMappings.Add((wrapperAddress.ToLowerInvariant(), underlyingAvatar.ToLowerInvariant()));
+        _wrapperMappings.Add((wrapperAddress.ToLowerInvariant(), underlyingAvatar.ToLowerInvariant(), circlesType));
     }
 
     /// <summary>
@@ -186,6 +243,9 @@ public class MockLoadGraph : ILoadGraph
         _balances.Clear();
         _groups.Clear();
         _groupTrusts.Clear();
+        _scoreGroupMintLimits.Clear();
+        _operatorApprovals.Clear();
+        _scoreRouters.Clear();
         _consentedFlags.Clear();
         _registeredAvatars.Clear();
         _wrapperMappings.Clear();
