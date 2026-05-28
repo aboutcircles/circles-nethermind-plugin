@@ -295,6 +295,13 @@ internal sealed class SimulationCanaryService : BackgroundService
     ///     to convert before bundle assembly.</item>
     /// </list>
     /// Verified on-chain by direct eth_simulateV1 probes against both wrapper types (2026-05-27).
+    /// <para>Unlike <see cref="ResolvedUnwrapCall"/>, this type uses the positional record-struct
+    /// constructor (effectively public to the canary assembly). The asymmetry is intentional:
+    /// Demurraged is the raw projection of <see cref="BuildUnwrapPrefix"/> inputs (1155 ledger
+    /// amounts plus a wrapper-type discriminant) with no derived invariant beyond what the
+    /// inputs already guarantee, so there is no factory-only invariant to encapsulate. Resolved
+    /// encodes the unit-conversion step (γ^day for inflationary wrappers) and must be reachable
+    /// only via the resolver pipeline — hence its private constructor.</para>
     /// </summary>
     internal readonly record struct DemurragedUnwrapCall(
         string From, string Wrapper, BigInteger DemurragedAmount, CirclesType WrapperType);
@@ -343,9 +350,19 @@ internal sealed class SimulationCanaryService : BackgroundService
         /// for sourcing <paramref name="inflatedAmount"/> from
         /// <c>convertDemurrageToInflationaryValue</c> at the simulation block — the type system
         /// does not enforce that the amount actually matches the wrapper's day-index conversion.
+        /// <para>Throws <see cref="ArgumentOutOfRangeException"/> if <paramref name="inflatedAmount"/>
+        /// is negative. <c>ParseConvertCallReturnData</c> prepends "0" to force unsigned parsing
+        /// of the resolver RPC return value, so a negative amount cannot reach this factory via
+        /// the normal pipeline; the guard is defense-in-depth against a future caller that
+        /// bypasses the parser.</para>
         /// </summary>
         internal static ResolvedUnwrapCall FromInflated(DemurragedUnwrapCall call, BigInteger inflatedAmount)
-            => new(call.From, call.Wrapper, inflatedAmount);
+        {
+            if (inflatedAmount < 0)
+                throw new ArgumentOutOfRangeException(nameof(inflatedAmount), inflatedAmount,
+                    "Inflationary unwrap amount must be non-negative.");
+            return new ResolvedUnwrapCall(call.From, call.Wrapper, inflatedAmount);
+        }
     }
 
     /// <summary>
