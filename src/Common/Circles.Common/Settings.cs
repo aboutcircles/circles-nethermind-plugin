@@ -235,6 +235,22 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.ToLowerInvariant()
         ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
 
+    /// <summary>
+    /// Comma-separated allowlist of contract addresses that emit score-group events.
+    ///
+    /// Post-score-refactor this list MUST include BOTH the mint policy AND the
+    /// merkle-tree registry/manager(s):
+    ///   - The mint policy emits <c>GroupInitialized</c>, <c>HistoricalSupply</c>,
+    ///     <c>PersonalMinted</c>, <c>RouterMinted</c>.
+    ///   - The merkle-tree registry emits <c>MerkleRootUpdated</c>.
+    /// Replacing the policy with the manager would silently drop the four policy-emitted
+    /// events; replacing the manager with the policy would silently drop merkle-root
+    /// updates. Pathfinder queries also compare entries here against
+    /// <c>CrcV2_RegisterGroup.mint</c>, which only matches policy addresses — so policy
+    /// entries must be present for the pathfinder side to function.
+    ///
+    /// Format: <c>"0xPOLICY,0xMERKLE_REGISTRY[,0xMERKLE_REGISTRY_2…]"</c> (whitespace tolerant).
+    /// </summary>
     public readonly string[] ScoreGroupMintPolicies =
         Environment.GetEnvironmentVariable("V2_SCORE_GROUP_MINT_POLICIES")?.Split(',')
             .Select(x => x.Trim().ToLowerInvariant())
