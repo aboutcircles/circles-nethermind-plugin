@@ -267,6 +267,71 @@ public class SimulationCanaryInflationaryConversionTests
     }
 
     // ──────────────────────────────────────────────────────────────────────
+    // ApplyInflationaryRoundtripBump — over-ask to close the Math64x64 floor-floor gap
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Test]
+    public void ApplyInflationaryRoundtripBump_Zero_ReturnedUnchanged()
+    {
+        // Negative inputs are unreachable in production (ParseConvertCallReturnData
+        // forces unsigned parse, FromInflated throws on negative) — no test for
+        // that case; let the type boundary catch a hypothetical future regression.
+        Assert.That(SimulationCanaryService.ApplyInflationaryRoundtripBump(BigInteger.Zero),
+            Is.EqualTo(BigInteger.Zero));
+    }
+
+    [Test]
+    public void ApplyInflationaryRoundtripBump_SubTrillionWei_FloorsToZero()
+    {
+        // I < 1e12 → integer division yields 0 → no bump. Preserves exact equality for
+        // the small fixture values used by the ApplyInflationaryAmounts_* tests above.
+        Assert.That(SimulationCanaryService.ApplyInflationaryRoundtripBump(new BigInteger(150)),
+            Is.EqualTo(new BigInteger(150)));
+        Assert.That(SimulationCanaryService.ApplyInflationaryRoundtripBump(new BigInteger(999_999_999_999L)),
+            Is.EqualTo(new BigInteger(999_999_999_999L)));
+    }
+
+    [Test]
+    public void ApplyInflationaryRoundtripBump_RealisticRange_ClearsObservedGap()
+    {
+        // Capture from staging1 2026-05-28: at day=2051, the on-chain roundtrip
+        // floor-floor loss is exactly 342_753 wei for D = 10_000 CRC. Resolver
+        // returns I_raw = 15_030_682_683_872_941_930_529. Verify the bump produces
+        // a value strictly greater than I_raw and at least Δ above the gap so the
+        // post-unwrap demurraged balance >= D.
+        var iRaw = BigInteger.Parse("15030682683872941930529");
+        var bumped = SimulationCanaryService.ApplyInflationaryRoundtripBump(iRaw);
+        var bumpDelta = bumped - iRaw;
+
+        Assert.That(bumpDelta, Is.GreaterThan(BigInteger.Zero), "bump must shift I upward");
+        // Direct gap-coverage assertion: the observed I-side gap is ~516k wei
+        // (D-side gap 342753 wei × 1/γ^day ≈ 1.503). Bump must clear it with margin.
+        Assert.That(bumpDelta, Is.GreaterThan(new BigInteger(516_000)),
+            "bump must exceed the empirical I-side floor-floor gap");
+        // 30,000× safety on the empirical gap (15030e18 / 1e12 = 1.5e10 vs 5.16e5).
+        Assert.That(bumpDelta, Is.GreaterThanOrEqualTo(BigInteger.Parse("15000000000")),
+            "bump must hit the documented ~1.5e10 wei magnitude (regression guard: would fail if divisor changed to e.g. 1e15)");
+        // Tight upper bound: bump should stay at the 1e-12 scale, not balloon
+        // into the 1e-6 DemurrageSafetyMargin scale. iRaw / 1e9 is ~1e-9 of I,
+        // three orders of magnitude above the bump's 1e-12 target — a regression
+        // that lowered the divisor from 1e12 to 1e9 (or smaller) would fail here.
+        Assert.That(bumpDelta, Is.LessThan(iRaw / 1_000_000_000),
+            "bump must be much smaller than 1e-9 of I so balance-side safety margin is preserved");
+    }
+
+    [Test]
+    public void ApplyInflationaryRoundtripBump_ScalesLinearlyWithI()
+    {
+        // Each 10× in I should produce 10× in bump (linear scaling above the
+        // 1e12 floor) so the same relative safety holds for any realistic value.
+        var smallI = BigInteger.Parse("1500000000000000000000");      // ~1000 CRC of s-token
+        var largeI = BigInteger.Parse("15000000000000000000000000");  // ~10,000,000 CRC of s-token
+        var smallBump = SimulationCanaryService.ApplyInflationaryRoundtripBump(smallI) - smallI;
+        var largeBump = SimulationCanaryService.ApplyInflationaryRoundtripBump(largeI) - largeI;
+        Assert.That(largeBump / smallBump, Is.EqualTo(new BigInteger(10000)));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
     // BuildUnwrapPrefix — type tagging
     // ──────────────────────────────────────────────────────────────────────
 
