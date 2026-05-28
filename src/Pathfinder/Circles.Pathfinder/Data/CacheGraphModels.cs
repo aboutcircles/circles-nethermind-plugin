@@ -29,13 +29,29 @@ public record PathfinderGraphOperatorApprovalRow(
     string Operator
 );
 
+/// <summary>
+/// Deserialized balance row from the cache service's /api/pathfinder/graph snapshot.
+/// </summary>
+/// <remarks>
+/// <para><b>Wire-format note for the <c>DemurrageMode</c> field:</b> the JSON property
+/// is intentionally <c>circlesType</c> (not <c>demurrageMode</c>) via
+/// <c>[JsonPropertyName]</c>. The C# property was renamed away from <c>CirclesType</c>
+/// to avoid a same-file name collision with <see cref="PathfinderGraphWrapperMappingRow.CirclesType"/>
+/// (which is the typed enum). The wire field MUST remain <c>circlesType</c> for
+/// backward compat — independent cache/pathfinder rollouts depend on this. Renaming
+/// the wire field (dropping <c>[JsonPropertyName]</c>) would require a coordinated
+/// cache+pathfinder deploy and a schema-version bump.</para>
+/// <para>Default <c>"demurraged"</c> is the safe-degrade direction: a snapshot from
+/// an older cache that omits the field deserializes to demurraged, which
+/// <c>CacheLoadGraph.LoadV2Balances</c> routes via the non-static branch.</para>
+/// </remarks>
 public record PathfinderGraphBalanceRow(
     string Balance,
     string Account,
     string TokenAddress,
     long LastActivity,
     bool IsWrapped,
-    string CirclesType
+    [property: JsonPropertyName("circlesType")] string DemurrageMode = "demurraged"
 );
 
 public record PathfinderGraphTrustRow(
@@ -67,6 +83,17 @@ public record PathfinderGraphConsentedFlowRow(
     bool HasConsentedFlow
 );
 
+/// <summary>
+/// Wrapper-mapping row from the cache service's /api/pathfinder/graph snapshot.
+/// </summary>
+/// <remarks>
+/// The <see cref="CirclesType"/> property is the typed enum representation of the
+/// same protocol concept that <see cref="PathfinderGraphBalanceRow.DemurrageMode"/>
+/// encodes as a string (<c>"static"</c> ↔ <see cref="Circles.Common.CirclesType.InflationaryCircles"/>,
+/// <c>"demurraged"</c> ↔ <see cref="Circles.Common.CirclesType.DemurrageCircles"/>).
+/// The dual encoding is a tracked oddity — see the comment on
+/// <see cref="PathfinderGraphBalanceRow.DemurrageMode"/> for the wire-compat rationale.
+/// </remarks>
 public record PathfinderGraphWrapperMappingRow(
     string WrapperAddress,
     string UnderlyingAvatar,

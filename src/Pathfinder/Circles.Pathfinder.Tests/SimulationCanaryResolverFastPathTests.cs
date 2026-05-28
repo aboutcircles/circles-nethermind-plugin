@@ -195,6 +195,181 @@ public class SimulationCanaryResolverFastPathTests
     }
 
     // ──────────────────────────────────────────────────────────────────────
+    // Resolver-failure branches — every fallback path falls back to PromoteAllDemurraged
+    // and increments its labeled counter exactly once. These tests close the
+    // observability gap that PR #426's bump-applied counter alone did not cover.
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Test]
+    public async Task ResolveInflationaryAmounts_BlockLookupFails_FallsBackAndIncrementsCounter()
+    {
+        // eth_getBlockByNumber returns a JSON-RPC error envelope. The resolver MUST
+        // log + tick `block_lookup_failed` and return PromoteAllDemurraged (inflationary
+        // entries get their demurraged amount unchanged) — the canary then re-uses the
+        // pre-PR-#408 false-positive class for that wrapper, which is acceptable
+        // observability degradation but NOT silent.
+        var handler = new BlockLookupErrorHandler();
+        var factory = new SingleHandlerHttpClientFactory(handler);
+        var service = NewService(factory);
+        var item = NewWorkItem();
+        var calls = new[]
+        {
+            new SimulationCanaryService.DemurragedUnwrapCall(
+                "0xfromI", "0xwrapI", BigInteger.Parse("200"), CirclesType.InflationaryCircles),
+        };
+
+        var before = SimulationCanaryService.SimulationTotal.WithLabels("block_lookup_failed", "unwrap").Value;
+        using var client = factory.CreateClient("canary-simulation");
+        var resolved = await service.ResolveInflationaryAmountsAsync(
+            item, calls, "0x3e8", client, CancellationToken.None);
+        var after = SimulationCanaryService.SimulationTotal.WithLabels("block_lookup_failed", "unwrap").Value;
+
+        Assert.That(after - before, Is.EqualTo(1.0),
+            "block_lookup_failed counter must tick exactly once");
+        Assert.That(handler.Count, Is.EqualTo(1),
+            "only eth_getBlockByNumber should be attempted before bailing");
+        Assert.That(resolved.Count, Is.EqualTo(1));
+        Assert.That(resolved[0].Amount, Is.EqualTo(BigInteger.Parse("200")),
+            "fallback: inflationary entry takes the original demurraged amount");
+    }
+
+    [Test]
+    public async Task ResolveInflationaryAmounts_SimulateV1HttpError_FallsBackAndIncrementsCounter()
+    {
+        // eth_getBlockByNumber succeeds; eth_simulateV1 returns HTTP 500.
+        var handler = new SimulateV1HttpErrorHandler();
+        var factory = new SingleHandlerHttpClientFactory(handler);
+        var service = NewService(factory);
+        var item = NewWorkItem();
+        var calls = new[]
+        {
+            new SimulationCanaryService.DemurragedUnwrapCall(
+                "0xfromI", "0xwrapI", BigInteger.Parse("200"), CirclesType.InflationaryCircles),
+        };
+
+        var before = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Value;
+        using var client = factory.CreateClient("canary-simulation");
+        var resolved = await service.ResolveInflationaryAmountsAsync(
+            item, calls, "0x3e8", client, CancellationToken.None);
+        var after = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Value;
+
+        Assert.That(after - before, Is.EqualTo(1.0),
+            "inflation_resolve_failed counter must tick exactly once on HTTP 500");
+        Assert.That(handler.Count, Is.EqualTo(2),
+            "both eth_getBlockByNumber and eth_simulateV1 are attempted (only the second fails)");
+        Assert.That(resolved.Count, Is.EqualTo(1));
+        Assert.That(resolved[0].Amount, Is.EqualTo(BigInteger.Parse("200")),
+            "fallback: inflationary entry takes the original demurraged amount");
+    }
+
+    [Test]
+    public async Task ResolveInflationaryAmounts_PerCallNullReturn_TicksPartialAndFallsBackPerWrapper()
+    {
+        // eth_getBlockByNumber + eth_simulateV1 both succeed at the transport layer, but the
+        // batch response includes one slot with status=0x0 (call reverted, no returnData)
+        // alongside one normal slot. The resolver MUST tick `inflation_resolve_partial` for
+        // the failed slot and fall back to demurraged ONLY for that slot — the healthy slot
+        // still gets its inflated value applied.
+        var handler = new PartialFailureScriptedHandler();
+        var factory = new SingleHandlerHttpClientFactory(handler);
+        var service = NewService(factory);
+        var item = NewWorkItem();
+        var calls = new[]
+        {
+            new SimulationCanaryService.DemurragedUnwrapCall(
+                "0xfromOK",   "0xwrapOK",   BigInteger.Parse("200"), CirclesType.InflationaryCircles),
+            new SimulationCanaryService.DemurragedUnwrapCall(
+                "0xfromFAIL", "0xwrapFAIL", BigInteger.Parse("500"), CirclesType.InflationaryCircles),
+        };
+
+        var before = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_partial", "unwrap").Value;
+        using var client = factory.CreateClient("canary-simulation");
+        var resolved = await service.ResolveInflationaryAmountsAsync(
+            item, calls, "0x3e8", client, CancellationToken.None);
+        var after = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_partial", "unwrap").Value;
+
+        Assert.That(after - before, Is.EqualTo(1.0),
+            "inflation_resolve_partial ticks exactly once (one failed slot, not two)");
+        Assert.That(resolved.Count, Is.EqualTo(2));
+        // Slot 0 succeeded — inflated value applied (300 from scripted return; bump=0 below 1e12)
+        Assert.That(resolved[0].Wrapper, Is.EqualTo("0xwrapOK"));
+        Assert.That(resolved[0].Amount,  Is.EqualTo(BigInteger.Parse("300")));
+        // Slot 1 failed — falls back to its original demurraged amount unchanged
+        Assert.That(resolved[1].Wrapper, Is.EqualTo("0xwrapFAIL"));
+        Assert.That(resolved[1].Amount,  Is.EqualTo(BigInteger.Parse("500")));
+    }
+
+    [Test]
+    public async Task ResolveInflationaryAmounts_TopLevelRpcError_TicksFailedAndShortCircuits()
+    {
+        // eth_simulateV1 returns a valid HTTP 200 envelope but the JSON-RPC layer itself
+        // rejected the batch: `{"error": {"code": -32603, "message": "..."}}`. Without the
+        // top-level error short-circuit, ExtractInflationaryAmounts would log N noisy
+        // per-call partial-failure warnings (one per inflationary entry) — the check
+        // collapses the signal to one batch-level log + one `inflation_resolve_failed` tick.
+        var handler = new TopLevelRpcErrorHandler();
+        var factory = new SingleHandlerHttpClientFactory(handler);
+        var service = NewService(factory);
+        var item = NewWorkItem();
+        var calls = new[]
+        {
+            new SimulationCanaryService.DemurragedUnwrapCall(
+                "0xfromA", "0xwrapA", BigInteger.Parse("200"), CirclesType.InflationaryCircles),
+            new SimulationCanaryService.DemurragedUnwrapCall(
+                "0xfromB", "0xwrapB", BigInteger.Parse("500"), CirclesType.InflationaryCircles),
+        };
+
+        var beforeFailed  = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_failed",  "unwrap").Value;
+        var beforePartial = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_partial", "unwrap").Value;
+        using var client = factory.CreateClient("canary-simulation");
+        var resolved = await service.ResolveInflationaryAmountsAsync(
+            item, calls, "0x3e8", client, CancellationToken.None);
+        var afterFailed  = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_failed",  "unwrap").Value;
+        var afterPartial = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_partial", "unwrap").Value;
+
+        Assert.That(afterFailed - beforeFailed, Is.EqualTo(1.0),
+            "inflation_resolve_failed ticks once for the whole batch (NOT per-call)");
+        Assert.That(afterPartial - beforePartial, Is.EqualTo(0.0),
+            "inflation_resolve_partial must NOT tick — the batch rejection is one event, not N");
+        Assert.That(resolved.Count, Is.EqualTo(2));
+        // Both fall back to original demurraged amount unchanged.
+        Assert.That(resolved[0].Amount, Is.EqualTo(BigInteger.Parse("200")));
+        Assert.That(resolved[1].Amount, Is.EqualTo(BigInteger.Parse("500")));
+    }
+
+    [Test]
+    public async Task ResolveInflationaryAmounts_LargeInflated_IncrementsBumpAppliedCounter()
+    {
+        // Item 1: the bump-applied counter must tick exactly once per inflationary entry
+        // whose resolver-returned value triggers a non-zero bump (raw ≥ 1e12 wei).
+        // Below-threshold values are tested elsewhere (SubTrillionWei pass-through).
+        var handler = new LargeInflatedScriptedHandler();
+        var factory = new SingleHandlerHttpClientFactory(handler);
+        var service = NewService(factory);
+        var item = NewWorkItem();
+        var calls = new[]
+        {
+            new SimulationCanaryService.DemurragedUnwrapCall(
+                "0xfromI", "0xwrapI", BigInteger.Parse("10000000000000000000000"), CirclesType.InflationaryCircles),
+        };
+
+        var before = SimulationCanaryService.InflationaryBumpApplied.Value;
+        using var client = factory.CreateClient("canary-simulation");
+        var resolved = await service.ResolveInflationaryAmountsAsync(
+            item, calls, "0x3e8", client, CancellationToken.None);
+        var after = SimulationCanaryService.InflationaryBumpApplied.Value;
+
+        Assert.That(after - before, Is.EqualTo(1.0),
+            "bump-applied counter must tick once for a single inflationary entry with raw ≥ 1e12");
+        // The scripted resolver returns 15030682683872941930529 (canonical 10000 CRC at
+        // day 2051 per PR #426). Bump adds raw/1e12 = 15_030_682_683 wei.
+        var rawInflated = BigInteger.Parse("15030682683872941930529");
+        var expectedBumped = rawInflated + (rawInflated / 1_000_000_000_000);
+        Assert.That(resolved[0].Amount, Is.EqualTo(expectedBumped),
+            "resolved amount is the post-bump value, not the raw resolver output");
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────────────
 
@@ -293,5 +468,135 @@ public class SimulationCanaryResolverFastPathTests
         public SingleHandlerHttpClientFactory(HttpMessageHandler handler) => _handler = handler;
         public HttpClient CreateClient(string name) =>
             new(_handler, disposeHandler: false) { BaseAddress = new Uri("http://localhost/canary-test") };
+    }
+
+    /// <summary>eth_getBlockByNumber → JSON-RPC error envelope. Exercises the
+    /// <c>block_lookup_failed</c> branch + fallback to PromoteAllDemurraged.</summary>
+    private sealed class BlockLookupErrorHandler : HttpMessageHandler
+    {
+        private int _count;
+        public int Count => Volatile.Read(ref _count);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _count);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32603,\"message\":\"block not found\"}}")
+            });
+        }
+    }
+
+    /// <summary>eth_getBlockByNumber → ok; eth_simulateV1 → HTTP 500. Exercises the
+    /// <c>inflation_resolve_failed</c> branch on the non-success-status code path.</summary>
+    private sealed class SimulateV1HttpErrorHandler : HttpMessageHandler
+    {
+        private int _count;
+        public int Count => Volatile.Read(ref _count);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken ct)
+        {
+            int n = Interlocked.Increment(ref _count);
+            if (n == 1)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"timestamp\":\"0x6\"}}")
+                });
+            }
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            {
+                Content = new StringContent("internal error")
+            });
+        }
+    }
+
+    /// <summary>eth_getBlockByNumber → ok; eth_simulateV1 → 2-call batch where the
+    /// first call status=0x1 returnData=300, the second status=0x0 (no returnData,
+    /// modelling a revert). Exercises the per-slot <c>inflation_resolve_partial</c>
+    /// branch + per-wrapper fallback (the good slot still gets its inflated value).</summary>
+    private sealed class PartialFailureScriptedHandler : HttpMessageHandler
+    {
+        private int _count;
+        public int Count => Volatile.Read(ref _count);
+
+        // First slot: status=0x1, returnData=300 (0x12c, left-padded to 64 hex chars).
+        // Second slot: status=0x0, empty returnData → ParseConvertCallReturnData yields null.
+        private static readonly string SimulateV1Body =
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[{\"calls\":[" +
+            "{\"status\":\"0x1\",\"returnData\":\"0x" + new string('0', 61) + "12c\"}," +
+            "{\"status\":\"0x0\",\"returnData\":\"0x\"}" +
+            "]}]}";
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken ct)
+        {
+            int n = Interlocked.Increment(ref _count);
+            string body = n == 1
+                ? "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"timestamp\":\"0x6\"}}"
+                : SimulateV1Body;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body)
+            });
+        }
+    }
+
+    /// <summary>eth_getBlockByNumber → ok; eth_simulateV1 → JSON-RPC top-level error
+    /// envelope (HTTP 200 with `{"error": {...}}` at root). Exercises the
+    /// Step 3.5 short-circuit added with Item 3 — collapses N per-call partial
+    /// warnings into one batch-level <c>inflation_resolve_failed</c> tick.</summary>
+    private sealed class TopLevelRpcErrorHandler : HttpMessageHandler
+    {
+        private int _count;
+        public int Count => Volatile.Read(ref _count);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken ct)
+        {
+            int n = Interlocked.Increment(ref _count);
+            string body = n == 1
+                ? "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"timestamp\":\"0x6\"}}"
+                : "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32603,\"message\":\"simulation pool exhausted\"}}";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body)
+            });
+        }
+    }
+
+    /// <summary>eth_simulateV1 returns the canonical 10000-CRC inflated value
+    /// (15030682683872941930529 = 0x32e16cdd5b1deceefe1) — large enough to trigger
+    /// a non-zero bump in ApplyInflationaryRoundtripBump. Used to exercise the
+    /// InflationaryBumpApplied counter end-to-end through ResolveInflationaryAmountsAsync.</summary>
+    private sealed class LargeInflatedScriptedHandler : HttpMessageHandler
+    {
+        private int _count;
+        public int Count => Volatile.Read(ref _count);
+
+        // 15030682683872941930529 in hex = 32ed09ff90335af7821 (19 hex digits, pad to 64).
+        // Matches the canonical "10000 CRC at day 2051" capture from PR #426 investigation.
+        private const string InflatedHex = "32ed09ff90335af7821";
+        private static readonly string SimulateV1Body =
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[{\"calls\":[" +
+            "{\"status\":\"0x1\",\"returnData\":\"0x" + new string('0', 64 - InflatedHex.Length) + InflatedHex + "\"}" +
+            "]}]}";
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken ct)
+        {
+            int n = Interlocked.Increment(ref _count);
+            string body = n == 1
+                ? "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"timestamp\":\"0x6\"}}"
+                : SimulateV1Body;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body)
+            });
+        }
     }
 }
