@@ -17,6 +17,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.37.2" />
       <PackageReference Include="Npgsql" Version="10.0.1" />
     </ItemGroup>
 
