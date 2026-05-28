@@ -66,7 +66,7 @@ public class AdversarialBugTests
         cache.V1TokenOwnerByToken.Seed(new Dictionary<string, string>());
         cache.V1AvatarToCidMap.Seed(new Dictionary<string, string>());
         cache.V2Avatars.Seed(new Dictionary<string, (string, long)>());
-        cache.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, int)>());
+        cache.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, CirclesType)>());
         cache.Groups.Seed(new Dictionary<string, (string, string, string)>());
         cache.GroupMemberships.Seed(new Dictionary<string, (string, long)>());
         cache.V2AvatarToCidMap.Seed(new Dictionary<string, string>());
@@ -198,7 +198,7 @@ public class AdversarialBugTests
         // Or equivalently, only apply demurrage to ERC1155 tokens.
 
         // We verify the classification is distinguishable:
-        var isInflationary = info.Value.CirclesType == 1;
+        var isInflationary = info.Value.CirclesType == CirclesType.InflationaryCircles;
         var isErc20Wrapper = true; // GetWrapperInfo returned non-null
         var isDemurragedWrapper = isErc20Wrapper && !isInflationary;
 

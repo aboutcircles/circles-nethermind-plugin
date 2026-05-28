@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Numerics;
+using Circles.Common;
 
 namespace Circles.Pathfinder.Data;
 
@@ -138,7 +139,7 @@ public sealed class CacheLoadGraph : ILoadGraph
             yield return row.ToLowerInvariant();
     }
 
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
     {
         var rows = _snapshot.WrapperMappings ?? [];
         foreach (var row in rows)

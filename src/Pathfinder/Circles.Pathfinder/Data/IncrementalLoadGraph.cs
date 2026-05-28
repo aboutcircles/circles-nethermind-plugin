@@ -21,7 +21,7 @@ public class IncrementalLoadGraph : ILoadGraph
     private readonly Settings _settings;
     private readonly long _maxBlockTimestamp;
     private readonly ILogger _logger;
-    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)>? _cachedWrapperMappings;
+    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)>? _cachedWrapperMappings;
 
     public IncrementalLoadGraph(
         InMemoryBalanceState balanceState,
@@ -182,9 +182,9 @@ public class IncrementalLoadGraph : ILoadGraph
     /// Returns cached wrapper mappings — loaded once per graph build from inner LoadGraph.
     /// Wrapper deployments are append-only, so caching within a single build is safe.
     /// </summary>
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
         => GetCachedWrapperMappings();
 
-    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> GetCachedWrapperMappings()
+    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> GetCachedWrapperMappings()
         => _cachedWrapperMappings ??= _inner.LoadWrapperMappings().ToList();
 }

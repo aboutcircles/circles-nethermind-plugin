@@ -330,7 +330,7 @@ public class NotificationListenerService : BackgroundService
         _caches.V1TokenOwnerByToken.Seed(new Dictionary<string, string>());
         _caches.V1AvatarToCidMap.Seed(new Dictionary<string, string>());
         _caches.V2Avatars.Seed(new Dictionary<string, (string, long)>());
-        _caches.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, int)>());
+        _caches.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, CirclesType)>());
         _caches.Groups.Seed(new Dictionary<string, (string, string, string)>());
         _caches.GroupMemberships.Seed(new Dictionary<string, (string, long)>());
         _caches.V2AvatarToCidMap.Seed(new Dictionary<string, string>());
@@ -740,7 +740,7 @@ public class NotificationListenerService : BackgroundService
                     var blockNumber = wrapperReader.GetInt64(0);
                     var avatar = wrapperReader.GetString(1);
                     var erc20Wrapper = wrapperReader.GetString(2);
-                    var circlesType = wrapperReader.GetInt32(3);
+                    var circlesType = (CirclesType)wrapperReader.GetInt32(3);
 
                     // Key by wrapper address (not avatar) to support avatars with multiple wrappers
                     var wrapperKey = erc20Wrapper.ToLowerInvariant();

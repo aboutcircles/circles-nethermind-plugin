@@ -84,7 +84,7 @@ public class SimulationCanaryUnwrapPrefixTests
         Assert.That(calls, Has.Count.EqualTo(1));
         Assert.That(calls[0].From, Is.EqualTo(Source));
         Assert.That(calls[0].Wrapper, Is.EqualTo(V4Wrapper));
-        Assert.That(calls[0].Amount, Is.EqualTo(BigInteger.Parse("1000000000000000000")));
+        Assert.That(calls[0].DemurragedAmount, Is.EqualTo(BigInteger.Parse("1000000000000000000")));
     }
 
     [Test]
@@ -101,7 +101,7 @@ public class SimulationCanaryUnwrapPrefixTests
         var calls = SimulationCanaryService.BuildUnwrapPrefix(transfers, WrapperMap());
 
         Assert.That(calls, Has.Count.EqualTo(1));
-        Assert.That(calls[0].Amount, Is.EqualTo(BigInteger.Parse("3500000000000000000")));
+        Assert.That(calls[0].DemurragedAmount, Is.EqualTo(BigInteger.Parse("3500000000000000000")));
     }
 
     [Test]
@@ -118,9 +118,9 @@ public class SimulationCanaryUnwrapPrefixTests
 
         Assert.That(calls, Has.Count.EqualTo(2));
         Assert.That(calls[0].Wrapper, Is.EqualTo(V6Wrapper), "V6 first-seen → first in bundle");
-        Assert.That(calls[0].Amount, Is.EqualTo(new BigInteger(150)));
+        Assert.That(calls[0].DemurragedAmount, Is.EqualTo(new BigInteger(150)));
         Assert.That(calls[1].Wrapper, Is.EqualTo(V4Wrapper));
-        Assert.That(calls[1].Amount, Is.EqualTo(new BigInteger(200)));
+        Assert.That(calls[1].DemurragedAmount, Is.EqualTo(new BigInteger(200)));
     }
 
     [Test]
@@ -137,7 +137,7 @@ public class SimulationCanaryUnwrapPrefixTests
 
         Assert.That(calls, Has.Count.EqualTo(1));
         Assert.That(calls[0].Wrapper, Is.EqualTo(V4Wrapper));
-        Assert.That(calls[0].Amount, Is.EqualTo(new BigInteger(1000)));
+        Assert.That(calls[0].DemurragedAmount, Is.EqualTo(new BigInteger(1000)));
     }
 
     [Test]
@@ -154,7 +154,7 @@ public class SimulationCanaryUnwrapPrefixTests
         var calls = SimulationCanaryService.BuildUnwrapPrefix(transfers, WrapperMap());
 
         Assert.That(calls, Has.Count.EqualTo(1));
-        Assert.That(calls[0].Amount, Is.EqualTo(new BigInteger(10)));
+        Assert.That(calls[0].DemurragedAmount, Is.EqualTo(new BigInteger(10)));
     }
 
     [Test]

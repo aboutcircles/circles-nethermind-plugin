@@ -1,3 +1,4 @@
+using Circles.Common;
 using System.Numerics;
 using Circles.Pathfinder.Data;
 
@@ -960,7 +961,7 @@ public class IncrementalLoadGraphTests
         public List<string> Groups { get; } = new();
         public List<(string GroupAddress, string TrustedToken)> GroupTrustEntries { get; } = new();
         public List<(string Avatar, bool HasConsentedFlow)> ConsentedFlags { get; } = new();
-        public List<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> WrapperMappings { get; } = new();
+        public List<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> WrapperMappings { get; } = new();
         public List<string> ScoreRouterAddresses { get; } = new();
         public List<(string Account, string Operator)> OperatorApprovalRows { get; } = new();
 
@@ -978,7 +979,7 @@ public class IncrementalLoadGraphTests
 
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
         public IEnumerable<string> LoadRegisteredAvatars() => Enumerable.Empty<string>();
-        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
             => WrapperMappings;
 
         public IEnumerable<string> LoadScoreRouters() => ScoreRouterAddresses;

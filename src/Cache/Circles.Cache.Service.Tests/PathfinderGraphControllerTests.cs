@@ -230,7 +230,7 @@ public class PathfinderGraphControllerTests
 
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2Avatars.Add(1000, underlyingAvatar, ("CrcV2_RegisterHuman", 1704067200L));
-        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (underlyingAvatar, 0)); // 0 = demurraged
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (underlyingAvatar, CirclesType.DemurrageCircles)); // 0 = demurraged
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{wrapperAddress}", 50m);
         _cache.V2LastActivity.Add(1000, $"{account}:{wrapperAddress}",
             (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
@@ -253,7 +253,7 @@ public class PathfinderGraphControllerTests
 
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2Avatars.Add(1000, underlyingAvatar, ("CrcV2_RegisterHuman", 1704067200L));
-        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (underlyingAvatar, 1)); // 1 = static
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (underlyingAvatar, CirclesType.InflationaryCircles)); // 1 = static
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{wrapperAddress}", 50m);
 
         var controller = CreateController();
@@ -274,7 +274,7 @@ public class PathfinderGraphControllerTests
 
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
         // underlyingAvatar NOT registered in V2Avatars
-        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (unregisteredAvatar, 0));
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (unregisteredAvatar, CirclesType.DemurrageCircles));
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{wrapperAddress}", 50m);
 
         var controller = CreateController();
@@ -293,7 +293,7 @@ public class PathfinderGraphControllerTests
 
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.Groups.Add(1000, groupAvatar, ("Group", StandardTreasuryMint, "G"));
-        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (groupAvatar, 1)); // static wrapper
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (groupAvatar, CirclesType.InflationaryCircles)); // static wrapper
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{wrapperAddress}", 50m);
 
         var controller = CreateController();
@@ -354,7 +354,7 @@ public class PathfinderGraphControllerTests
         _cache.V2Avatars.Add(1000, trustee, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2TrustRelations.Add(1000, $"{truster}:{trustee}", 9999999999L);
         // trustee has a wrapper deployed
-        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (trustee, 0));
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (trustee, CirclesType.DemurrageCircles));
 
         var controller = CreateController();
         var result = controller.GetGraph(include: "trust");
@@ -377,8 +377,8 @@ public class PathfinderGraphControllerTests
         _cache.V2Avatars.Add(1000, truster, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2Avatars.Add(1000, trustee, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2TrustRelations.Add(1000, $"{truster}:{trustee}", 9999999999L);
-        _cache.Erc20WrapperAddresses.Add(1000, wrapper1, (trustee, 0));
-        _cache.Erc20WrapperAddresses.Add(1000, wrapper2, (trustee, 1));
+        _cache.Erc20WrapperAddresses.Add(1000, wrapper1, (trustee, CirclesType.DemurrageCircles));
+        _cache.Erc20WrapperAddresses.Add(1000, wrapper2, (trustee, CirclesType.InflationaryCircles));
 
         var controller = CreateController();
         var result = controller.GetGraph(include: "trust");
@@ -731,7 +731,7 @@ public class PathfinderGraphControllerTests
         var groupAvatar = "0xaa00aa00aa00aa00aa00aa00aa00aa00aa00aa00";
 
         _cache.Groups.Add(1000, groupAvatar, ("Group", StandardTreasuryMint, "G"));
-        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (groupAvatar, 0));
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (groupAvatar, CirclesType.DemurrageCircles));
 
         var controller = CreateController();
         var result = controller.GetGraph(include: "wrapperMappings");

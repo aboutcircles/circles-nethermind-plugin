@@ -1,3 +1,4 @@
+using Circles.Common;
 using Circles.Cache.Service.Caches;
 using Xunit;
 using FluentAssertions;
@@ -99,7 +100,7 @@ public class CrossDomainTests
         var avatar = "0xavatar00000000000000000000000000000000000";
 
         // Register wrapper
-        _cache.UpsertWrapper(100, wrapperAddr, avatar, 1); // inflationary
+        _cache.UpsertWrapper(100, wrapperAddr, avatar, CirclesType.InflationaryCircles); // inflationary
 
         // Add wrapper balance to V2 cache (same cache as ERC1155)
         _cache.V2BalancesByAccountAndToken.Add(100, $"{address}:{wrapperAddr}", 500m);
@@ -112,7 +113,7 @@ public class CrossDomainTests
         // Wrapper info should identify it as ERC20
         var info = _cache.GetWrapperInfo(wrapperAddr);
         info.Should().NotBeNull();
-        info!.Value.CirclesType.Should().Be(1);
+        info!.Value.CirclesType.Should().Be(CirclesType.InflationaryCircles);
     }
 
     [Fact]
@@ -125,7 +126,7 @@ public class CrossDomainTests
         // Upsert with mixed case
         _cache.UpsertV2Trust(100, mixedCase, "0xTRUSTEE000000000000000000000000000000000", 999999L);
         _cache.UpsertGroupMembership(100, mixedCase, "0xMEMBER0000000000000000000000000000000000", 999999L);
-        _cache.UpsertWrapper(100, mixedCase, "0xAVATAR0000000000000000000000000000000000", 0);
+        _cache.UpsertWrapper(100, mixedCase, "0xAVATAR0000000000000000000000000000000000", CirclesType.DemurrageCircles);
 
         // Query with lowercase — should find everything
         _cache.GetTrustsFor(lowerCase, isV1: false).Should().HaveCount(1);

@@ -25,7 +25,7 @@ public class CacheContainer : IDisposable
     public RollbackCache<string, string> V1AvatarToCidMap { get; private set; } = null!;
 
     public RollbackCache<string, (string Type, long RegisteredAt)> V2Avatars { get; private set; } = null!;
-    public RollbackCache<string, (string Avatar, int CirclesType)> Erc20WrapperAddresses { get; private set; } = null!;
+    public RollbackCache<string, (string Avatar, CirclesType CirclesType)> Erc20WrapperAddresses { get; private set; } = null!;
     public RollbackCache<string, (string Name, string Mint, string Symbol)> Groups { get; private set; } = null!;
     public RollbackCache<string, (string Member, long ExpiryTime)> GroupMemberships { get; private set; } = null!;
     public RollbackCache<string, string> V2AvatarToCidMap { get; private set; } = null!;
@@ -65,9 +65,8 @@ public class CacheContainer : IDisposable
     // Maps member -> set of "group:member" keys
     private readonly Dictionary<string, HashSet<string>> _membershipsByMember = new();
 
-    // Reverse index for ERC20 wrappers: wrapper address -> (avatar address, circlesType)
-    // circlesType: 0 = demurraged, 1 = inflationary
-    private readonly Dictionary<string, (string Avatar, int CirclesType)> _erc20WrapperToAvatar = new();
+    // Reverse index for ERC20 wrappers: wrapper address -> (avatar address, wrapper flavor)
+    private readonly Dictionary<string, (string Avatar, CirclesType CirclesType)> _erc20WrapperToAvatar = new();
 
     // Per-domain reader-writer locks: concurrent reads, exclusive writes
     private readonly ReaderWriterLockSlim _balanceLock = new();
@@ -104,7 +103,7 @@ public class CacheContainer : IDisposable
         V1AvatarToCidMap = new RollbackCache<string, string>("V1AvatarToCidMap", _rollbackCapacity);
         // V2 Caches
         V2Avatars = new RollbackCache<string, (string Type, long RegisteredAt)>("V2Avatars", _rollbackCapacity);
-        Erc20WrapperAddresses = new RollbackCache<string, (string Avatar, int CirclesType)>("Erc20WrapperAddresses", _rollbackCapacity);
+        Erc20WrapperAddresses = new RollbackCache<string, (string Avatar, CirclesType CirclesType)>("Erc20WrapperAddresses", _rollbackCapacity);
         Groups = new RollbackCache<string, (string Name, string Mint, string Symbol)>("Groups", _rollbackCapacity);
         GroupMemberships = new RollbackCache<string, (string Member, long ExpiryTime)>("GroupMemberships", _rollbackCapacity);
         V2AvatarToCidMap = new RollbackCache<string, string>("V2AvatarToCidMap", _rollbackCapacity);
@@ -248,7 +247,7 @@ public class CacheContainer : IDisposable
         }
     }
 
-    public void UpsertWrapper(long blockNo, string wrapperAddress, string avatar, int circlesType)
+    public void UpsertWrapper(long blockNo, string wrapperAddress, string avatar, CirclesType circlesType)
     {
         var wrapperLower = wrapperAddress.ToLowerInvariant();
         var avatarLower = avatar.ToLowerInvariant();
@@ -649,11 +648,10 @@ public class CacheContainer : IDisposable
     }
 
     /// <summary>
-    /// Gets full wrapper info (avatar address and circlesType) for an ERC20 wrapper contract.
-    /// circlesType: 0 = demurraged, 1 = inflationary
+    /// Gets full wrapper info (avatar address and wrapper flavor) for an ERC20 wrapper contract.
     /// O(1) lookup using reverse index.
     /// </summary>
-    public (string Avatar, int CirclesType)? GetWrapperInfo(string wrapperAddress)
+    public (string Avatar, CirclesType CirclesType)? GetWrapperInfo(string wrapperAddress)
     {
         var wrapperLower = wrapperAddress.ToLowerInvariant();
         _wrapperLock.EnterReadLock();

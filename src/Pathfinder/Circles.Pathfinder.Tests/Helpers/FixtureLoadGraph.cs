@@ -179,6 +179,6 @@ public class FixtureLoadGraph : ILoadGraph
     /// <summary>
     /// Returns empty — fixture scenarios don't include wrapper data.
     /// </summary>
-    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, int CirclesType)> LoadWrapperMappings()
-        => Array.Empty<(string, string, int)>();
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> LoadWrapperMappings()
+        => Array.Empty<(string, string, CirclesType)>();
 }

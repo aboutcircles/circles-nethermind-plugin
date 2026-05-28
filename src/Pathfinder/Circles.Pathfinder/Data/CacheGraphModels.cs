@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Circles.Common;
 
 namespace Circles.Pathfinder.Data;
 
@@ -69,10 +70,10 @@ public record PathfinderGraphConsentedFlowRow(
 public record PathfinderGraphWrapperMappingRow(
     string WrapperAddress,
     string UnderlyingAvatar,
-    // 0 = DemurrageCircles (unwrap takes demurraged units), 1 = InflationaryCircles (unwrap takes inflationary units).
-    // Default 0 is safe-degrade: old cache snapshots without this field deserialize as demurraged,
-    // matching pre-PR-#408 canary behavior (false positives for inflationary unwraps, no new reverts).
-    int CirclesType = 0
+    // Default DemurrageCircles is safe-degrade: old cache snapshots without this field deserialize
+    // as demurraged, matching pre-PR-#408 canary behavior (false positives for inflationary
+    // unwraps, no new reverts).
+    CirclesType CirclesType = CirclesType.DemurrageCircles
 );
 
 /// <summary>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
+using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Host.Canary;
 using NUnit.Framework;
@@ -200,15 +201,14 @@ public class SimulationCanaryInflationaryConversionTests
     {
         var calls = new[]
         {
-            new SimulationCanaryService.UnwrapCall("0xfrom1", "0xwrap1", BigInteger.Parse("100"), IsInflationary: false),
-            new SimulationCanaryService.UnwrapCall("0xfrom2", "0xwrap2", BigInteger.Parse("200"), IsInflationary: false),
+            new SimulationCanaryService.DemurragedUnwrapCall("0xfrom1", "0xwrap1", BigInteger.Parse("100"), CirclesType.DemurrageCircles),
+            new SimulationCanaryService.DemurragedUnwrapCall("0xfrom2", "0xwrap2", BigInteger.Parse("200"), CirclesType.DemurrageCircles),
         };
         var inflationaryResolved = new List<BigInteger?>(); // empty — no inflationary calls to resolve
 
         var result = SimulationCanaryService.ApplyInflationaryAmounts(calls, inflationaryResolved);
         Assert.That(result.Count, Is.EqualTo(2));
         Assert.That(result[0].Amount, Is.EqualTo(BigInteger.Parse("100")));
-        Assert.That(result[0].IsInflationary, Is.False);
         Assert.That(result[1].Amount, Is.EqualTo(BigInteger.Parse("200")));
     }
 
@@ -217,8 +217,8 @@ public class SimulationCanaryInflationaryConversionTests
     {
         var calls = new[]
         {
-            new SimulationCanaryService.UnwrapCall("0xfrom1", "0xwrap1", BigInteger.Parse("100"), IsInflationary: true),
-            new SimulationCanaryService.UnwrapCall("0xfrom2", "0xwrap2", BigInteger.Parse("200"), IsInflationary: true),
+            new SimulationCanaryService.DemurragedUnwrapCall("0xfrom1", "0xwrap1", BigInteger.Parse("100"), CirclesType.InflationaryCircles),
+            new SimulationCanaryService.DemurragedUnwrapCall("0xfrom2", "0xwrap2", BigInteger.Parse("200"), CirclesType.InflationaryCircles),
         };
         var inflationaryResolved = new List<BigInteger?>
         {
@@ -237,9 +237,9 @@ public class SimulationCanaryInflationaryConversionTests
     {
         var calls = new[]
         {
-            new SimulationCanaryService.UnwrapCall("0xfromA", "0xwrapA", BigInteger.Parse("100"), IsInflationary: false), // demurraged: pass through
-            new SimulationCanaryService.UnwrapCall("0xfromB", "0xwrapB", BigInteger.Parse("200"), IsInflationary: true),  // inflationary: convert
-            new SimulationCanaryService.UnwrapCall("0xfromC", "0xwrapC", BigInteger.Parse("300"), IsInflationary: false), // demurraged: pass through
+            new SimulationCanaryService.DemurragedUnwrapCall("0xfromA", "0xwrapA", BigInteger.Parse("100"), CirclesType.DemurrageCircles),    // pass through
+            new SimulationCanaryService.DemurragedUnwrapCall("0xfromB", "0xwrapB", BigInteger.Parse("200"), CirclesType.InflationaryCircles), // convert
+            new SimulationCanaryService.DemurragedUnwrapCall("0xfromC", "0xwrapC", BigInteger.Parse("300"), CirclesType.DemurrageCircles),    // pass through
         };
         var inflationaryResolved = new List<BigInteger?>
         {
@@ -258,7 +258,7 @@ public class SimulationCanaryInflationaryConversionTests
     {
         var calls = new[]
         {
-            new SimulationCanaryService.UnwrapCall("0xfrom", "0xwrap", BigInteger.Parse("100"), IsInflationary: true),
+            new SimulationCanaryService.DemurragedUnwrapCall("0xfrom", "0xwrap", BigInteger.Parse("100"), CirclesType.InflationaryCircles),
         };
         var resolved = new List<BigInteger?> { null }; // RPC failure on this call
 
@@ -289,9 +289,9 @@ public class SimulationCanaryInflationaryConversionTests
         var calls = SimulationCanaryService.BuildUnwrapPrefix(transfers, wrapperToAvatar, inflationaryWrappers);
         Assert.That(calls.Count, Is.EqualTo(2));
         Assert.That(calls[0].Wrapper, Is.EqualTo("0xwrapd"));
-        Assert.That(calls[0].IsInflationary, Is.False);
+        Assert.That(calls[0].WrapperType, Is.EqualTo(CirclesType.DemurrageCircles));
         Assert.That(calls[1].Wrapper, Is.EqualTo("0xwrapi"));
-        Assert.That(calls[1].IsInflationary, Is.True);
+        Assert.That(calls[1].WrapperType, Is.EqualTo(CirclesType.InflationaryCircles));
     }
 
     [Test]
@@ -308,7 +308,7 @@ public class SimulationCanaryInflationaryConversionTests
 
         var calls = SimulationCanaryService.BuildUnwrapPrefix(transfers, wrapperToAvatar, inflationaryWrappers: null);
         Assert.That(calls.Count, Is.EqualTo(1));
-        Assert.That(calls[0].IsInflationary, Is.False);
+        Assert.That(calls[0].WrapperType, Is.EqualTo(CirclesType.DemurrageCircles));
     }
 
     [Test]
@@ -327,8 +327,8 @@ public class SimulationCanaryInflationaryConversionTests
 
         var calls = SimulationCanaryService.BuildUnwrapPrefix(transfers, wrapperToAvatar, inflationaryWrappers);
         Assert.That(calls.Count, Is.EqualTo(1));
-        Assert.That(calls[0].Amount, Is.EqualTo(BigInteger.Parse("300")));
-        Assert.That(calls[0].IsInflationary, Is.True);
+        Assert.That(calls[0].DemurragedAmount, Is.EqualTo(BigInteger.Parse("300")));
+        Assert.That(calls[0].WrapperType, Is.EqualTo(CirclesType.InflationaryCircles));
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -391,8 +391,8 @@ public class SimulationCanaryInflationaryConversionTests
 
         var calls = SimulationCanaryService.BuildUnwrapPrefix(transfers, wrapperToAvatar, inflationaryWrappers);
         Assert.That(calls.Count, Is.EqualTo(1));
-        Assert.That(calls[0].IsInflationary, Is.False);
-        Assert.That(calls[0].Amount, Is.EqualTo(BigInteger.Parse("229412191490542522084844")),
+        Assert.That(calls[0].WrapperType, Is.EqualTo(CirclesType.DemurrageCircles));
+        Assert.That(calls[0].DemurragedAmount, Is.EqualTo(BigInteger.Parse("229412191490542522084844")),
             "demurraged-wrapper amount must pass through unchanged — no β^day inflation");
 
         // ApplyInflationaryAmounts with empty inflationary list is a no-op for demurraged calls.
@@ -431,7 +431,7 @@ public class SimulationCanaryInflationaryConversionTests
 
         var calls = SimulationCanaryService.BuildUnwrapPrefix(transfers, wrapperToAvatar, inflationaryWrappers);
         Assert.That(calls.Count, Is.EqualTo(1));
-        Assert.That(calls[0].IsInflationary, Is.False,
+        Assert.That(calls[0].WrapperType, Is.EqualTo(CirclesType.DemurrageCircles),
             "DemurrageCircles wrapper must NOT be flagged inflationary — PR #408 regression");
 
         // Even with a non-empty resolved list (would-be inflated value), ApplyInflationaryAmounts

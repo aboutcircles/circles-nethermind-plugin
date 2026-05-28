@@ -1,3 +1,4 @@
+using Circles.Common;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Controllers;
 using Circles.Cache.Service.Models;
@@ -579,7 +580,7 @@ public class ControllerTests
     {
         var wrapper = "0xwrapper0000000000000000000000000000000000";
         var avatar = "0xavatar00000000000000000000000000000000000";
-        _cache.UpsertWrapper(2000, wrapper, avatar, 1); // inflationary
+        _cache.UpsertWrapper(2000, wrapper, avatar, CirclesType.InflationaryCircles); // inflationary
 
         var controller = CreateTokensController();
         var result = controller.GetTokenInfo(wrapper);
@@ -674,7 +675,7 @@ public class ControllerTests
         // Register account, wrapper underlying, and ERC1155 token owner
         _cache.V2Avatars.Add(2000, address, ("CrcV2_RegisterHuman", 12345L));
         _cache.V2Avatars.Add(2000, "0xunderlying", ("CrcV2_RegisterHuman", 12345L));
-        _cache.UpsertWrapper(2000, wrapperAddr, "0xunderlying", 0); // demurraged wrapper
+        _cache.UpsertWrapper(2000, wrapperAddr, "0xunderlying", CirclesType.DemurrageCircles); // demurraged wrapper
         _cache.V2Avatars.Add(2000, erc1155Id, ("CrcV2_RegisterHuman", 12345L));
 
         // Add balances for both — both are hex addresses starting with "0x"
