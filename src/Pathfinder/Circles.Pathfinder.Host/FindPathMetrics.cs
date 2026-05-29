@@ -52,4 +52,14 @@ internal class FindPathMetrics
         Metrics.CreateCounter(
             "circles_canary_validator_exception_total",
             "Times HubContractValidator threw an unexpected exception");
+
+    // Path audit: warning-severity violations detected (observe-only, response NOT replaced).
+    // Diagnostic counter for rules whose root cause is still under investigation
+    // (e.g. HolderBalanceAvailable). Alertable in the same way as PathAuditViolationsTotal,
+    // but without an associated PathAuditBlockedTotal increment.
+    public static readonly Counter PathAuditWarningsTotal =
+        Metrics.CreateCounter(
+            "circles_path_audit_warnings_total",
+            "Pathfinder warning-severity validator violations (observe-only, never block response)",
+            new CounterConfiguration { LabelNames = new[] { "rule" } });
 }

@@ -150,6 +150,12 @@ public class V2Pathfinder
         public int ValidationErrors { get; set; }
         public IReadOnlyList<string>? ValidationViolationRules { get; set; }
         public bool ValidatorException { get; set; }
+
+        // Warning-severity validator violations: logged + metricised but NEVER block
+        // the response (in contrast to errors, which the host replaces with empty
+        // results in FindPathHandler.cs).
+        public int ValidationWarnings { get; set; }
+        public IReadOnlyList<string>? ValidationWarningRules { get; set; }
     }
 
     /* ======================================================================
@@ -466,16 +472,32 @@ public class V2Pathfinder
             _logger.LogDebug("[{ReqId}] Transfers: {Summary}", ctx.ReqId, summary);
         }
 
-        // Path audit: run HubContractValidator on every response (observe-only, NEVER blocks)
+        // Path audit: run HubContractValidator on every response (observe-only, NEVER blocks).
+        //
+        // Two separate try blocks intentionally:
+        //   - The error-gathering block sets ctx.ValidatorException on failure, which
+        //     FindPathHandler reads to replace the response with an empty path (the
+        //     error path is the only one that gates the response). A failure to even
+        //     enumerate error-severity violations means we have no proof the path is
+        //     safe → fail-closed by blocking.
+        //   - The warning-gathering block is OBSERVE-ONLY: a failure to enumerate
+        //     warnings (e.g. NRE on a concurrent _balanceIndex read, an
+        //     AddressIdPool key-not-found) must NEVER set ValidatorException,
+        //     otherwise a warning-only diagnostic could block legitimate paths.
+        //     Log and continue with empty warning telemetry.
         if (ctx.Transfers.Count > 0)
         {
+            IReadOnlyList<Validation.ValidationViolation> allViolations =
+                Array.Empty<Validation.ValidationViolation>();
+
             try
             {
                 var contractState = new Validation.CapacityGraphContractState(ctx.Graph);
                 var validation = Validation.HubContractValidator.Validate(
                     ctx.Transfers, ctx.Request.Source!, ctx.Request.Sink!, contractState);
+                allViolations = validation.Violations;
 
-                var errorViolations = validation.Violations.Where(v => v.Severity == "error").ToList();
+                var errorViolations = allViolations.Where(v => v.Severity == "error").ToList();
                 if (errorViolations.Count > 0)
                 {
                     var errors = errorViolations.Select(v => $"[{v.Rule}] {v.Message}");
@@ -496,9 +518,42 @@ public class V2Pathfinder
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "[{ReqId}] Path audit: unexpected exception (observe-only, not blocking response)",
+                    "[{ReqId}] Path audit: unexpected exception during error-gathering (observe-only, not blocking response)",
                     ctx.ReqId);
                 ctx.ValidatorException = true;
+            }
+
+            // Warning-severity violations are observe-only: they log + surface in a
+            // separate per-rule metrics bucket, never block the response. Used by
+            // diagnostic rules (e.g. HolderBalanceAvailable) that flag pathfinder
+            // bugs whose root cause is not yet pinpointed — operator sees the alert
+            // upstream, the path still returns so users aren't blocked on uncertain
+            // signal. A failure HERE must NOT set ValidatorException — see comment
+            // block above.
+            try
+            {
+                var warningViolations = allViolations.Where(v => v.Severity == "warning").ToList();
+                if (warningViolations.Count > 0)
+                {
+                    var warnings = warningViolations.Select(v => $"[{v.Rule}] {v.Message}");
+                    _logger.LogWarning(
+                        "[{ReqId}] Path audit: {Count} warning(s) from={Source} to={Sink} block={Block}: {Violations}",
+                        ctx.ReqId, warningViolations.Count, ctx.Request.Source, ctx.Request.Sink,
+                        ctx.Graph.Block, string.Join("; ", warnings));
+                }
+                ctx.ValidationWarnings = warningViolations.Count;
+                ctx.ValidationWarningRules = warningViolations
+                    .Select(v => v.Rule)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                // Warning gathering is observe-only: log + continue with empty telemetry.
+                // Do NOT set ValidatorException — that gate is reserved for the error path.
+                _logger.LogError(ex,
+                    "[{ReqId}] Path audit: unexpected exception during warning-gathering — telemetry suppressed for this request, response not blocked",
+                    ctx.ReqId);
             }
         }
     }
@@ -531,7 +586,9 @@ public class V2Pathfinder
             ConsentDroppedPaths = ctx.ConsentDroppedPaths,
             ValidationErrors = ctx.ValidationErrors,
             ValidationViolationRules = ctx.ValidationViolationRules,
-            ValidatorException = ctx.ValidatorException
+            ValidatorException = ctx.ValidatorException,
+            ValidationWarnings = ctx.ValidationWarnings,
+            ValidationWarningRules = ctx.ValidationWarningRules
         };
     }
 

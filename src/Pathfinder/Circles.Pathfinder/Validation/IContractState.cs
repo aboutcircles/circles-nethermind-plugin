@@ -78,4 +78,12 @@ public interface IContractState
     /// from leaking through during indexer drift.
     /// </summary>
     long? GetScoreGroupMintLimit(string group, string collateral) => null;
+
+    /// <summary>
+    /// Cached bare-ERC1155 holder balance for (holder, token), in pathfinder graph units
+    /// (wei / 10^12 per CirclesConverter.TruncateToInt64). Returns null when no edge
+    /// records a balance for this pair — used by rule 13 to fail-closed when the
+    /// implied starting balance for a transfer can't be verified.
+    /// </summary>
+    long? GetHolderBalance(string holder, string token) => null;
 }

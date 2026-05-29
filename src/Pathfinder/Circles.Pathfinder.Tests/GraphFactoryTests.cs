@@ -501,12 +501,12 @@ public class GraphFactoryTests
     [Test]
     public void SelfMintViaPath_GroupTokenWithNoSupply_VirtualSinkSurvivesViaGroupEdge()
     {
-        // Regression for self-mint via path returning maxFlow=0 against prod
-        // ScoreGroup 0x7CadB2E9… (2026-05-19). Reproduces shape: source==sink,
-        // toTokens=[group whose CRC nobody holds yet]. Pre-fix the virtualSink
-        // had zero inbound edges (TokenPool(groupToken) doesn't exist pre-mint)
-        // and got pruned, yielding maxFlow=0 for legitimate self-mint paths.
-        // Fix: Group → virtualSink fallback when pool is absent and t is a group.
+        // Regression for self-mint via path returning maxFlow=0. Reproduces
+        // shape: source==sink, toTokens=[group whose CRC nobody holds yet].
+        // Pre-fix the virtualSink had zero inbound edges (TokenPool(groupToken)
+        // doesn't exist pre-mint) and got pruned, yielding maxFlow=0 for
+        // legitimate self-mint paths. Fix: Group → virtualSink fallback when
+        // pool is absent and t is a group.
         var mock = new MockLoadGraph
         {
             Groups = new List<string> { GroupG },
