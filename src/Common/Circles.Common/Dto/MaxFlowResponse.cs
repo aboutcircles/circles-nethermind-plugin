@@ -108,6 +108,24 @@ public class MaxFlowResponse
     public bool ValidatorException { get; set; }
 
     /// <summary>
+    /// Number of warning-severity violations detected by HubContractValidator. Warnings
+    /// are observe-only — they NEVER cause the response to be replaced with the empty
+    /// path; the transfers are returned as-is. Used by diagnostic rules whose root cause
+    /// is still under investigation (the path may or may not actually revert on-chain).
+    /// Serialized only when non-zero.
+    /// </summary>
+    [JsonPropertyName("validationWarnings")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int ValidationWarnings { get; set; }
+
+    /// <summary>
+    /// Rule names of each detected warning-severity violation. Serialized when not null.
+    /// </summary>
+    [JsonPropertyName("validationWarningRules")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? ValidationWarningRules { get; set; }
+
+    /// <summary>
     /// Block number of the graph snapshot used for this computation.
     /// Lets callers detect staleness by comparing to the current chain head.
     /// </summary>

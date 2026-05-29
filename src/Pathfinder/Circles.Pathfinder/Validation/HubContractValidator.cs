@@ -43,6 +43,7 @@ public static class HubContractValidator
         ValidateNoDuplicateEdges(filtered, violations);
         ValidateNoSelfTransfers(filtered, sink, violations);
         ValidateScoreGroupMintLimits(filtered, state, violations);
+        ValidateHolderBalanceAvailable(filtered, state, violations);
 
         bool isValid = !violations.Any(v => v.Severity == "error");
         return new ValidationResult(isValid, violations);
@@ -761,6 +762,104 @@ public static class HubContractValidator
                     $"(cached as {cachedLimit.Value} at 6-decimal CRC precision)",
                     i, "error"));
                 bucketAlreadyViolated.Add(key);
+            }
+        }
+    }
+
+    // ────────────────────────────────────────────
+    // Rule 13: Holder balance availability
+    // Hub.sol's _safeTransferFrom asserts balance[from][tokenId] >= amount for
+    // every flow edge whose `from` is not the group (group mints are unbounded
+    // sources) and not the score-router (router holds the group's mintable
+    // supply, not modeled as a balance edge). For every other sender, the
+    // cumulative outflow per (from, token) MUST be ≤ the holder's cached bare
+    // balance for that token.
+    //
+    // Wrapper handling: the pathfinder's CapacityGraph indexes wrapper
+    // balances under the WRAPPER token id, not the underlying avatar
+    // (AddHolderToTokenEdges_Pooled at GraphFactory.cs:905 stores BalanceNodes
+    // keyed by bn.Token == wrapper_id when bn.IsWrapped). The lookup here uses
+    // the raw token id from the step, with NO wrapper→avatar resolution, so it
+    // matches the producer's key convention. Resolving would always miss
+    // wrapped-balance entries and emit a false-positive "no balance entry"
+    // warning on every withWrap=true path. Cross-aggregation between a
+    // holder's bare-T and wrapped-T balances is intentionally NOT performed
+    // here — that would mask producer bugs in non-wrapper paths.
+    //
+    // The rule is observe-only (severity=warning logs to pathfinder logs + the
+    // circles_path_audit_warnings_total{rule="HolderBalanceAvailable"}
+    // counter), no path manipulation.
+    // ────────────────────────────────────────────
+    internal static void ValidateHolderBalanceAvailable(
+        IReadOnlyList<TransferPathStep> steps,
+        IContractState state,
+        List<ValidationViolation> violations)
+    {
+        // Sum outflow per (holder, raw-token) across all transfers.
+        // Skip group senders (mint, unbounded) and router senders (proxy, mint-limit-gated).
+        var outflowWei = new Dictionary<(string Holder, string Token), BigInteger>();
+
+        for (int i = 0; i < steps.Count; i++)
+        {
+            var step = steps[i];
+            var fromLower = step.From.ToLowerInvariant();
+
+            if (state.IsGroup(fromLower)) continue;
+            if (state.IsRouter(fromLower)) continue;
+            if (state.IsScoreRouter(fromLower)) continue;
+
+            var tokenLower = step.TokenOwner.ToLowerInvariant();
+
+            if (!BigInteger.TryParse(step.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v))
+            {
+                // Surface the parse failure as a warning so corrupted Value strings
+                // are visible in the audit metrics, but skip the edge so the bad
+                // datum can't poison the aggregated outflow totals (and produce
+                // false-positive overshoot warnings on the surviving entries).
+                violations.Add(new ValidationViolation(
+                    "HolderBalanceAvailable",
+                    $"Edge {i}: unparseable Value '{step.Value}' — skipping outflow accumulation",
+                    i, "warning"));
+                continue;
+            }
+            if (v <= 0) continue;
+
+            var key = (fromLower, tokenLower);
+            outflowWei[key] = outflowWei.GetValueOrDefault(key) + v;
+        }
+
+        // Compare each per-holder, per-token outflow to the cached balance.
+        // GetHolderBalance returns graph units (wei / 10^12); multiply back for comparison.
+        foreach (var ((holder, token), totalWei) in outflowWei)
+        {
+            var balanceUnits = state.GetHolderBalance(holder, token);
+            if (balanceUnits == null)
+            {
+                // No balance entry recorded for this (holder, token). Either the
+                // holder has zero or the graph snapshot dropped the entry under
+                // a filter. Treat unknown as zero; if the path needs >0 from
+                // this holder for this token, flag.
+                violations.Add(new ValidationViolation(
+                    "HolderBalanceAvailable",
+                    $"Holder={holder} token={token}: cumulative outflow={totalWei} wei, " +
+                    $"no balance entry in graph snapshot (treating as 0)",
+                    null, "warning"));
+                continue;
+            }
+
+            // Convert graph units back to wei via the shared CirclesConverter helper
+            // so this rule stays in lockstep with FactorB if the factor ever changes.
+            var availableWei = CirclesConverter.BlowUpToBigInteger(balanceUnits.Value);
+
+            if (totalWei > availableWei)
+            {
+                violations.Add(new ValidationViolation(
+                    "HolderBalanceAvailable",
+                    $"Holder={holder} token={token}: cumulative outflow={totalWei} wei " +
+                    $"exceeds cached balance={availableWei} wei " +
+                    $"(graph units={balanceUnits.Value}); overshoot ratio≈" +
+                    $"{(double)totalWei / Math.Max(1, (double)availableWei):F1}×",
+                    null, "warning"));
             }
         }
     }

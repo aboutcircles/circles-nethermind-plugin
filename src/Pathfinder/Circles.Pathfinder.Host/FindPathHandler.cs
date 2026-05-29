@@ -251,13 +251,23 @@ internal sealed class FindPathHandler(
                         ConsentDroppedPaths = mfr.ConsentDroppedPaths,
                         ValidationErrors = mfr.ValidationErrors,
                         ValidationViolationRules = mfr.ValidationViolationRules,
-                        ValidatorException = mfr.ValidatorException
+                        ValidatorException = mfr.ValidatorException,
+                        ValidationWarnings = mfr.ValidationWarnings,
+                        ValidationWarningRules = mfr.ValidationWarningRules,
                     };
                     result = emptyResponse;
                     mfr = emptyResponse;
                 }
                 if (mfr.ValidatorException)
                     FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
+
+                // Warning-severity violations: observe-only, response NOT replaced.
+                // Per-rule counter for alerting; the original response is preserved.
+                if (mfr.ValidationWarnings > 0 && mfr.ValidationWarningRules != null)
+                {
+                    foreach (var rule in mfr.ValidationWarningRules)
+                        FindPathMetrics.PathAuditWarningsTotal.WithLabels(rule).Inc();
+                }
 
                 // Simulation canary: enqueue for async on-chain validation.
                 // Skip when:
@@ -506,7 +516,9 @@ internal sealed class FindPathHandler(
                         ConsentDroppedPaths = mfr.ConsentDroppedPaths,
                         ValidationErrors = mfr.ValidationErrors,
                         ValidationViolationRules = mfr.ValidationViolationRules,
-                        ValidatorException = mfr.ValidatorException
+                        ValidatorException = mfr.ValidatorException,
+                        ValidationWarnings = mfr.ValidationWarnings,
+                        ValidationWarningRules = mfr.ValidationWarningRules,
                     };
                     result = emptyResponse;
                     mfr = emptyResponse;
@@ -517,6 +529,14 @@ internal sealed class FindPathHandler(
                 // whenever a request uses X-Max-Block-Number.
                 if (mfr.ValidatorException)
                     FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
+
+                // Mirror the live-path's warning bucket on the historical path so
+                // diagnostic rules show up in telemetry for X-Max-Block-Number requests too.
+                if (mfr.ValidationWarnings > 0 && mfr.ValidationWarningRules != null)
+                {
+                    foreach (var rule in mfr.ValidationWarningRules)
+                        FindPathMetrics.PathAuditWarningsTotal.WithLabels(rule).Inc();
+                }
 
                 log.LogInformation(
                     "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
