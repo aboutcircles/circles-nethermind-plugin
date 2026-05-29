@@ -791,26 +791,40 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void NotificationListener_V2TransferSql_UsesTokenAddressNotId()
     {
-        // Read the source file and verify the SQL uses "tokenAddress" not bare 'id'
-        var sourceFile = Path.Combine(
+        // Read the source files and verify the SQL uses "tokenAddress" not bare 'id'.
+        // The implementation is split across NotificationListenerService.cs (main partial)
+        // and Listeners/NotificationListenerService.*.cs (per-table partials).
+        var servicesDir = Path.GetFullPath(Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory,
             "..", "..", "..", "..", "..",
-            "Cache", "Circles.Cache.Service", "Services", "NotificationListenerService.cs");
+            "Cache", "Circles.Cache.Service", "Services"));
 
-        // Normalize the path
-        sourceFile = Path.GetFullPath(sourceFile);
-
-        if (!File.Exists(sourceFile))
+        if (!Directory.Exists(servicesDir))
         {
             // CI or deployment — source not adjacent to test binary
             return;
         }
 
-        var source = File.ReadAllText(sourceFile);
+        var partials = Directory.GetFiles(servicesDir, "NotificationListenerService*.cs",
+            SearchOption.AllDirectories);
 
-        // Find the ProcessV2TransfersAsync method DEFINITION (not the call site)
+        // Find the ProcessV2TransfersAsync method DEFINITION across all partials.
         var methodDef = "private async Task ProcessV2TransfersAsync";
-        var methodStart = source.IndexOf(methodDef, StringComparison.Ordinal);
+        string? source = null;
+        int methodStart = -1;
+        foreach (var file in partials)
+        {
+            var text = File.ReadAllText(file);
+            var idx = text.IndexOf(methodDef, StringComparison.Ordinal);
+            if (idx >= 0)
+            {
+                source = text;
+                methodStart = idx;
+                break;
+            }
+        }
+
+        source.Should().NotBeNull("ProcessV2TransfersAsync method definition should exist in some NotificationListenerService partial");
         methodStart.Should().BeGreaterThan(0, "ProcessV2TransfersAsync method definition should exist");
 
         // Extract the method's SQL + reader section — SQL is ~800 chars, reader access ~400 more
