@@ -326,7 +326,7 @@ app.Use(async (context, next) =>
                     context.Response.ContentType = "application/json";
                     await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                     {
-                        Error = new JsonRpcError { Code = -32600, Message = "Invalid Request: empty batch" }
+                        Error = JsonRpcError.InvalidRequest("empty batch")
                     }, batchJsonOptions);
                     return;
                 }
@@ -341,7 +341,7 @@ app.Use(async (context, next) =>
                     context.Response.ContentType = "application/json";
                     await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                     {
-                        Error = new JsonRpcError { Code = -32000, Message = "Rate limit exceeded" }
+                        Error = JsonRpcError.RateLimited()
                     }, batchJsonOptions);
                     return;
                 }
@@ -369,7 +369,7 @@ app.Use(async (context, next) =>
                         responses[idx] = new JsonRpcErrorResponse
                         {
                             Id = id,
-                            Error = new JsonRpcError { Code = -32600, Message = "Invalid Request" }
+                            Error = JsonRpcError.InvalidRequest()
                         };
                     }
                     else if (IsCirclesMethod(method))
@@ -382,7 +382,7 @@ app.Use(async (context, next) =>
                             else responses[idx] = new JsonRpcErrorResponse
                             {
                                 Id = id,
-                                Error = new JsonRpcError { Code = -32600, Message = "Invalid Request" }
+                                Error = JsonRpcError.InvalidRequest()
                             };
                         }
                         catch (JsonException)
@@ -390,7 +390,7 @@ app.Use(async (context, next) =>
                             responses[idx] = new JsonRpcErrorResponse
                             {
                                 Id = id,
-                                Error = new JsonRpcError { Code = -32600, Message = "Invalid Request: malformed item" }
+                                Error = JsonRpcError.InvalidRequest("malformed item")
                             };
                         }
                     }
@@ -403,7 +403,7 @@ app.Use(async (context, next) =>
                         responses[idx] = new JsonRpcErrorResponse
                         {
                             Id = id,
-                            Error = new JsonRpcError { Code = -32601, Message = $"Method not found: {method}" }
+                            Error = JsonRpcError.MethodNotFound(method)
                         };
                     }
                     idx++;
@@ -420,7 +420,7 @@ app.Use(async (context, next) =>
                             responses[i] = new JsonRpcErrorResponse
                             {
                                 Id = JsonRpcId.CoerceId(req.Id),
-                                Error = new JsonRpcError { Code = -32000, Message = "Server busy" }
+                                Error = JsonRpcError.ServerBusy()
                             };
                             continue;
                         }
@@ -476,7 +476,7 @@ app.Use(async (context, next) =>
                                     responses[ni] = new JsonRpcErrorResponse
                                     {
                                         Id = fallbackId,
-                                        Error = new JsonRpcError { Code = -32603, Message = "Missing proxy response" }
+                                        Error = JsonRpcError.Internal("Missing proxy response")
                                     };
                                 }
                             }
@@ -491,7 +491,7 @@ app.Use(async (context, next) =>
                                 responses[ni] = new JsonRpcErrorResponse
                                 {
                                     Id = errId,
-                                    Error = new JsonRpcError { Code = -32603, Message = "Unexpected proxy response" }
+                                    Error = JsonRpcError.Internal("Unexpected proxy response")
                                 };
                             }
                         }
@@ -506,7 +506,7 @@ app.Use(async (context, next) =>
                             responses[i] = new JsonRpcErrorResponse
                             {
                                 Id = id,
-                                Error = new JsonRpcError { Code = -32603, Message = "Proxy error" }
+                                Error = JsonRpcError.Internal("Proxy error")
                             };
                         }
                     }
@@ -524,7 +524,7 @@ app.Use(async (context, next) =>
                 {
                     responses[k] ??= new JsonRpcErrorResponse
                     {
-                        Error = new JsonRpcError { Code = -32603, Message = "Internal error: no response generated" }
+                        Error = JsonRpcError.Internal("Internal error: no response generated")
                     };
                 }
 
@@ -556,7 +556,7 @@ app.Use(async (context, next) =>
                 context.Response.ContentType = "application/json";
                 await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                 {
-                    Error = new JsonRpcError { Code = -32700, Message = "Parse error" }
+                    Error = JsonRpcError.ParseError()
                 }, batchJsonOptions);
             }
             catch (Exception ex)
@@ -570,7 +570,7 @@ app.Use(async (context, next) =>
                 context.Response.ContentType = "application/json";
                 await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                 {
-                    Error = new JsonRpcError { Code = -32603, Message = "Internal batch error" }
+                    Error = JsonRpcError.Internal("Internal batch error")
                 }, batchJsonOptions);
             }
             return;
@@ -595,7 +595,7 @@ app.MapPost("/", async (
         return Results.BadRequest(new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
-            Error = new JsonRpcError { Code = -32600, Message = "Invalid Request" }
+            Error = JsonRpcError.InvalidRequest()
         });
     }
 
@@ -608,7 +608,7 @@ app.MapPost("/", async (
         return Results.Json(new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
-            Error = new JsonRpcError { Code = -32000, Message = "Rate limit exceeded" }
+            Error = JsonRpcError.RateLimited()
         }, statusCode: 429);
     }
 
@@ -619,7 +619,7 @@ app.MapPost("/", async (
         return Results.Json(new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
-            Error = new JsonRpcError { Code = -32000, Message = "Server busy" }
+            Error = JsonRpcError.ServerBusy()
         }, statusCode: 503);
     }
     var nethermindClient = context.RequestServices.GetRequiredService<NethermindRpcClient>();
@@ -740,7 +740,7 @@ static async Task<object> DispatchSingleRequest(
             return new JsonRpcErrorResponse
             {
                 Id = JsonRpcId.CoerceId(request.Id),
-                Error = new JsonRpcError { Code = -32601, Message = $"Method not found: {methodName}" }
+                Error = JsonRpcError.MethodNotFound(methodName)
             };
         }
 
@@ -761,7 +761,7 @@ static async Task<object> DispatchSingleRequest(
             return new JsonRpcErrorResponse
             {
                 Id = JsonRpcId.CoerceId(request.Id),
-                Error = new JsonRpcError { Code = -32603, Message = "Proxy error" }
+                Error = JsonRpcError.Internal("Proxy error")
             };
         }
     }
@@ -771,7 +771,7 @@ static async Task<object> DispatchSingleRequest(
         return new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
-            Error = new JsonRpcError { Code = -32602, Message = ex.Message }
+            Error = JsonRpcError.InvalidParams(ex.Message)
         };
     }
     catch (JsonException)
@@ -780,7 +780,7 @@ static async Task<object> DispatchSingleRequest(
         return new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
-            Error = new JsonRpcError { Code = -32602, Message = "Invalid params" }
+            Error = JsonRpcError.InvalidParams()
         };
     }
     catch (Exception ex)
@@ -791,7 +791,7 @@ static async Task<object> DispatchSingleRequest(
         return new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
-            Error = new JsonRpcError { Code = -32603, Message = "Internal server error" }
+            Error = JsonRpcError.Internal()
         };
     }
     finally
