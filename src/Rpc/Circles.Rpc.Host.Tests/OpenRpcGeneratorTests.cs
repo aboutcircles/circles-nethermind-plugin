@@ -140,16 +140,17 @@ public class OpenRpcGeneratorTests
         }
     }
 
-    // SSOT for the live RPC surface is the dispatch switch in Program.cs. The OpenRPC
-    // spec is hand-derived from MethodMappings in OpenRpcGenerator. This test parses
-    // Program.cs at test time and asserts every dispatched circles_*/circlesV2_* arm
-    // has a MethodMappings entry — adding a handler without updating MethodMappings
-    // fails CI here instead of silently shipping a stale /openrpc.json.
+    // SSOT for the live RPC surface is the dispatch switch in Dispatch/RpcDispatcher.cs
+    // (split out from Program.cs). The OpenRPC spec is hand-derived from MethodMappings in
+    // OpenRpcGenerator. This test parses the dispatcher source at test time and asserts every
+    // dispatched circles_*/circlesV2_* arm has a MethodMappings entry — adding a handler
+    // without updating MethodMappings fails CI here instead of silently shipping a stale
+    // /openrpc.json.
     [Test]
     public void Generate_AllDispatchedMethods_ArePresentInOpenRpcSpec()
     {
-        var programCsPath = ResolveProgramCsPath();
-        var source = File.ReadAllText(programCsPath);
+        var dispatchSourcePath = ResolveDispatchSourcePath();
+        var source = File.ReadAllText(dispatchSourcePath);
 
         var dispatchArm = new Regex(@"""(circles_[A-Za-z_]+|circlesV2_[A-Za-z_]+)""\s*=>");
         var dispatched = dispatchArm.Matches(source)
@@ -157,7 +158,7 @@ public class OpenRpcGeneratorTests
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.That(dispatched, Is.Not.Empty,
-            $"No dispatch arms matched in {programCsPath} — regex stale or file moved");
+            $"No dispatch arms matched in {dispatchSourcePath} — regex stale or file moved");
 
         var documented = OpenRpcGenerator.Generate().Methods
             .Select(m => m.Name)
@@ -165,19 +166,29 @@ public class OpenRpcGeneratorTests
 
         var missing = dispatched.Except(documented).OrderBy(x => x, StringComparer.Ordinal).ToList();
         Assert.That(missing, Is.Empty,
-            "Methods dispatched in Program.cs but missing from OpenRpcGenerator.MethodMappings:\n  - " +
+            "Methods dispatched in RpcDispatcher.cs but missing from OpenRpcGenerator.MethodMappings:\n  - " +
             string.Join("\n  - ", missing) +
             "\n\nAdd a MethodMappings entry for each dispatched method to keep /openrpc.json fresh.");
     }
 
-    private static string ResolveProgramCsPath([CallerFilePath] string? thisFile = null)
+    private static string ResolveDispatchSourcePath([CallerFilePath] string? thisFile = null)
     {
         var dir = Path.GetDirectoryName(thisFile!)!;
-        var candidate = Path.GetFullPath(Path.Combine(dir, "..", "Circles.Rpc.Host", "Program.cs"));
-        if (!File.Exists(candidate))
-            Assert.Ignore(
-                $"OpenRPC drift guard requires source-tree access. Program.cs not at '{candidate}' " +
-                "— skipping (test was likely built on a different host than it is run on).");
-        return candidate;
+        // Search candidates in priority order: new (Dispatch/RpcDispatcher.cs) → legacy (Program.cs).
+        // The split refactor moved the dispatch switch out of Program.cs into RpcDispatcher.cs;
+        // the fallback keeps the test working on branches that predate the split.
+        var candidates = new[]
+        {
+            Path.GetFullPath(Path.Combine(dir, "..", "Circles.Rpc.Host", "Dispatch", "RpcDispatcher.cs")),
+            Path.GetFullPath(Path.Combine(dir, "..", "Circles.Rpc.Host", "Program.cs")),
+        };
+        foreach (var candidate in candidates)
+            if (File.Exists(candidate))
+                return candidate;
+
+        Assert.Ignore(
+            $"OpenRPC drift guard requires source-tree access. None of [{string.Join(", ", candidates)}] exist " +
+            "— skipping (test was likely built on a different host than it is run on).");
+        return candidates[0]; // unreachable; satisfies non-null return
     }
 }
