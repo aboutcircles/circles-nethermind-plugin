@@ -31,7 +31,6 @@ public static class DocsEndpoints
         // ─── Unified API documentation portal ───────────────────────────────────────
         app.MapGet("/docs", (HttpContext ctx) =>
         {
-            var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
             var html = """
             <!DOCTYPE html>
             <html lang="en">

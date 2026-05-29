@@ -405,7 +405,11 @@ public static class RpcHandlers
             throw new ArgumentException("Method parameter is required and cannot be null or empty.");
         }
 
-        var methodName = request.Method.Replace("circles_", "").Replace("circlesV2_", "");
+        var methodName = request.Method.StartsWith("circlesV2_")
+            ? request.Method["circlesV2_".Length..]
+            : request.Method.StartsWith("circles_")
+                ? request.Method["circles_".Length..]
+                : request.Method;
         methodName = char.ToUpper(methodName[0]) + methodName.Substring(1);
 
         var method = typeof(CirclesRpcModule).GetMethod(methodName);

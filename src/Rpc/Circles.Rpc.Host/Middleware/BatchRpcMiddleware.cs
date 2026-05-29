@@ -12,15 +12,6 @@ namespace Circles.Rpc.Host.Middleware;
 /// </summary>
 public static class BatchRpcMiddleware
 {
-    // ─── Concurrency & rate limiting ─────────────────────────────────────────────
-    // Concurrency semaphore: limits simultaneous in-flight requests (prevents DB pool exhaustion).
-    // Rate limiter: per-IP token bucket that counts batch items individually (prevents amplification).
-    // Both are non-blocking: semaphore returns 503, rate limiter returns 429.
-
-    // ─── Batch JSON-RPC middleware ────────────────────────────────────────────────
-    // Routes batch requests: circles_*/circlesV2_* handled locally, eth_*/net_*/web3_* proxied to Nethermind.
-    // Each circles item acquires a semaphore slot; Nethermind items are batched in a single proxy call.
-    // Rate limit: entire batch costs N tokens (one per item) from the caller's per-IP bucket.
     private const int MaxBatchBodySize = 1_048_576; // 1 MB
     private const int MaxBatchSize = 50; // Max items per batch
 
@@ -328,10 +319,8 @@ public static class BatchRpcMiddleware
                             };
                         }
 
-                        // Serialize each element by runtime type (System.Text.Json serializes object[] by
-                        // declared type, which produces empty {} for JsonRpcResponse/JsonRpcErrorResponse)
-                        // Serialize batch response into a buffer, then flush once.
-                        // Each item is serialized by runtime type (System.Text.Json object[] bug workaround).
+                        // Buffer once, flush once. Each item serialized by runtime type — System.Text.Json
+                        // on object[] uses declared type and produces empty {} for JsonRpcResponse/JsonRpcErrorResponse.
                         context.Response.ContentType = "application/json";
                         using var responseBuffer = new MemoryStream();
                         responseBuffer.Write(jsonArrayStart);

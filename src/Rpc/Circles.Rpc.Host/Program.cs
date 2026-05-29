@@ -3,13 +3,12 @@ using Circles.Rpc.Host.Endpoints;
 using Circles.Rpc.Host.Middleware;
 using Prometheus;
 
-// The HTTP pipeline + JSON-RPC dispatch implementation is split across several files for
-// maintainability. Each helper file is wired in here in middleware-then-routes order:
+// The HTTP pipeline + JSON-RPC dispatch implementation is split across several helper files:
 // - BuilderSetup.cs                        — DI registration, JSON options, health-check probes
-// - Middleware/BatchRpcMiddleware.cs       — POST / JSON-array (batch) middleware
 // - Endpoints/HealthCheckEndpoints.cs      — /live, /ready, /health
 // - Endpoints/DocsEndpoints.cs             — /, /docs, /openrpc.json, /openrpc
 // - Endpoints/WebSocketEndpoints.cs        — /ws, /ws/subscribe
+// - Middleware/BatchRpcMiddleware.cs       — POST / JSON-array (batch) middleware
 // - Endpoints/JsonRpcEndpoint.cs           — POST / single-request route
 // - Dispatch/RpcDispatcher.cs              — method → handler routing, proxy fallback, metrics
 // - Dispatch/RpcHandlers.cs                — per-method Handle* implementations

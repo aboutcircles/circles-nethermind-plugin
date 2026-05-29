@@ -140,12 +140,11 @@ public class OpenRpcGeneratorTests
         }
     }
 
-    // SSOT for the live RPC surface is the dispatch switch in Dispatch/RpcDispatcher.cs
-    // (split out from Program.cs). The OpenRPC spec is hand-derived from MethodMappings in
-    // OpenRpcGenerator. This test parses the dispatcher source at test time and asserts every
-    // dispatched circles_*/circlesV2_* arm has a MethodMappings entry — adding a handler
-    // without updating MethodMappings fails CI here instead of silently shipping a stale
-    // /openrpc.json.
+    // SSOT for the live RPC surface is the dispatch switch in Dispatch/RpcDispatcher.cs.
+    // The OpenRPC spec is hand-derived from MethodMappings in OpenRpcGenerator. This test
+    // parses the dispatcher source at test time and asserts every dispatched
+    // circles_*/circlesV2_* arm has a MethodMappings entry — adding a handler without
+    // updating MethodMappings fails CI here instead of silently shipping a stale /openrpc.json.
     [Test]
     public void Generate_AllDispatchedMethods_ArePresentInOpenRpcSpec()
     {
@@ -174,21 +173,15 @@ public class OpenRpcGeneratorTests
     private static string ResolveDispatchSourcePath([CallerFilePath] string? thisFile = null)
     {
         var dir = Path.GetDirectoryName(thisFile!)!;
-        // Search candidates in priority order: new (Dispatch/RpcDispatcher.cs) → legacy (Program.cs).
-        // The split refactor moved the dispatch switch out of Program.cs into RpcDispatcher.cs;
-        // the fallback keeps the test working on branches that predate the split.
-        var candidates = new[]
-        {
-            Path.GetFullPath(Path.Combine(dir, "..", "Circles.Rpc.Host", "Dispatch", "RpcDispatcher.cs")),
-            Path.GetFullPath(Path.Combine(dir, "..", "Circles.Rpc.Host", "Program.cs")),
-        };
-        foreach (var candidate in candidates)
-            if (File.Exists(candidate))
-                return candidate;
+        var dispatcher = Path.GetFullPath(
+            Path.Combine(dir, "..", "Circles.Rpc.Host", "Dispatch", "RpcDispatcher.cs"));
+
+        if (File.Exists(dispatcher))
+            return dispatcher;
 
         Assert.Ignore(
-            $"OpenRPC drift guard requires source-tree access. None of [{string.Join(", ", candidates)}] exist " +
+            $"OpenRPC drift guard requires source-tree access. {dispatcher} not found " +
             "— skipping (test was likely built on a different host than it is run on).");
-        return candidates[0]; // unreachable; satisfies non-null return
+        return dispatcher; // unreachable; satisfies non-null return
     }
 }
