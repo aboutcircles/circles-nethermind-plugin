@@ -174,8 +174,9 @@ public sealed class HistoricalGraphCache
         var registeredAvatars = loader.LoadRegisteredAvatars().ToList();
         var wrapperMappings = loader.LoadWrapperMappings().ToList();
 
-        // ScoreGroup-aware loaders. Must run AFTER LoadGroups so operator approvals
-        // can be pre-loaded against the router set discovered by LoadGroupRouters.
+        // ScoreGroup-aware loaders. Operator approvals (below) depend on the router
+        // set produced by LoadGroupRouters — that's why LoadGroupRouters runs first
+        // and operatorApprovals is built off `routerAddresses`.
         var groupRouters = loader.LoadGroupRouters().ToList();
         var scoreRouters = loader.LoadScoreRouters().ToList();
         var scoreGroupMintLimits = loader.LoadScoreGroupMintLimits().ToList();
@@ -193,11 +194,25 @@ public sealed class HistoricalGraphCache
             ? loader.LoadOperatorApprovals(routerAddresses).ToList()
             : new List<(string Account, string Operator)>();
 
-        // Create a factory backed by the materialized data (zero I/O on use)
-        var cachedLoader = new MaterializedLoadGraph(
-            balances, trust, groups, organizations, groupTrusts,
-            consentedFlags, registeredAvatars, wrapperMappings,
-            groupRouters, scoreRouters, scoreGroupMintLimits, operatorApprovals);
+        // Create a factory backed by the materialized data (zero I/O on use).
+        // Pass via a named-property DTO so swapping any two List<string> args
+        // (groups / organizations / scoreRouters / registeredAvatars) fails at
+        // compile time instead of silently producing wrong-shaped data.
+        var cachedLoader = new MaterializedLoadGraph(new MaterializedGraphData
+        {
+            Balances = balances,
+            Trust = trust,
+            Groups = groups,
+            Organizations = organizations,
+            GroupTrusts = groupTrusts,
+            ConsentedFlags = consentedFlags,
+            RegisteredAvatars = registeredAvatars,
+            WrapperMappings = wrapperMappings,
+            GroupRouters = groupRouters,
+            ScoreRouters = scoreRouters,
+            ScoreGroupMintLimits = scoreGroupMintLimits,
+            OperatorApprovals = operatorApprovals,
+        });
 
         var factory = new GraphFactory(_routerAddress, cachedLoader);
 
@@ -251,45 +266,58 @@ public sealed class HistoricalGraphCache
 }
 
 /// <summary>
+/// Named-property bundle for the 12 materialized data slots backing
+/// <see cref="MaterializedLoadGraph"/>. Using named init properties prevents
+/// silent positional-argument mix-ups between the four <c>List&lt;string&gt;</c>
+/// slots (Groups / Organizations / ScoreRouters / RegisteredAvatars).
+/// All slots are read-only by contract; the snapshot is built once at load time.
+/// </summary>
+internal sealed record MaterializedGraphData
+{
+    public required IReadOnlyList<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> Balances { get; init; }
+    public required IReadOnlyList<(string Truster, string Trustee, int Limit)> Trust { get; init; }
+    public required IReadOnlyList<string> Groups { get; init; }
+    public required IReadOnlyList<string> Organizations { get; init; }
+    public required IReadOnlyList<(string GroupAddress, string TrustedToken)> GroupTrusts { get; init; }
+    public required IReadOnlyList<(string Avatar, bool HasConsentedFlow)> ConsentedFlags { get; init; }
+    public required IReadOnlyList<string> RegisteredAvatars { get; init; }
+    public required IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> WrapperMappings { get; init; }
+    public required IReadOnlyList<(string GroupAddress, string RouterAddress)> GroupRouters { get; init; }
+    public required IReadOnlyList<string> ScoreRouters { get; init; }
+    public required IReadOnlyList<(string GroupAddress, string CollateralToken, string AvailableLimit)> ScoreGroupMintLimits { get; init; }
+    public required IReadOnlyList<(string Account, string Operator)> OperatorApprovals { get; init; }
+}
+
+/// <summary>
 /// ILoadGraph implementation backed by pre-materialized in-memory data.
 /// All methods return cached lists — zero I/O.
 /// </summary>
-internal sealed class MaterializedLoadGraph(
-    List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> balances,
-    List<(string Truster, string Trustee, int Limit)> trust,
-    List<string> groups,
-    List<string> organizations,
-    List<(string GroupAddress, string TrustedToken)> groupTrusts,
-    List<(string Avatar, bool HasConsentedFlow)> consentedFlags,
-    List<string> registeredAvatars,
-    List<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> wrapperMappings,
-    List<(string GroupAddress, string RouterAddress)> groupRouters,
-    List<string> scoreRouters,
-    List<(string GroupAddress, string CollateralToken, string AvailableLimit)> scoreGroupMintLimits,
-    List<(string Account, string Operator)> operatorApprovals) : ILoadGraph
+internal sealed class MaterializedLoadGraph(MaterializedGraphData data) : ILoadGraph
 {
     public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
-        LoadV2Balances() => balances;
+        LoadV2Balances() => data.Balances;
 
     public IEnumerable<(string Truster, string Trustee, int Limit)>
-        LoadV2Trust() => trust;
+        LoadV2Trust() => data.Trust;
 
-    public IEnumerable<string> LoadGroups() => groups;
-    public IEnumerable<string> LoadOrganizations() => organizations;
+    public IEnumerable<string> LoadGroups() => data.Groups;
+    public IEnumerable<string> LoadOrganizations() => data.Organizations;
 
     public IEnumerable<(string GroupAddress, string TrustedToken)>
-        LoadGroupTrusts() => groupTrusts;
+        LoadGroupTrusts() => data.GroupTrusts;
 
     public IEnumerable<(string GroupAddress, string RouterAddress)>
-        LoadGroupRouters() => groupRouters;
+        LoadGroupRouters() => data.GroupRouters;
 
-    public IEnumerable<string> LoadScoreRouters() => scoreRouters;
+    public IEnumerable<string> LoadScoreRouters() => data.ScoreRouters;
 
     public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)>
-        LoadScoreGroupMintLimits() => scoreGroupMintLimits;
+        LoadScoreGroupMintLimits() => data.ScoreGroupMintLimits;
 
     // Pre-materialized at LoadGraph() against the known router set. Filter by the
     // caller's `accounts` so this method matches the live LoadGraph contract.
+    // Materialize the filter result (.ToList()) so re-enumeration is cheap and
+    // matches live LoadGraph.LoadOperatorApprovals returning a List.
     public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
     {
         var accountSet = accounts
@@ -298,14 +326,14 @@ internal sealed class MaterializedLoadGraph(
             .ToHashSet();
         if (accountSet.Count == 0)
             return [];
-        return operatorApprovals.Where(row => accountSet.Contains(row.Account));
+        return data.OperatorApprovals.Where(row => accountSet.Contains(row.Account)).ToList();
     }
 
     public IEnumerable<(string Avatar, bool HasConsentedFlow)>
-        LoadConsentedFlowFlags() => consentedFlags;
+        LoadConsentedFlowFlags() => data.ConsentedFlags;
 
-    public IEnumerable<string> LoadRegisteredAvatars() => registeredAvatars;
+    public IEnumerable<string> LoadRegisteredAvatars() => data.RegisteredAvatars;
 
     public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)>
-        LoadWrapperMappings() => wrapperMappings;
+        LoadWrapperMappings() => data.WrapperMappings;
 }

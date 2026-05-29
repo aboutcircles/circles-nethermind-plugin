@@ -157,7 +157,7 @@ public sealed class HistoricalLoadGraph : ILoadGraph
                 g."mint" = LOWER(@mintPolicy)
                 OR (LOWER(g."mint") = ANY(@scoreMintPolicies) AND sg.router_address IS NOT NULL)
               )
-        ), registered_avatars AS (
+        ), registered_avatars AS MATERIALIZED (
             SELECT avatar FROM "CrcV2_RegisterHuman" WHERE "blockNumber" <= {0}
             UNION ALL
             SELECT "group" AS avatar FROM "CrcV2_RegisterGroup" WHERE "blockNumber" <= {0}
@@ -250,6 +250,51 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         WHERE approved = true
         """;
 
+    // Pre-ScoreGroup fallback templates — used on indexer schemas that don't yet
+    // contain the CrcV2_ScoreGroup_GroupInitialized table. Mirrors
+    // groupQuery.fallback.sql / groupTrustQuery.fallback.sql / LoadBaseGroupRouters
+    // in the live LoadGraph, with the block-ceiling applied. Without these the
+    // whole historical graph load would throw 42P01 undefined_table.
+    private const string GroupQueryFallbackTemplate = """
+        SELECT "group" AS group_address
+        FROM "CrcV2_RegisterGroup"
+        WHERE "mint" = LOWER(@mintPolicy)
+          AND "blockNumber" <= {0}
+        """;
+
+    private const string GroupTrustQueryFallbackTemplate = """
+        WITH trust_state AS (
+            SELECT truster, trustee, "expiryTime",
+                   row_number() OVER (PARTITION BY truster, trustee
+                       ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC) AS rn
+            FROM "CrcV2_Trust"
+            WHERE "blockNumber" <= {0}
+        ), active_trust AS (
+            SELECT truster, trustee FROM trust_state
+            WHERE rn = 1 AND "expiryTime" > (SELECT max("timestamp") FROM "System_Block" WHERE "blockNumber" <= {0})::numeric
+        ), registered_avatars AS (
+            SELECT avatar FROM "CrcV2_RegisterHuman" WHERE "blockNumber" <= {0}
+            UNION ALL
+            SELECT "group" AS avatar FROM "CrcV2_RegisterGroup" WHERE "blockNumber" <= {0}
+            UNION ALL
+            SELECT organization AS avatar FROM "CrcV2_RegisterOrganization" WHERE "blockNumber" <= {0}
+        )
+        SELECT t.truster AS group_address, t.trustee AS trusted_token
+        FROM active_trust t
+        INNER JOIN "CrcV2_RegisterGroup" g
+            ON g."group" = t.truster
+           AND g."blockNumber" <= {0}
+           AND g."mint" = LOWER(@mintPolicy)
+        INNER JOIN registered_avatars ra ON ra.avatar = t.trustee
+        """;
+
+    private const string BaseGroupRoutersFallbackTemplate = """
+        SELECT "group" AS group_address, LOWER(@standardRouter) AS router_address
+        FROM "CrcV2_RegisterGroup"
+        WHERE "mint" = LOWER(@mintPolicy)
+          AND "blockNumber" <= {0}
+        """;
+
     public HistoricalLoadGraph(NpgsqlDataSource dataSource, long blockNumber, Settings settings, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(dataSource);
@@ -260,6 +305,21 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         _blockNumber = blockNumber;
         _settings = settings;
         _logger = logger ?? NullLogger.Instance;
+    }
+
+    /// <summary>
+    /// Checks whether the ScoreGroup tables exist in the indexer schema.
+    /// Mirrors live LoadGraph.ScoreGroupTablesAvailable — without this guard the
+    /// historical loaders would throw 42P01 on indexer schemas that predate the
+    /// score-group migration.
+    /// </summary>
+    private bool ScoreGroupTablesAvailable()
+    {
+        using var conn = _dataSource.OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT to_regclass('public.\"CrcV2_ScoreGroup_GroupInitialized\"') IS NOT NULL";
+        cmd.CommandTimeout = 10;
+        return cmd.ExecuteScalar() is bool available && available;
     }
 
     /// <summary>
@@ -381,14 +441,18 @@ public sealed class HistoricalLoadGraph : ILoadGraph
 
     public IEnumerable<string> LoadGroups()
     {
-        var sql = string.Format(GroupQueryTemplate, _blockNumber);
+        var scoreGroupsAvailable = ScoreGroupTablesAvailable();
+        var template = scoreGroupsAvailable ? GroupQueryTemplate : GroupQueryFallbackTemplate;
+        var sql = string.Format(template, _blockNumber);
         var results = new List<string>();
 
+        var sw = Stopwatch.StartNew();
         using var conn = _dataSource.OpenConnection();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
         cmd.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress ?? "");
-        cmd.Parameters.AddWithValue("scoreMintPolicies", _settings.ScoreGroupMintPolicies);
+        if (scoreGroupsAvailable)
+            cmd.Parameters.AddWithValue("scoreMintPolicies", _settings.ScoreGroupMintPolicies);
         cmd.CommandTimeout = 60;
 
         using var reader = cmd.ExecuteReader();
@@ -398,8 +462,8 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         }
 
         _logger.LogInformation(
-            "[HistoricalLoadGraph] Block {Block}: {Count} groups",
-            _blockNumber, results.Count);
+            "[HistoricalLoadGraph] Block {Block}: {Count} groups in {Elapsed}ms",
+            _blockNumber, results.Count, sw.ElapsedMilliseconds);
         return results;
     }
 
@@ -407,14 +471,17 @@ public sealed class HistoricalLoadGraph : ILoadGraph
 
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
-        var sql = string.Format(GroupTrustQueryTemplate, _blockNumber);
+        var scoreGroupsAvailable = ScoreGroupTablesAvailable();
+        var template = scoreGroupsAvailable ? GroupTrustQueryTemplate : GroupTrustQueryFallbackTemplate;
+        var sql = string.Format(template, _blockNumber);
         var results = new List<(string, string)>();
 
         using var conn = _dataSource.OpenConnection();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
         cmd.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress ?? "");
-        cmd.Parameters.AddWithValue("scoreMintPolicies", _settings.ScoreGroupMintPolicies);
+        if (scoreGroupsAvailable)
+            cmd.Parameters.AddWithValue("scoreMintPolicies", _settings.ScoreGroupMintPolicies);
         cmd.CommandTimeout = 60;
 
         using var reader = cmd.ExecuteReader();
@@ -463,7 +530,9 @@ public sealed class HistoricalLoadGraph : ILoadGraph
 
     public IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters()
     {
-        var sql = string.Format(GroupRouterQueryTemplate, _blockNumber);
+        var scoreGroupsAvailable = ScoreGroupTablesAvailable();
+        var template = scoreGroupsAvailable ? GroupRouterQueryTemplate : BaseGroupRoutersFallbackTemplate;
+        var sql = string.Format(template, _blockNumber);
         var results = new List<(string, string)>();
 
         var sw = Stopwatch.StartNew();
@@ -471,8 +540,9 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         using var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
         cmd.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress ?? "");
-        cmd.Parameters.AddWithValue("scoreMintPolicies", _settings.ScoreGroupMintPolicies);
         cmd.Parameters.AddWithValue("standardRouter", _settings.GroupRouterAddress);
+        if (scoreGroupsAvailable)
+            cmd.Parameters.AddWithValue("scoreMintPolicies", _settings.ScoreGroupMintPolicies);
         cmd.CommandTimeout = 60;
 
         using var reader = cmd.ExecuteReader();
@@ -492,6 +562,10 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         // Match the live LoadGraph short-circuit: when no score-mint policies are
         // configured the table query is a no-op anyway, so skip the round-trip.
         if (_settings.ScoreGroupMintPolicies.Length == 0)
+            return [];
+        // Match live LoadGraph.LoadScoreRouters: also bail out if the ScoreGroup
+        // tables don't exist on this indexer schema.
+        if (!ScoreGroupTablesAvailable())
             return [];
 
         var sql = string.Format(ScoreRoutersQueryTemplate, _blockNumber);
@@ -517,6 +591,10 @@ public sealed class HistoricalLoadGraph : ILoadGraph
     public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits()
     {
         if (_settings.ScoreGroupMintPolicies.Length == 0)
+            return [];
+        // Match live LoadGraph: skip the read entirely on schemas that predate the
+        // ScoreGroup migration (ScoreGroupMintLimitReader queries those tables).
+        if (!ScoreGroupTablesAvailable())
             return [];
 
         var sw = Stopwatch.StartNew();
