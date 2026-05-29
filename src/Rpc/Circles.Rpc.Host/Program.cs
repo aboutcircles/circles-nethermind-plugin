@@ -1206,7 +1206,11 @@ static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcMo
     var method = typeof(CirclesRpcModule).GetMethod(methodName);
     if (method == null)
     {
-        throw new RpcMethodNotFoundException(request.Method);
+        // Dispatch drift: switch arm exists but CirclesRpcModule has no matching member.
+        // Not a user error — surfaces as -32603 via the generic catch in the dispatcher.
+        throw new InvalidOperationException(
+            $"Dispatched method '{request.Method}' has no matching public member " +
+            $"'{methodName}' on CirclesRpcModule.");
     }
 
     var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
