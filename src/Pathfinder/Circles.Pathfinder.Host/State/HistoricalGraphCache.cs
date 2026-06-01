@@ -132,10 +132,16 @@ public sealed class HistoricalGraphCache
         var sw = Stopwatch.StartNew();
         _logger.LogInformation("Loading historical graph for block {Block}...", blockNumber);
 
-        // Copy all relevant settings for consistent behavior between live and historical
+        // Copy all relevant settings for consistent behavior between live and historical.
+        // Score-group settings MUST be copied too — otherwise the historical score loaders
+        // (LoadGroupRouters/LoadScoreRouters/LoadScoreGroupMintLimits) see empty policy lists
+        // and silently degrade every score group to a regular group.
         var historicalSettings = new Settings
         {
             StandardMintPolicyAddress = _settings.StandardMintPolicyAddress,
+            GroupRouterAddress = _settings.GroupRouterAddress,
+            ScoreGroupMintPolicies = _settings.ScoreGroupMintPolicies,
+            ScoreTreasurySubTreasuries = _settings.ScoreTreasurySubTreasuries,
             ExcludeConsentedIntermediaries = _settings.ExcludeConsentedIntermediaries,
             DisableConsentedFlow = _settings.DisableConsentedFlow,
             DemurrageSafetyMargin = 1.0 // No safety margin needed for historical (deterministic timestamp)
@@ -166,10 +172,25 @@ public sealed class HistoricalGraphCache
         var registeredAvatars = loader.LoadRegisteredAvatars().ToList();
         var wrapperMappings = loader.LoadWrapperMappings().ToList();
 
+        // Score-group features — without these the materialized graph treats every score
+        // group as a regular group (no operator gate, unbounded mint edges), diverging from
+        // the live graph. Operator approvals are queried by GraphFactory for the group
+        // routers, so pre-materialize for exactly that account set.
+        var groupRouters = loader.LoadGroupRouters().ToList();
+        var scoreRouters = loader.LoadScoreRouters().ToList();
+        var scoreGroupMintLimits = loader.LoadScoreGroupMintLimits().ToList();
+        var routerAddresses = groupRouters
+            .Select(r => r.RouterAddress)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .ToList();
+        var operatorApprovals = loader.LoadOperatorApprovals(routerAddresses).ToList();
+
         // Create a factory backed by the materialized data (zero I/O on use)
         var cachedLoader = new MaterializedLoadGraph(
             balances, trust, groups, organizations, groupTrusts,
-            consentedFlags, registeredAvatars, wrapperMappings);
+            consentedFlags, registeredAvatars, wrapperMappings,
+            groupRouters, scoreRouters, scoreGroupMintLimits, operatorApprovals);
 
         var factory = new GraphFactory(_routerAddress, cachedLoader);
 
@@ -231,7 +252,11 @@ internal sealed class MaterializedLoadGraph(
     List<(string GroupAddress, string TrustedToken)> groupTrusts,
     List<(string Avatar, bool HasConsentedFlow)> consentedFlags,
     List<string> registeredAvatars,
-    List<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> wrapperMappings) : ILoadGraph
+    List<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)> wrapperMappings,
+    List<(string GroupAddress, string RouterAddress)> groupRouters,
+    List<string> scoreRouters,
+    List<(string GroupAddress, string CollateralToken, string AvailableLimit)> scoreGroupMintLimits,
+    List<(string Account, string Operator)> operatorApprovals) : ILoadGraph
 {
     public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
         LoadV2Balances() => balances;
@@ -252,4 +277,24 @@ internal sealed class MaterializedLoadGraph(
 
     public IEnumerable<(string WrapperAddress, string UnderlyingAvatar, CirclesType CirclesType)>
         LoadWrapperMappings() => wrapperMappings;
+
+    public IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters() => groupRouters;
+
+    public IEnumerable<string> LoadScoreRouters() => scoreRouters;
+
+    public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)>
+        LoadScoreGroupMintLimits() => scoreGroupMintLimits;
+
+    // Operator approvals were pre-materialized for the group routers (the only accounts
+    // GraphFactory queries). Filter to the requested accounts to match the live semantics.
+    public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
+    {
+        var accountSet = accounts
+            .Where(a => !string.IsNullOrWhiteSpace(a))
+            .Select(a => a.ToLowerInvariant())
+            .ToHashSet();
+        return accountSet.Count == 0
+            ? []
+            : operatorApprovals.Where(a => accountSet.Contains(a.Account.ToLowerInvariant())).ToList();
+    }
 }
