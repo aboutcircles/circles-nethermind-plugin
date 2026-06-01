@@ -42,7 +42,7 @@ var readonlyDataSource = readonlyDsBuilder.Build();
 builder.Services.AddSingleton(readonlyDataSource);
 
 // Register cache infrastructure
-builder.Services.AddSingleton(sp => new CacheServiceState(settings.RollbackCapacity));
+builder.Services.AddSingleton(sp => new CacheServiceState(settings.RollbackCapacity, settings.ReorgDetectionWindow));
 builder.Services.AddSingleton(sp => new CacheContainer(settings.RollbackCapacity));
 builder.Services.AddSingleton(sp =>
 {
@@ -126,6 +126,7 @@ logger.LogInformation("PostgreSQL Pool: min={MinPool}, max={MaxPool}",
     readonlyDsBuilder.ConnectionStringBuilder.MaxPoolSize);
 logger.LogInformation("PG Notify Channel: {Channel}", settings.PgNotifyChannel);
 logger.LogInformation("Rollback Capacity: {Capacity} blocks", settings.RollbackCapacity);
+logger.LogInformation("Reorg Detection Window: {Window} blocks", settings.ReorgDetectionWindow);
 logger.LogInformation("Max Catchup Lag: {Lag} blocks", settings.MaxCatchupLag);
 logger.LogInformation("HTTP Port: {Port}", settings.Port);
 logger.LogInformation("=======================================");

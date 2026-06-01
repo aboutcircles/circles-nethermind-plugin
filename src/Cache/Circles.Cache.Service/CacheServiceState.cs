@@ -18,9 +18,15 @@ public class CacheServiceState
     /// </summary>
     public BlockRingBuffer BlockRingBuffer { get; }
 
-    public CacheServiceState(int rollbackCapacity)
+    /// <param name="rollbackCapacity">Blocks of balance-diff history retained for rollback.</param>
+    /// <param name="reorgDetectionWindow">
+    /// Block hashes retained for reorg detection. Defaults to <paramref name="rollbackCapacity"/>
+    /// when not supplied (preserves the pre-decoupling behavior). When larger, reorgs deeper than
+    /// the rollback window are still detected and trigger a safe full re-warmup.
+    /// </param>
+    public CacheServiceState(int rollbackCapacity, int? reorgDetectionWindow = null)
     {
-        BlockRingBuffer = new BlockRingBuffer(rollbackCapacity);
+        BlockRingBuffer = new BlockRingBuffer(reorgDetectionWindow ?? rollbackCapacity);
     }
 
     /// <summary>
