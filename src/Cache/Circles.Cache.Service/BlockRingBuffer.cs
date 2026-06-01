@@ -13,7 +13,11 @@ public class BlockRingBuffer
     /// <summary>
     /// Creates a new block ring buffer with the specified capacity.
     /// </summary>
-    /// <param name="capacity">The number of blocks to retain (should match rollback capacity)</param>
+    /// <param name="capacity">
+    /// The number of recent block hashes to retain. Sized to the reorg-detection window
+    /// (REORG_DETECTION_WINDOW), which is decoupled from — and typically larger than — the
+    /// balance-diff rollback capacity, so reorgs deeper than the rollback window are still detected.
+    /// </param>
     public BlockRingBuffer(int capacity)
     {
         if (capacity < 1)

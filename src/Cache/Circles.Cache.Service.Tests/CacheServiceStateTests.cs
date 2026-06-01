@@ -41,6 +41,38 @@ public class CacheServiceStateTests
     }
 
     [Fact]
+    public void DefaultCtor_WithoutDetectionWindow_SizesBufferToRollbackCapacity()
+    {
+        // The optional reorgDetectionWindow defaults to rollbackCapacity, preserving the
+        // pre-decoupling behavior for every existing single-arg caller.
+        var buf = new CacheServiceState(rollbackCapacity: 5).BlockRingBuffer;
+        for (long b = 1; b <= 20; b++) buf.Add(b, $"0xhash{b}");
+        // Only the last 5 blocks are retained, so a reorg at block 10 (15 deep) is not detected.
+        buf.UpdateFromBlocks(new[] { (10L, "0xCHANGED") }).Should().BeNull();
+        // ...but a reorg within the last 5 (block 16) is.
+        buf.UpdateFromBlocks(new[] { (16L, "0xCHANGED") }).Should().Be(16L);
+    }
+
+    [Theory]
+    [InlineData(12, 12, true)]    // window == capacity: allowed (boundary)
+    [InlineData(12, 256, true)]   // window > capacity: allowed
+    [InlineData(12, 11, false)]   // window < capacity: rejected
+    [InlineData(12, 10001, false)] // window > max: rejected
+    public void Validate_EnforcesReorgDetectionWindowBounds(int rollbackCapacity, int detectionWindow, bool valid)
+    {
+        var settings = new CacheServiceSettings
+        {
+            PostgresConnectionString = "Host=localhost",
+            RollbackCapacity = rollbackCapacity,
+            ReorgDetectionWindow = detectionWindow
+        };
+
+        var act = () => settings.Validate();
+        if (valid) act.Should().NotThrow();
+        else act.Should().Throw<InvalidOperationException>().WithMessage("*REORG_DETECTION_WINDOW*");
+    }
+
+    [Fact]
     public void IsReady_ShouldRequireWarmupListenerAndAcceptableLag()
     {
         var state = new CacheServiceState(rollbackCapacity: 4)
