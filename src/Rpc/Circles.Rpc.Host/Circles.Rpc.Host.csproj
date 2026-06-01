@@ -47,5 +47,11 @@
     <ProjectReference Include="..\Circles.Rpc.CacheServiceClient\Circles.Rpc.CacheServiceClient.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Expose internal helpers (e.g. ConnectionPinning) to the test project so the
+         security-critical block-pin logic is unit-testable without widening the public surface. -->
+    <InternalsVisibleTo Include="Circles.Rpc.Host.Tests" />
+  </ItemGroup>
+
 
 </Project>
