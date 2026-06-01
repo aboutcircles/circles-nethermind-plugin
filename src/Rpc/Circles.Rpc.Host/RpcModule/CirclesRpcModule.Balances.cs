@@ -22,8 +22,11 @@ public partial class CirclesRpcModule
     {
         address = ValidateAndNormalizeAddress(address);
 
-        // If cache service is enabled and asTimeCircles is true (or null), use cache for performance
-        if (_settings.UseCacheService && _cacheServiceClient != null && (asTimeCircles == null || asTimeCircles == true))
+        // If cache service is enabled and asTimeCircles is true (or null), use cache for performance.
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to the DB path, which reconstructs the balance as-of block N.
+        if (_settings.UseCacheService && _cacheServiceClient != null && (asTimeCircles == null || asTimeCircles == true)
+            && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {
@@ -218,8 +221,10 @@ public partial class CirclesRpcModule
     {
         address = ValidateAndNormalizeAddress(address);
 
-        // If cache service is enabled, use it (no DB fallback needed)
-        if (_settings.UseCacheService && _cacheServiceClient != null)
+        // If cache service is enabled, use it (no DB fallback needed).
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to the DB path (GetTokenExposureIdsAsync), which reconstructs exposure as-of block N.
+        if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {
