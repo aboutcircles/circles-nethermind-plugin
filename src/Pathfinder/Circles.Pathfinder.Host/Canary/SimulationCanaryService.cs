@@ -75,6 +75,14 @@ internal sealed partial class SimulationCanaryService : BackgroundService
         "Work items skipped before enqueue, by reason",
         new CounterConfiguration { LabelNames = new[] { "reason" } });
 
+    // Cache-balance-drift detector (#74): decoded from ERC1155InsufficientBalance reverts.
+    // Holder/token are NOT labels (unbounded cardinality) — they go to the structured ERROR log;
+    // the metric is bucketed by the needed/on-chain ratio so dashboards can alert on magnitude.
+    internal static readonly Counter BalanceDriftTotal = Metrics.CreateCounter(
+        "circles_canary_balance_drift_total",
+        "Cache balance drift caught via ERC1155InsufficientBalance reverts, bucketed by needed/on-chain-balance ratio",
+        new CounterConfiguration { LabelNames = new[] { "bucket" } });
+
     // Observability for the 1ppt over-ask added in PR #426 (covers the on-chain
     // Math64x64 floor-floor roundtrip loss for InflationaryCircles wrappers).
     // Counter ticks once per inflationary unwrap whose raw resolver amount is
