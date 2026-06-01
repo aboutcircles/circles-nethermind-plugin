@@ -16,7 +16,7 @@ namespace Circles.Cache.Service.Services;
 /// - Listeners/NotificationListenerService.V2Registry.cs  — ProcessV2EventsAsync, ProcessV2RegisterHumanAsync, ProcessV2RegisterOrganizationAsync, ProcessV2RegisterGroupAsync
 /// - Listeners/NotificationListenerService.V2Trust.cs     — ProcessV2TrustAsync
 /// - Listeners/NotificationListenerService.V2Wrappers.cs  — ProcessV2Erc20WrapperDeployedAsync
-/// - Listeners/NotificationListenerService.V2Transfers.cs — ProcessV2TransfersAsync, ProcessV2Erc20WrapperTransfersAsync
+/// - Listeners/NotificationListenerService.V2Transfers.cs — ProcessV2TransfersAsync (ERC1155 + ERC20 wrapper, single block-ordered pass)
 /// - Listeners/NotificationListenerService.V2Metadata.cs  — ProcessV2UpdateMetadataDigestAsync, ProcessV2RegisterShortNameAsync, ProcessV2SetAdvancedUsageFlagAsync
 /// </summary>
 public partial class NotificationListenerService : BackgroundService
@@ -176,7 +176,11 @@ public partial class NotificationListenerService : BackgroundService
 
             await WithReadonlyConnectionAsync(async (conn, token) =>
             {
-                recentBlocks = await GetRecentBlocksAsync(conn, _settings.RollbackCapacity, token);
+                // Fetch the reorg-detection window (>= RollbackCapacity) so reorgs deeper than the
+                // rollback fast-path are still detected — they then trigger a safe full re-warmup
+                // (RollbackAll throws "beyond stored history" → caught below) rather than going
+                // silently undetected and leaving balances desynced until the next rewarmup.
+                recentBlocks = await GetRecentBlocksAsync(conn, _settings.ReorgDetectionWindow, token);
             }, ct);
 
             if (recentBlocks.Count == 0)

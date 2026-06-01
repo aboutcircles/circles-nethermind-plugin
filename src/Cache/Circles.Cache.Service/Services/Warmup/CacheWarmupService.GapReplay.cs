@@ -25,7 +25,9 @@ public partial class CacheWarmupService
         // listener just added).
         _state.BlockRingBuffer.Clear();
 
-        var capacity = _settings.RollbackCapacity;
+        // Seed the full reorg-detection window (>= RollbackCapacity) so deep reorgs are detectable
+        // immediately after warmup, not only once the buffer has refilled from live notifications.
+        var capacity = _settings.ReorgDetectionWindow;
         var startBlock = Math.Max(0, fromBlock - capacity + 1);
 
         _logger.LogInformation("Initializing block ring buffer with blocks {StartBlock} to {EndBlock}...",
