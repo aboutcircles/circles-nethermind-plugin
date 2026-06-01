@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Numerics;
+
 namespace Circles.Pathfinder.Simulation;
 
 /// <summary>
@@ -162,4 +165,85 @@ public static class RevertClassifier
 
     private static bool Contains(string data, string selector)
         => data.Contains(selector[2..]); // strip 0x prefix for matching
+
+    /// <summary>
+    /// Decoded fields of an OpenZeppelin ERC1155InsufficientBalance revert (selector 0x03dee4c5):
+    /// ERC1155InsufficientBalance(address sender, uint256 balance, uint256 needed, uint256 tokenId).
+    /// For the Circles canary this is the cache-balance-drift signal: <see cref="Holder"/> tried to
+    /// send <see cref="Needed"/> of token <see cref="Token"/> but held only <see cref="Balance"/>
+    /// on-chain (at the eth_call's graphBlock). needed ≫ balance ⇒ the graph source fed an inflated
+    /// balance. tokenId is uint160(token), so <see cref="Token"/> is its low 20 bytes.
+    /// </summary>
+    public readonly record struct InsufficientBalanceInfo(
+        string Holder, BigInteger Balance, BigInteger Needed, string Token);
+
+    /// <summary>
+    /// Decode the four ABI words of an ERC1155InsufficientBalance revert. Returns null if the data
+    /// does not contain the selector, is too short, or is non-hex.
+    /// </summary>
+    public static InsufficientBalanceInfo? TryDecodeInsufficientBalance(string? revertData)
+    {
+        if (string.IsNullOrEmpty(revertData))
+            return null;
+
+        var lower = revertData.ToLowerInvariant();
+        var selectorHex = ERC1155InsufficientBalance[2..]; // "03dee4c5"
+        int selectorPos = lower.IndexOf(selectorHex, StringComparison.Ordinal);
+        if (selectorPos < 0)
+            return null;
+
+        // After the selector: sender(32) + balance(32) + needed(32) + tokenId(32) = 256 hex chars.
+        int start = selectorPos + selectorHex.Length;
+        if (start + 256 > lower.Length)
+            return null;
+
+        var holder = AddressFromWord(lower, start);
+        var balance = UintFromWord(lower, start + 64);
+        var needed = UintFromWord(lower, start + 128);
+        var token = AddressFromWord(lower, start + 192);
+
+        if (holder is null || token is null || balance is null || needed is null)
+            return null;
+
+        return new InsufficientBalanceInfo(holder, balance.Value, needed.Value, token);
+    }
+
+    // An ABI address word: 32 bytes (64 hex) with the 20-byte address right-aligned in the low bytes.
+    private static string? AddressFromWord(string lowerData, int wordHexStart)
+    {
+        var word = lowerData.AsSpan(wordHexStart, 64);
+        foreach (var c in word)
+            if (HexVal(c) < 0)
+                return null;
+        return "0x" + word[24..].ToString(); // last 40 hex = 20-byte address
+    }
+
+    // An ABI uint256 word as a non-negative BigInteger. The "0" prefix guards the sign bit
+    // (BigInteger.Parse treats a leading hex digit ≥ 8 as negative otherwise).
+    private static BigInteger? UintFromWord(string lowerData, int wordHexStart)
+    {
+        var word = lowerData.AsSpan(wordHexStart, 64);
+        foreach (var c in word)
+            if (HexVal(c) < 0)
+                return null;
+        return BigInteger.Parse("0" + word.ToString(), NumberStyles.HexNumber);
+    }
+
+    /// <summary>
+    /// Low-cardinality bucket for the needed/on-chain-balance ratio (used as a metric label
+    /// on <c>circles_canary_balance_drift_total</c>). Pure logic, kept next to the decoder so
+    /// both canary paths and the test suite share one definition.
+    /// </summary>
+    public static string DriftBucket(BigInteger needed, BigInteger onChain)
+    {
+        if (onChain <= 0)
+            return needed > 0 ? "zero_balance" : "none";
+        if (needed <= onChain)
+            return "le_1x";
+        var floorRatio = needed / onChain; // integer floor; needed > onChain ⇒ ≥ 1
+        if (floorRatio >= 100) return "ge_100x";
+        if (floorRatio >= 10) return "ge_10x";
+        if (floorRatio >= 2) return "ge_2x";
+        return "ge_1x";
+    }
 }

@@ -153,6 +153,12 @@ internal sealed partial class SimulationCanaryService
                     item.Source, item.Sink, item.GraphBlock, blockTag,
                     item.Transfers.Count, revertMsg, calldata);
 
+                // #74 cache-balance-drift: ERC1155InsufficientBalance carries the holder's on-chain
+                // balance and the amount the pathfinder's path required, both at graphBlock. Decode
+                // from the SAME source Classify used (revertData ?? revertMsg) — the selector hex can
+                // arrive in the message field on some nodes.
+                EmitBalanceDriftIfDetected(item, label, revertData ?? revertMsg);
+
                 if (revertData == null && revertMsg?.Contains("revert", StringComparison.OrdinalIgnoreCase) == true)
                 {
                     _log.LogWarning(
@@ -178,5 +184,38 @@ internal sealed partial class SimulationCanaryService
         }
 
         QueueDepth.Set(_channel.Reader.Count);
+    }
+
+    // #74 cache-balance-drift emit, shared by both simulation paths (plain eth_call in this file
+    // and the eth_simulateV1 bundle in BundleSimulation.cs). When needed ≫ on-chain the graph source
+    // fed an inflated balance; surface it the instant it happens — it self-heals on the next full
+    // cache refresh, so post-hoc probing misses it. Holder/token go to the LOG only (unbounded
+    // cardinality); the metric is bucketed by the needed/on-chain ratio.
+    //
+    // The whole body is wrapped in its own narrow try/catch so a future decode/emit regression
+    // surfaces as a DISTINCT error rather than masquerading as a surrounding "eth_call
+    // network/timeout" catch.
+    private void EmitBalanceDriftIfDetected(CanaryWorkItem item, string label, string? revertPayload)
+    {
+        if (label != "insufficient_balance")
+            return;
+
+        try
+        {
+            if (RevertClassifier.TryDecodeInsufficientBalance(revertPayload) is not { } drift)
+                return;
+
+            var bucket = RevertClassifier.DriftBucket(drift.Needed, drift.Balance);
+            BalanceDriftTotal.WithLabels(bucket).Inc();
+            _log.LogError(
+                "[{ReqId}] SimulationCanary: CACHE BALANCE DRIFT holder={Holder} token={Token} " +
+                "graphBlock={Block} onChainBalance={OnChain} needed={Needed} ratioBucket={Bucket}",
+                item.ReqId, drift.Holder, drift.Token,
+                item.GraphBlock, drift.Balance, drift.Needed, bucket);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "[{ReqId}] SimulationCanary: balance-drift decode/emit failed", item.ReqId);
+        }
     }
 }

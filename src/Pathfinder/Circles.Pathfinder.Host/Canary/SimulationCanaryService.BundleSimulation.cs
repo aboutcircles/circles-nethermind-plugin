@@ -153,6 +153,12 @@ internal sealed partial class SimulationCanaryService
                     item.Source, item.Sink, item.GraphBlock, blockTag,
                     item.Transfers.Count, unwrapCalls.Count,
                     parsed.RevertMessage ?? parsed.RevertData, wrappers, flowMatrixCalldata);
+
+                // #74 cache-balance-drift: the bundle path classifies insufficient_balance
+                // identically to the plain eth_call path and, being wrapped/ScoreGroup-token-tied,
+                // is the most likely carrier of the signal. Decode from the SAME source Classify
+                // used (revertData ?? revertMsg) — see ParseSimulateV1Response.
+                EmitBalanceDriftIfDetected(item, parsed.Label!, parsed.RevertData ?? parsed.RevertMessage);
                 return;
 
             case BundleOutcome.Success:
