@@ -27,11 +27,10 @@ public partial class NotificationListenerService
         // Process V2 ERC20WrapperDeployed
         await ProcessV2Erc20WrapperDeployedAsync(conn, fromBlock, toBlock, ct);
 
-        // Process V2 Transfers (for balance updates)
+        // Process V2 Transfers for balance updates — ERC1155 (TransferSingle + TransferBatch)
+        // AND ERC20 wrapper transfers, merged into a single block-ordered pass so the shared
+        // balance cache receives a single monotonic flush sequence (see V2Transfers.cs).
         await ProcessV2TransfersAsync(conn, fromBlock, toBlock, ct);
-
-        // Process V2 ERC20 Wrapper Transfers (for balance updates)
-        await ProcessV2Erc20WrapperTransfersAsync(conn, fromBlock, toBlock, ct);
 
         // Process V2 UpdateMetadataDigest (for CID maps)
         await ProcessV2UpdateMetadataDigestAsync(conn, fromBlock, toBlock, ct);

@@ -827,8 +827,10 @@ public class PathfinderGraphControllerTests
         source.Should().NotBeNull("ProcessV2TransfersAsync method definition should exist in some NotificationListenerService partial");
         methodStart.Should().BeGreaterThan(0, "ProcessV2TransfersAsync method definition should exist");
 
-        // Extract the method's SQL + reader section — SQL is ~800 chars, reader access ~400 more
-        var methodBody = source.Substring(methodStart, Math.Min(2000, source.Length - methodStart));
+        // Extract the method's SQL + reader section. The method merges three transfer sources
+        // (TransferSingle + TransferBatch + Erc20WrapperTransfer) into one UNION ALL, so the SQL +
+        // doc comment run longer than a single-table query; widen the window to reach the reader.
+        var methodBody = source.Substring(methodStart, Math.Min(3500, source.Length - methodStart));
 
         // The SQL SELECT should use tokenAddress (double-quoted in SQL verbatim string)
         // In the source code: ""tokenAddress"" (C# escaped) renders as "tokenAddress" in SQL
