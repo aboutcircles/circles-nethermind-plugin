@@ -87,7 +87,11 @@ public partial class CirclesRpcModule
     private async Task<Dictionary<string, TokenExposureInfo>> GetTokenExposureIdsAsync(string address)
     {
         var lowerAddress = address; // already validated and lowered by caller
-        var cacheKey = $"tokenExposure:{lowerAddress}";
+        // Key the cache by the pinned block (or "head"): exposure is balance-derived and therefore
+        // block-sensitive, so a head-derived entry must not satisfy a block-N request (or vice
+        // versa) for the same address. Without this, the shared TTL cache would defeat the pin.
+        var pinnedBlock = GetMaxBlockNumberFromHeader();
+        var cacheKey = $"tokenExposure:{(pinnedBlock?.ToString() ?? "head")}:{lowerAddress}";
 
         // Check cache first (5 minute TTL for token exposure data)
         if (_tokenExposureCache.TryGetValue(cacheKey, out Dictionary<string, TokenExposureInfo>? cached) && cached != null)
@@ -202,7 +206,13 @@ public partial class CirclesRpcModule
             WHERE balance > 0
         ";
 
-        await using var connection = await _dataSource.OpenConnectionAsync();
+        // Route through CreateConnectionAsync (not the raw datasource) so this read joins the
+        // request's connection funnel and carries the same block GUC + search_path. Inert without
+        // the header (production). NOTE: the balance CTEs below are still `public."..."`-qualified,
+        // so they read head until their pinned twins land and the qualifiers are dropped (a later
+        // phase); for now this reroute propagates the GUC and pins only the unqualified register
+        // lookups. Pairing with the block-keyed cache above keeps head and block-N results separate.
+        await using var connection = await CreateConnectionAsync();
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", lowerAddress);
 

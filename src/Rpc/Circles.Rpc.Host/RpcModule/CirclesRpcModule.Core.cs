@@ -102,15 +102,21 @@ public partial class CirclesRpcModule : ICirclesRpcModule
     {
         var connection = await _dataSource.OpenConnectionAsync();
 
-        // Check for block filter header (used by test environment proxy)
-        var maxBlockNumber = GetMaxBlockNumberFromHeader();
-        if (maxBlockNumber.HasValue)
+        // Honor the test-environment block-filter header (X-Max-Block-Number). This is inert on
+        // every production request — the header is never present there — so the connection keeps
+        // its default behavior. See ConnectionPinning for the exact, header-gated SET statements
+        // (GUC + circles_at_block search_path) and their inertness/no-leak guarantees.
+        try
         {
-            await using var cmd = connection.CreateCommand();
-            cmd.CommandText = $"SET circles.max_block_number = {maxBlockNumber.Value}";
-            await cmd.ExecuteNonQueryAsync();
-
-            _logger?.LogDebug("Set circles.max_block_number = {BlockNumber} for request", maxBlockNumber.Value);
+            await ConnectionPinning.ApplyAsync(connection, GetMaxBlockNumberFromHeader(), _logger);
+        }
+        catch
+        {
+            // The pin SET only fails under DB misconfiguration; if it does, dispose the just-opened
+            // connection before propagating so a persistent failure can't exhaust the pool (the
+            // caller's `await using` never binds when CreateConnectionAsync throws).
+            await connection.DisposeAsync();
+            throw;
         }
 
         return connection;
@@ -127,10 +133,10 @@ public partial class CirclesRpcModule : ICirclesRpcModule
             return null;
         }
 
-        if (httpContext.Request.Headers.TryGetValue(MaxBlockNumberHeader, out var headerValue) &&
-            long.TryParse(headerValue.FirstOrDefault(), out var blockNumber))
+        if (httpContext.Request.Headers.TryGetValue(MaxBlockNumberHeader, out var headerValue))
         {
-            return blockNumber;
+            // Positivity/validity guard lives in the (CI-testable) parser.
+            return ConnectionPinning.ParseMaxBlockHeaderValue(headerValue.FirstOrDefault());
         }
 
         return null;
