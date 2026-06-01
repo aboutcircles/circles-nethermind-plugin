@@ -287,8 +287,14 @@ public partial class CirclesRpcModule
     {
         var lowerTokenAddress = ValidateAndNormalizeAddress(tokenAddress, nameof(tokenAddress));
 
-        // If cache service is enabled, try using it first
-        if (_settings.UseCacheService && _cacheServiceClient != null)
+        // If cache service is enabled, try using it first.
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to the DB path. NOTE: only the V2-avatar (ERC1155) classification is block-pinned
+        // there (via the V_CrcV2_Avatars twin); the V1-signup and ERC20-wrapper lookups still read
+        // head. Token type/owner is effectively static once created, so this is acceptable until
+        // those lookups gain block filters in a later phase. The batch variant (GetTokenInfoBatch)
+        // is intentionally left cache-served for now — same follow-up.
+        if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {
