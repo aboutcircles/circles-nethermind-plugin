@@ -534,6 +534,11 @@ public class IntegrationTests : IAsyncLifetime
         var state = new CacheServiceState(rollbackCapacity: 8);
         var caches = new CacheContainer(rollbackCapacity: 8);
         caches.Groups.Add(1, group, ("Test Group", "0xmint", "TG"));
+        // The trustee must be a registered avatar for ProcessV2TrustAsync to record the membership
+        // (the registration gate added to NotificationListenerService.V2Trust.cs:68). Register the
+        // included member so the group→member membership is upserted; the excluded member stays
+        // unregistered and is excluded by trust direction (its only edge is member→group).
+        caches.V2Avatars.Add(block, includedMember, ("CrcV2_RegisterHuman", 12345));
 
         await using var dataSource = NpgsqlDataSource.Create(_connectionString!);
         var listener = new TestableNotificationListenerService(settings, state, caches, dataSource);

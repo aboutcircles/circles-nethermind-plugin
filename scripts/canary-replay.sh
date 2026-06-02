@@ -219,7 +219,7 @@ parse_request_log() {
     }
     /source=.*sink=.*targetFlow=/ {
         route=""; source=""; sink=""; tf=""; mf="0"; xfers=0; mt="null"; gb=0; ms=0; st=0; wrap="false"; qm="false"; err=""
-        ft=""; tt=""; eft=""; ett=""; rid=""
+        ft=""; tt=""; eft=""; ett=""; rid=""; simb=0; simt=0; simc=0
         for (i=1; i<=NF; i++) {
             if ($i ~ /^(findPath|findMaxFlow)$/) route=$i
             else if ($i ~ /^source=/) source=substr($i, 8)
@@ -237,6 +237,9 @@ parse_request_log() {
             else if ($i ~ /^toTokens=/) tt=substr($i, 10)
             else if ($i ~ /^excludedFromTokens=/) eft=substr($i, 20)
             else if ($i ~ /^excludedToTokens=/) ett=substr($i, 18)
+            else if ($i ~ /^simBalances=/) { v=substr($i, 13); simb=(v ~ /^[0-9]+$/ ? v : 0) }
+            else if ($i ~ /^simTrusts=/) { v=substr($i, 11); simt=(v ~ /^[0-9]+$/ ? v : 0) }
+            else if ($i ~ /^simConsented=/) { v=substr($i, 14); simc=(v ~ /^[0-9]+$/ ? v : 0) }
             else if ($i ~ /^reqId=/) rid=substr($i, 7)
             else if ($i ~ /^error=/) err=substr($i, 7)
         }
@@ -248,7 +251,7 @@ parse_request_log() {
             gsub(/"/, "\\\"", mf)
             gsub(/"/, "\\\"", err)
             gsub(/"/, "\\\"", rid)
-            printf "{\"route\":\"%s\",\"source\":\"%s\",\"sink\":\"%s\",\"targetFlow\":\"%s\",\"maxFlow\":\"%s\",\"transfers\":%s,\"maxTransfers\":%s,\"graphBlock\":%s,\"durationMs\":%s,\"status\":%s,\"withWrap\":%s,\"quantizedMode\":%s,\"fromTokens\":%s,\"toTokens\":%s,\"excludedFromTokens\":%s,\"excludedToTokens\":%s,\"reqId\":\"%s\",\"error\":\"%s\"}\n", route, source, sink, tf, mf, xfers, mt, gb, ms, st, wrap, qm, jarr(ft), jarr(tt), jarr(eft), jarr(ett), rid, err
+            printf "{\"route\":\"%s\",\"source\":\"%s\",\"sink\":\"%s\",\"targetFlow\":\"%s\",\"maxFlow\":\"%s\",\"transfers\":%s,\"maxTransfers\":%s,\"graphBlock\":%s,\"durationMs\":%s,\"status\":%s,\"withWrap\":%s,\"quantizedMode\":%s,\"fromTokens\":%s,\"toTokens\":%s,\"excludedFromTokens\":%s,\"excludedToTokens\":%s,\"simBalances\":%s,\"simTrusts\":%s,\"simConsented\":%s,\"reqId\":\"%s\",\"error\":\"%s\"}\n", route, source, sink, tf, mf, xfers, mt, gb, ms, st, wrap, qm, jarr(ft), jarr(tt), jarr(eft), jarr(ett), simb, simt, simc, rid, err
         }
     }'
 }
@@ -336,7 +339,7 @@ RESULTS_FILE="$CACHE_DIR/canary-results.jsonl"
 > "$RESULTS_FILE"
 
 # Counters
-MATCH=0; DRIFT=0; DIVERGED=0; REPLAY_ERR=0
+MATCH=0; DRIFT=0; DIVERGED=0; REPLAY_ERR=0; SKIPPED_OVERRIDES=0
 SIM_PASS=0; SIM_REVERT=0; SIM_SKIP=0
 REVERT_REASONS=()
 IDX=0
@@ -359,12 +362,34 @@ while IFS= read -r entry; do
     excluded_from_tokens=$(printf '%s' "$entry" | jq -c '.excludedFromTokens // []')
     excluded_to_tokens=$(printf '%s' "$entry" | jq -c '.excludedToTokens // []')
     req_id=$(printf '%s' "$entry" | jq -r '.reqId // ""')
+    sim_balances=$(printf '%s' "$entry" | jq -r '.simBalances // 0')
+    sim_trusts=$(printf '%s' "$entry" | jq -r '.simTrusts // 0')
+    sim_consented=$(printf '%s' "$entry" | jq -r '.simConsented // 0')
 
     # Guard against empty maxFlow from parse failures
     [[ -z "$prod_max_flow" ]] && prod_max_flow="0"
 
     label="$(short_addr "$source_addr")→$(short_addr "$sink_addr")"
     prod_crc=$(format_crc "$prod_max_flow")
+
+    # Requests carrying what-if simulation overrides can't be faithfully replayed: the prod log
+    # records only their COUNTS (simBalances/simTrusts/simConsented), not the injected values. Replaying
+    # without them would inject a false maxFlow divergence, so classify as skipped and move on — don't
+    # POST to staging or simulate. Old prod logs predating these fields parse as 0 and are unaffected.
+    if [[ "${sim_balances:-0}" -gt 0 || "${sim_trusts:-0}" -gt 0 || "${sim_consented:-0}" -gt 0 ]] 2>/dev/null; then
+        SKIPPED_OVERRIDES=$((SKIPPED_OVERRIDES + 1))
+        log_warn "$label  ${DIM}skipped — simulation overrides (b=$sim_balances t=$sim_trusts c=$sim_consented)${NC}"
+        jq -n -c \
+            --arg reqId "$req_id" \
+            --arg source "$source_addr" --arg sink "$sink_addr" \
+            --arg targetFlow "$target_flow" \
+            --arg prodMaxFlow "$prod_max_flow" \
+            --argjson prodGraphBlock "$prod_graph_block" \
+            '{reqId, source, sink, targetFlow, prodMaxFlow, stagingMaxFlow: "",
+              comparison: "SKIPPED_OVERRIDES", simVerdict: "skip", simRevertName: "", prodGraphBlock}' \
+            >> "$RESULTS_FILE"
+        continue
+    fi
 
     # --- Replay on staging ---
     POST_BODY=$(jq -n \
@@ -563,10 +588,11 @@ if [[ "$JSON_OUTPUT" == true ]]; then
         --argjson diverged "$DIVERGED" --argjson replayErr "$REPLAY_ERR" \
         --argjson simPass "$SIM_PASS" --argjson simRevert "$SIM_REVERT" \
         --argjson simSkip "$SIM_SKIP" \
+        --argjson skippedOverrides "$SKIPPED_OVERRIDES" \
         --argjson revertReasons "$REVERT_AGG" \
         '{
             source: $src, since: $since, total: $total,
-            comparison: {match: $match, drift: $drift, diverged: $diverged, error: $replayErr},
+            comparison: {match: $match, drift: $drift, diverged: $diverged, error: $replayErr, skippedOverrides: $skippedOverrides},
             simulation: {pass: $simPass, revert: $simRevert, skip: $simSkip, revertReasons: $revertReasons}
         }'
 else
@@ -598,6 +624,7 @@ else
     echo -e "        Drift:      ${YELLOW}$DRIFT${NC} (<${TOLERANCE}%)"
     echo -e "        Diverged:   ${RED}$DIVERGED${NC} (>${TOLERANCE}%)"
     echo -e "        Error:      ${RED}$REPLAY_ERR${NC}"
+    echo -e "        Skipped:    ${DIM}$SKIPPED_OVERRIDES${NC} (simulation overrides — not replayable)"
 fi
 
 # Exit non-zero if any reverts detected — this is the primary signal
