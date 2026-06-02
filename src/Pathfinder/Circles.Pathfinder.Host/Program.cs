@@ -423,10 +423,56 @@ app.MapPost("/findPath", async (
     "**Solver timeout**: 30 seconds (configurable via PATHFINDER_SOLVER_TIMEOUT_SECONDS).")
 .Produces<MaxFlowResponse>();
 
-app.MapGet("/snapshot", (NetworkState state, SnapshotCache snapshotCache, HttpContext httpContext) =>
+app.MapGet("/snapshot", async (NetworkState state, SnapshotCache snapshotCache,
+    HistoricalGraphCache historicalGraphCache, ILoggerFactory loggerFactory, HttpContext httpContext) =>
 {
     // Check If-None-Match header for conditional request
     var ifNoneMatch = httpContext.Request.Headers.IfNoneMatch.FirstOrDefault();
+
+    // Block-pinned snapshot: when X-Max-Block-Number is present and positive, reconstruct the
+    // snapshot as-of that block from a block-pinned historical graph (HistoricalGraphCache),
+    // mirroring how /findPath and /findMaxFlow already pin. Inert — and byte-identical to the
+    // prior behavior — when the header is absent or non-positive (falls through to the live path).
+    if (httpContext.Request.Headers.TryGetValue("X-Max-Block-Number", out var headerValue)
+        && long.TryParse(headerValue.FirstOrDefault(), out var maxBlockNumber)
+        && maxBlockNumber > 0)
+    {
+        // The historical ETag is a per-block validator (state at block N is deterministic),
+        // namespaced (see SnapshotCache.HistoricalETag) so it never aliases the live ETag.
+        // Single source of truth — short-circuit repeat polls before loading any graph.
+        var histEtag = SnapshotCache.HistoricalETag(maxBlockNumber);
+        if (!string.IsNullOrEmpty(ifNoneMatch) && ifNoneMatch == histEtag)
+        {
+            return Results.StatusCode(StatusCodes.Status304NotModified);
+        }
+
+        byte[] histJson;
+        try
+        {
+            var factory = await historicalGraphCache.GetOrLoadFactoryAsync(maxBlockNumber);
+            (histJson, histEtag) = snapshotCache.GetOrBuildHistoricalSnapshot(factory, maxBlockNumber);
+        }
+        catch (ArgumentException ex)
+        {
+            // Block not found / not yet indexed — client error (mirrors the findPath historical path).
+            // Log so a spike of data-driven 400s (e.g. an indexing gap) is visible in telemetry.
+            loggerFactory.CreateLogger("Snapshot").LogWarning(ex,
+                "Historical snapshot unavailable for block {Block}", maxBlockNumber);
+            return Results.BadRequest(ex.Message);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            loggerFactory.CreateLogger("Snapshot").LogError(ex,
+                "Historical snapshot failed for block {Block}", maxBlockNumber);
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        httpContext.Response.Headers.ETag = histEtag;
+        httpContext.Response.Headers.CacheControl = "public, max-age=5";
+        return Results.Bytes(histJson, "application/json");
+    }
+
+    // Live path (unchanged behavior).
     var currentETag = snapshotCache.CurrentETag;
 
     // If client has current version, return 304 Not Modified
@@ -457,10 +503,15 @@ app.MapGet("/snapshot", (NetworkState state, SnapshotCache snapshotCache, HttpCo
     "**Large response** (can be several MB compressed).\n\n" +
     "**ETag support**: Responses include an ETag header. Send `If-None-Match` with the previous ETag to get " +
     "304 Not Modified if the graph hasn't changed. The graph updates every ~5 seconds.\n\n" +
+    "**Block-pinned (`X-Max-Block-Number`)**: set this header to a positive block number to get the snapshot " +
+    "reconstructed as-of that block from the historical graph. The ETag is the block number (state at a block " +
+    "is deterministic). Returns 400 if the block is not indexed. Without the header the live snapshot is served, " +
+    "byte-identical to before.\n\n" +
     "**Cache-Control**: `public, max-age=5` — clients can cache briefly.\n\n" +
-    "**503**: Returned if the graph has not been built yet (service starting up).\n\n" +
+    "**503**: Returned if the (live) graph has not been built yet (service starting up).\n\n" +
     "**Common use case**: Pre-loading the trust graph for client-side pathfinding or visualization.")
 .Produces<object>(200, "application/json")
+.ProducesProblem(400)
 .ProducesProblem(503);
 
 app.Run();
