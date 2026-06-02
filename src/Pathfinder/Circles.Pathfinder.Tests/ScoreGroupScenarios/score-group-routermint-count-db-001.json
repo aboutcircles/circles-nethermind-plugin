@@ -1,0 +1,22 @@
+{
+  "id": "score-group-routermint-count-db-001",
+  "name": "Indexed RouterMinted count is block-pinned (504 at 46488973)",
+  "category": "score-group-router",
+  "description": "Asserts the indexed CrcV2_ScoreGroup_RouterMinted row count at the last active block. Raw event tables are not schema-twinned, so the SQL carries an explicit blockNumber filter.",
+  "block": 46488973,
+  "source": "0x93ed5a96347927ff6ff6b790f8cf5258240c321f",
+  "sink": "0x93ed5a96347927ff6ff6b790f8cf5258240c321f",
+  "shouldFindPath": true,
+  "runOnAnvil": false,
+  "skipProjection": true,
+  "dbStateAssertion": {
+    "scalarSql": "SELECT count(*) FROM \"CrcV2_ScoreGroup_RouterMinted\" WHERE \"blockNumber\" <= 46488973",
+    "expect": "504"
+  },
+  "tags": [
+    "score-group",
+    "router-mint",
+    "db-state",
+    "P-DB"
+  ]
+}

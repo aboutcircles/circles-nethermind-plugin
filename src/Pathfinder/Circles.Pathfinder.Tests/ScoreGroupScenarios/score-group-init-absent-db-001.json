@@ -1,0 +1,23 @@
+{
+  "id": "score-group-init-absent-db-001",
+  "name": "ScoreGroup GroupInitialized is absent before its init block (46398127)",
+  "category": "group-migration",
+  "description": "Pre-init negative control: no GroupInitialized event exists at or before block 46398127. Proves the indexer/pinning correctly excludes the group before it was initialized.",
+  "block": 46398127,
+  "source": "0x93ed5a96347927ff6ff6b790f8cf5258240c321f",
+  "sink": "0x93ed5a96347927ff6ff6b790f8cf5258240c321f",
+  "shouldFindPath": false,
+  "runOnAnvil": false,
+  "skipProjection": true,
+  "dbStateAssertion": {
+    "scalarSql": "SELECT count(*) FROM \"CrcV2_ScoreGroup_GroupInitialized\" WHERE \"blockNumber\" <= 46398127",
+    "expect": "0"
+  },
+  "tags": [
+    "score-group",
+    "init-boundary",
+    "db-state",
+    "P17",
+    "P19"
+  ]
+}

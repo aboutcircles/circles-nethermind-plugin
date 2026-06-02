@@ -1,0 +1,25 @@
+{
+  "id": "score-group-personal-invalid-collateral-001",
+  "name": "ScoreGroup personal mint reverts InvalidCollateralForPersonalIssuanceMint",
+  "category": "score-group-mint",
+  "description": "Direct beforeMintPolicy (impersonating the Hub), minter=human, collateral=[uint256(group)] which is not the minter token. The personal branch reverts InvalidCollateralForPersonalIssuanceMint before any proof check (selector 0xa0f984e2).",
+  "block": 46420000,
+  "source": "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8",
+  "sink": "0x450d68272e43c4cab7cbc7faa37893a50fae9569",
+  "shouldFindPath": false,
+  "runOnAnvil": true,
+  "skipProjection": true,
+  "expectedRevertReason": "InvalidCollateralForPersonalIssuanceMint",
+  "replayCalldata": {
+    "from": "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8",
+    "to": "0x450d68272e43c4cab7cbc7faa37893a50fae9569",
+    "input": "0xb7038259000000000000000000000000c7d3df890952a327af94d5ba6fdc1bf145188a1b00000000000000000000000093ed5a96347927ff6ff6b790f8cf5258240c321f00000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000000100000000000000000000000093ed5a96347927ff6ff6b790f8cf5258240c321f00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000de0b6b3a76400000000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "tags": [
+    "score-group",
+    "personal-mint",
+    "revert",
+    "synthesized",
+    "P5"
+  ]
+}

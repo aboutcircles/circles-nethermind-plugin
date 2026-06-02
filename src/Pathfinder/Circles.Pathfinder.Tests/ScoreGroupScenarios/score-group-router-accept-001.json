@@ -1,0 +1,23 @@
+{
+  "id": "score-group-router-accept-001",
+  "name": "ScoreGroup router branch accepts a within-limit mint",
+  "category": "score-group-router",
+  "description": "Calls OffchainScoreBasedMintPolicy.beforeMintPolicy directly (impersonating the Hub) with minter=pathMintRouter and a 1-wei amount for a real router collateral. The router branch checks treasury vs historical-supply limits and returns true. Pinned to its own block (distinct fork) so the success tx never shares fork state with the revert cases.",
+  "block": 46406900,
+  "source": "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8",
+  "sink": "0x450d68272e43c4cab7cbc7faa37893a50fae9569",
+  "shouldFindPath": true,
+  "runOnAnvil": true,
+  "skipProjection": true,
+  "replayCalldata": {
+    "from": "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8",
+    "to": "0x450d68272e43c4cab7cbc7faa37893a50fae9569",
+    "input": "0xb7038259000000000000000000000000e171a76de6b645a28b3767f84b177a4f6659a3d700000000000000000000000093ed5a96347927ff6ff6b790f8cf5258240c321f00000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000036f2d51dbc9d318c67a84211011d368bce67782000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "tags": [
+    "score-group",
+    "router-mint",
+    "synthesized",
+    "P1"
+  ]
+}

@@ -143,26 +143,48 @@ public partial class CirclesRpcModule
     }
 
     /// <summary>
+    /// V2 avatar info query used by the DB-fallback path (cache miss / cache failure / block-pinned).
+    ///
+    /// CID source is the view's own latest-wins "cidV0Digest" column. V_CrcV2_Avatars derives it
+    /// via DISTINCT ON (avatar) / LATERAL ORDER BY blockNumber DESC LIMIT 1, and the circles_at_block
+    /// twin adds "blockNumber &lt;= pin_block()". Reading it here — instead of a separate, unfiltered,
+    /// un-ordered LEFT JOIN on CrcV2_UpdateMetadataDigest — (1) pins the CID under X-Max-Block-Number,
+    /// (2) removes a nondeterministic multi-row join (the old join picked an arbitrary metadata row
+    /// when an avatar had several updates), and (3) aligns the DB fallback with the cache path, which
+    /// also returns the latest CID.
+    ///
+    /// Symbol source is the group's "CrcV2_RegisterGroup".symbol (a text column), matching the cache
+    /// path which serves the group's registration symbol (e.g. "gCRC") for groups and null/"" for
+    /// non-groups. The earlier code mis-sourced Symbol from "CrcV2_RegisterShortName".shortName — a
+    /// numeric column that is (a) the wrong field (the short name is not exposed by this RPC; AvatarInfo
+    /// has no ShortName) and (b) a hard crash, since reader.GetString on a numeric throws
+    /// InvalidCastException. That latent defect was dormant only because head traffic is served by the
+    /// cache; block-pinned reads (and cache-failure fallbacks) hit this DB path and 500'd for every
+    /// avatar that had a registered short name. symbol is immutable post-registration and existence is
+    /// gated by the pinned V_CrcV2_Avatars row, so the unpinned base-table join is correct. The join is
+    /// 1:1 — Hub.registerGroup reverts if the avatar is already registered, so there is exactly one
+    /// CrcV2_RegisterGroup row per group and the LEFT JOIN cannot fan out (and matches null → "" for
+    /// non-groups).
+    ///
+    /// Column order is contractual: avatar(0), name(1), type(2), symbol(3), cidV0Digest(4).
+    /// Exposed as <c>internal const</c> so a Testcontainers regression test runs the exact production
+    /// SQL (no drift) and proves the numeric-shortName crash class can never return.
+    /// </summary>
+    internal const string V2AvatarInfoSql = @"
+            SELECT a.avatar, a.name, a.type, g.symbol, a.""cidV0Digest""
+            FROM ""V_CrcV2_Avatars"" a
+            LEFT JOIN ""CrcV2_RegisterGroup"" g ON g.""group"" = a.avatar
+            WHERE a.avatar = ANY(@addresses)";
+
+    /// <summary>
     /// Fetches V2 avatar information from the database.
     /// </summary>
     private async Task<Dictionary<string, AvatarInfo>> FetchV2AvatarsAsync(string[] addresses)
     {
         var v2AvatarMap = new Dictionary<string, AvatarInfo>();
-        // CID source is the view's own latest-wins "cidV0Digest" column. V_CrcV2_Avatars derives it
-        // via DISTINCT ON (avatar) / LATERAL ORDER BY blockNumber DESC LIMIT 1, and the circles_at_block
-        // twin adds "blockNumber <= pin_block()". Reading it here — instead of a separate, unfiltered,
-        // un-ordered LEFT JOIN on CrcV2_UpdateMetadataDigest — (1) pins the CID under X-Max-Block-Number,
-        // (2) removes a nondeterministic multi-row join (the old join picked an arbitrary metadata row
-        // when an avatar had several updates), and (3) aligns the DB fallback with the cache path, which
-        // also returns the latest CID. The short name still comes from an unpinned join (no twin column).
-        const string v2Sql = @"
-            SELECT a.avatar, a.name, a.type, rsn.""shortName"", a.""cidV0Digest""
-            FROM ""V_CrcV2_Avatars"" a
-            LEFT JOIN ""CrcV2_RegisterShortName"" rsn ON rsn.avatar = a.avatar
-            WHERE a.avatar = ANY(@addresses)";
 
         await using var connection = await CreateConnectionAsync();
-        await using var cmd = new NpgsqlCommand(v2Sql, connection);
+        await using var cmd = new NpgsqlCommand(V2AvatarInfoSql, connection);
         cmd.Parameters.AddWithValue("addresses", addresses);
         await using var reader = await cmd.ExecuteReaderAsync();
 

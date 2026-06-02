@@ -217,6 +217,59 @@ public record TransferScenario
     [JsonPropertyName("subgraph")]
     public object? Subgraph { get; init; }
 
+    // ============================================================
+    // ScoreGroup matrix extensions (used by ScoreGroupRegressionTests).
+    // All optional — existing scenarios leave them null and behave unchanged.
+    // ============================================================
+
+    /// <summary>
+    /// Real on-chain transaction hash to replay on the Anvil fork instead of building
+    /// a path from the pathfinder. Used for ScoreGroup router/personal mints whose
+    /// preconditions (valid Merkle proof, operator approval, snapshot atomicity) cannot
+    /// be synthesized cold. The fork is taken at <see cref="Block"/> (set to txBlock-1).
+    /// </summary>
+    [JsonPropertyName("replayTxHash")]
+    public string? ReplayTxHash { get; init; }
+
+    /// <summary>
+    /// Optional inline replay calldata captured from the real transaction. Preferred over
+    /// <see cref="ReplayTxHash"/> for determinism: an Anvil fork at txBlock-1 does not contain
+    /// the future tx, so fetching it by hash is unreliable. When present, this is executed
+    /// directly (after any <see cref="Mutation"/>).
+    /// </summary>
+    [JsonPropertyName("replayCalldata")]
+    public ReplayCalldata? ReplayCalldata { get; init; }
+
+    /// <summary>
+    /// Optional single-field mutation applied to the replayed calldata to isolate a
+    /// downstream revert branch while keeping all other preconditions valid
+    /// (e.g. corrupt the Merkle proof to hit InvalidScore).
+    /// </summary>
+    [JsonPropertyName("mutation")]
+    public ScenarioMutation? Mutation { get; init; }
+
+    /// <summary>
+    /// Optional DB-state assertion run against the session's block-pinned query API.
+    /// Validates the indexed CrcV2_ScoreGroup_* row math at the pinned block.
+    /// </summary>
+    [JsonPropertyName("dbStateAssertion")]
+    public DbStateAssertion? DbStateAssertion { get; init; }
+
+    /// <summary>
+    /// When true, the pathfinder projection tier is skipped for this scenario.
+    /// Set for replay-only cases (e.g. personal mints) where there is no meaningful
+    /// source→sink flow path to compute.
+    /// </summary>
+    [JsonPropertyName("skipProjection")]
+    public bool SkipProjection { get; init; }
+
+    /// <summary>
+    /// Whether this scenario should be executed against the live SDK (sdk-v2) in the
+    /// TypeScript e2e suite. Informational marker for cross-repo coverage tracking.
+    /// </summary>
+    [JsonPropertyName("sdkE2E")]
+    public bool SdkE2E { get; init; }
+
     /// <summary>
     /// Whether this scenario is complete enough to run (has block, source, sink).
     /// </summary>
@@ -230,6 +283,70 @@ public record TransferScenario
 }
 
 /// <summary>
+/// A single-field mutation applied to replayed transaction calldata to isolate a
+/// specific revert branch. The mutation is applied by <c>AnvilExecutionHelper</c>.
+/// </summary>
+public record ScenarioMutation
+{
+    /// <summary>Which logical field to mutate: "proof", "amount", or "collateral".</summary>
+    [JsonPropertyName("field")]
+    public required string Field { get; init; }
+
+    /// <summary>
+    /// Mutation operation: "corrupt" (flip bytes), "increment" (add Value), or "zero".
+    /// </summary>
+    [JsonPropertyName("op")]
+    public required string Op { get; init; }
+
+    /// <summary>Optional operand (e.g. the increment delta as a decimal string).</summary>
+    [JsonPropertyName("value")]
+    public string? Value { get; init; }
+
+    /// <summary>
+    /// Hex marker ("0x...") locating the field to mutate inside the calldata when the
+    /// field cannot be derived structurally (e.g. the exact proof word). Optional.
+    /// </summary>
+    [JsonPropertyName("locator")]
+    public string? Locator { get; init; }
+}
+
+/// <summary>
+/// Inline real-transaction calldata for deterministic Anvil replay.
+/// </summary>
+public record ReplayCalldata
+{
+    /// <summary>Original transaction sender (impersonated on the fork).</summary>
+    [JsonPropertyName("from")]
+    public required string From { get; init; }
+
+    /// <summary>Original transaction recipient.</summary>
+    [JsonPropertyName("to")]
+    public required string To { get; init; }
+
+    /// <summary>Original transaction input (hex, 0x-prefixed).</summary>
+    [JsonPropertyName("input")]
+    public required string Input { get; init; }
+}
+
+/// <summary>
+/// A block-pinned DB-state assertion executed via the test-env session query API.
+/// </summary>
+public record DbStateAssertion
+{
+    /// <summary>A read-only scalar SELECT evaluated at the session's pinned block.</summary>
+    [JsonPropertyName("scalarSql")]
+    public required string ScalarSql { get; init; }
+
+    /// <summary>Expected scalar result (string comparison). Optional.</summary>
+    [JsonPropertyName("expect")]
+    public string? Expect { get; init; }
+
+    /// <summary>Minimum acceptable scalar value (numeric). Optional.</summary>
+    [JsonPropertyName("minValue")]
+    public string? MinValue { get; init; }
+}
+
+/// <summary>
 /// Categories for transfer scenarios.
 /// </summary>
 public static class ScenarioCategories
@@ -239,6 +356,13 @@ public static class ScenarioCategories
     public const string SelfConversion = "self-conversion";
     public const string WrappedTokens = "wrapped-tokens";
     public const string ConsentedFlow = "consented-flow";
+
+    // ScoreGroup matrix categories
+    public const string ScoreGroupRouter = "score-group-router";
+    public const string ScoreGroupMint = "score-group-mint";
+    public const string ScoreGroupGraph = "score-group-graph";
+    public const string GroupBacking = "group-backing";
+    public const string GroupMigration = "group-migration";
 
     // Negative test categories
     public const string NoPath = "no-path";
