@@ -62,7 +62,13 @@ NO_COLOR=false
 VERBOSE=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CACHE_DIR="/tmp/circles-canary"
+# Per-user cache path. A fixed /tmp/circles-canary is owned by whoever mkdir's it first; if a
+# root operator runs the script, the dir becomes root-owned and the unprivileged service account
+# running the scheduled timer then fails with "Permission denied". Namespacing by numeric uid keeps
+# the operator and service dirs separate. `id -u` is used (not `id -un`): it always exits 0 with a
+# single numeric line and needs no /etc/passwd entry, so it can't yield a multiline/empty suffix.
+# Override with CANARY_CACHE_DIR if a fixed path is needed.
+CACHE_DIR="${CANARY_CACHE_DIR:-/tmp/circles-canary-$(id -u)}"
 HUB_ADDR="0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8"
 
 # --- Known revert selectors ---
