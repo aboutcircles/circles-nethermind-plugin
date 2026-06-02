@@ -132,6 +132,14 @@ internal sealed class FindPathHandler(
             : string.Join(",", tokens.Select(t => SanitizeForLog(t)));
 
     /// <summary>
+    /// Count of a simulation-override list for the structured request log (0 when null/empty).
+    /// A non-zero count means the request injected what-if balances/trusts/consent the solver used
+    /// but the log can't carry verbatim, so the canary replay can't faithfully reconstruct it — the
+    /// replay classifies such requests as skipped rather than as a (false) maxFlow divergence.
+    /// </summary>
+    private static int SimCount<T>(IReadOnlyCollection<T>? list) => list?.Count ?? 0;
+
+    /// <summary>
     /// Extracts X-Max-Block-Number header from the current HTTP request, if present.
     /// When set, the pathfinder uses a historical graph at that block instead of the live graph.
     /// </summary>
@@ -364,26 +372,28 @@ internal sealed class FindPathHandler(
                 }
 
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} reqId={ReqId}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} simBalances={SimBalances} simTrusts={SimTrusts} simConsented={SimConsented} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     mfr.MaxFlow, mfr.Transfers?.Count ?? 0, request.MaxTransfers ?? -1,
                     graphBlock, sw.ElapsedMilliseconds, 200,
                     request.WithWrap ?? false, request.QuantizedMode ?? false,
                     SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
                     SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    SimCount(request.SimulatedBalances), SimCount(request.SimulatedTrusts), SimCount(request.SimulatedConsentedAvatars),
                     mfr.ReqId ?? "-");
             }
             else
             {
                 // /findMaxFlow returns long, not MaxFlowResponse
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} reqId={ReqId}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} simBalances={SimBalances} simTrusts={SimTrusts} simConsented={SimConsented} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     result, 0, request.MaxTransfers ?? -1,
                     graphBlock, sw.ElapsedMilliseconds, 200,
                     request.WithWrap ?? false, request.QuantizedMode ?? false,
                     SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
                     SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    SimCount(request.SimulatedBalances), SimCount(request.SimulatedTrusts), SimCount(request.SimulatedConsentedAvatars),
                     "-");
             }
 
@@ -556,25 +566,27 @@ internal sealed class FindPathHandler(
                 }
 
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} reqId={ReqId}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} simBalances={SimBalances} simTrusts={SimTrusts} simConsented={SimConsented} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     mfr.MaxFlow, mfr.Transfers?.Count ?? 0, request.MaxTransfers ?? -1,
                     blockNumber, sw.ElapsedMilliseconds, 200,
                     request.WithWrap ?? false, request.QuantizedMode ?? false,
                     SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
                     SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    SimCount(request.SimulatedBalances), SimCount(request.SimulatedTrusts), SimCount(request.SimulatedConsentedAvatars),
                     mfr.ReqId ?? "-");
             }
             else
             {
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} reqId={ReqId}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} simBalances={SimBalances} simTrusts={SimTrusts} simConsented={SimConsented} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     result, 0, request.MaxTransfers ?? -1,
                     blockNumber, sw.ElapsedMilliseconds, 200,
                     request.WithWrap ?? false, request.QuantizedMode ?? false,
                     SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
                     SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    SimCount(request.SimulatedBalances), SimCount(request.SimulatedTrusts), SimCount(request.SimulatedConsentedAvatars),
                     "-");
             }
 
