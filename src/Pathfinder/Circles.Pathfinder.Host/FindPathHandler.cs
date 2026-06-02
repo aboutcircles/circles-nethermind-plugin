@@ -121,6 +121,17 @@ internal sealed class FindPathHandler(
         value?.Replace("\r", string.Empty).Replace("\n", string.Empty);
 
     /// <summary>
+    /// Comma-joins a token-filter list for the structured request log (CR/LF stripped per element),
+    /// or "" when null/empty. These filters materially change which path the solver builds (e.g.
+    /// group-targeted payments), so they must be logged for the canary replay to reconstruct the
+    /// exact request shape. Comma-separated so the value stays a single space-delimited token.
+    /// </summary>
+    private static string SanitizeTokenList(IReadOnlyList<string>? tokens) =>
+        tokens is not { Count: > 0 }
+            ? string.Empty
+            : string.Join(",", tokens.Select(t => SanitizeForLog(t)));
+
+    /// <summary>
     /// Extracts X-Max-Block-Number header from the current HTTP request, if present.
     /// When set, the pathfinder uses a historical graph at that block instead of the live graph.
     /// </summary>
@@ -353,21 +364,27 @@ internal sealed class FindPathHandler(
                 }
 
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     mfr.MaxFlow, mfr.Transfers?.Count ?? 0, request.MaxTransfers ?? -1,
                     graphBlock, sw.ElapsedMilliseconds, 200,
-                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+                    request.WithWrap ?? false, request.QuantizedMode ?? false,
+                    SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
+                    SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    mfr.ReqId ?? "-");
             }
             else
             {
                 // /findMaxFlow returns long, not MaxFlowResponse
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     result, 0, request.MaxTransfers ?? -1,
                     graphBlock, sw.ElapsedMilliseconds, 200,
-                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+                    request.WithWrap ?? false, request.QuantizedMode ?? false,
+                    SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
+                    SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    "-");
             }
 
             return Results.Ok(result);
@@ -539,20 +556,26 @@ internal sealed class FindPathHandler(
                 }
 
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     mfr.MaxFlow, mfr.Transfers?.Count ?? 0, request.MaxTransfers ?? -1,
                     blockNumber, sw.ElapsedMilliseconds, 200,
-                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+                    request.WithWrap ?? false, request.QuantizedMode ?? false,
+                    SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
+                    SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    mfr.ReqId ?? "-");
             }
             else
             {
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     result, 0, request.MaxTransfers ?? -1,
                     blockNumber, sw.ElapsedMilliseconds, 200,
-                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+                    request.WithWrap ?? false, request.QuantizedMode ?? false,
+                    SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
+                    SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    "-");
             }
 
             return Results.Ok(result);
