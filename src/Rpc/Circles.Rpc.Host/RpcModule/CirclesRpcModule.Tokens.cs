@@ -293,7 +293,7 @@ public partial class CirclesRpcModule
         // there (via the V_CrcV2_Avatars twin); the V1-signup and ERC20-wrapper lookups still read
         // head. Token type/owner is effectively static once created, so this is acceptable until
         // those lookups gain block filters in a later phase. The batch variant (GetTokenInfoBatch)
-        // is intentionally left cache-served for now — same follow-up.
+        // applies the same bypass — its fallback fans out to this exact method per address.
         if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
@@ -429,8 +429,12 @@ public partial class CirclesRpcModule
             throw new ArgumentOutOfRangeException(nameof(tokenAddresses), "Batch size exceeds 1000");
         }
 
-        // If cache service is enabled, try batch API for efficiency
-        if (_settings.UseCacheService && _cacheServiceClient != null)
+        // If cache service is enabled, try batch API for efficiency.
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache so the
+        // fallback below fans out to GetTokenInfo per address — which itself is block-pinned
+        // (V2-avatar classification via the V_CrcV2_Avatars twin; V1/wrapper lookups read head, same
+        // static-type rationale as the single variant). Matches GetTokenInfo's bypass exactly.
+        if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {

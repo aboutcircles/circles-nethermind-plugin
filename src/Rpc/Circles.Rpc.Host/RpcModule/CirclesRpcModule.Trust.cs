@@ -125,7 +125,10 @@ public partial class CirclesRpcModule
     {
         var normalizedAvatar = ValidateAndNormalizeAddress(avatar, nameof(avatar));
 
-        if (_settings.UseCacheService && _cacheServiceClient != null)
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to the DB path, which fully pins: it reads only V_CrcV2_TrustRelations and
+        // V_CrcV2_Avatars, both of which have circles_at_block twins.
+        if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {
