@@ -42,15 +42,12 @@ public partial class CirclesRpcModule
 
         // If cache service is enabled, try using it first.
         // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
-        // through to the DB path. PARTIAL PIN: avatar existence/type/name pin via the V_CrcV2_Avatars
-        // twin, but the metadata CID and short name are still computed from unfiltered base-table
-        // joins (CrcV2_UpdateMetadataDigest / CrcV2_RegisterShortName in FetchV2AvatarsAsync), so
-        // those secondary fields reflect head. This is a strict improvement over the previous
-        // head-only cache result (identity now pins) and is inert without the header. NOTE: the
-        // V_CrcV2_Avatars twin already exposes a pinned, latest-wins "cidV0Digest"; switching the CID
-        // source from the raw join to that twin column would close the CID gap without a new twin —
-        // deferred to a later phase (it is a head-behavior change requiring byte-identical-at-head
-        // verification). The short name has no twin column yet.
+        // through to the DB path. PARTIAL PIN: avatar existence/type/name AND the metadata CID now
+        // pin via the V_CrcV2_Avatars twin (FetchV2AvatarsAsync reads the view's latest-wins
+        // "cidV0Digest" column). The short name is still computed from an unfiltered base-table join
+        // (CrcV2_RegisterShortName) — it has no twin column yet, so that single secondary field
+        // reflects head. This is a strict improvement over the previous head-only cache result and
+        // is inert without the header.
         if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
@@ -151,10 +148,16 @@ public partial class CirclesRpcModule
     private async Task<Dictionary<string, AvatarInfo>> FetchV2AvatarsAsync(string[] addresses)
     {
         var v2AvatarMap = new Dictionary<string, AvatarInfo>();
+        // CID source is the view's own latest-wins "cidV0Digest" column. V_CrcV2_Avatars derives it
+        // via DISTINCT ON (avatar) / LATERAL ORDER BY blockNumber DESC LIMIT 1, and the circles_at_block
+        // twin adds "blockNumber <= pin_block()". Reading it here — instead of a separate, unfiltered,
+        // un-ordered LEFT JOIN on CrcV2_UpdateMetadataDigest — (1) pins the CID under X-Max-Block-Number,
+        // (2) removes a nondeterministic multi-row join (the old join picked an arbitrary metadata row
+        // when an avatar had several updates), and (3) aligns the DB fallback with the cache path, which
+        // also returns the latest CID. The short name still comes from an unpinned join (no twin column).
         const string v2Sql = @"
-            SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.""metadataDigest"", rsn.""shortName"", a.""cidV0Digest""
+            SELECT a.avatar, a.name, a.type, rsn.""shortName"", a.""cidV0Digest""
             FROM ""V_CrcV2_Avatars"" a
-            LEFT JOIN ""CrcV2_UpdateMetadataDigest"" rn ON rn.avatar = a.avatar
             LEFT JOIN ""CrcV2_RegisterShortName"" rsn ON rsn.avatar = a.avatar
             WHERE a.avatar = ANY(@addresses)";
 
@@ -166,19 +169,16 @@ public partial class CirclesRpcModule
         while (await reader.ReadAsync())
         {
             var avatar = reader.GetString(0);
-            var avatarType = reader.GetString(3);
+            var avatarType = reader.GetString(2);
             var isHuman = avatarType == "CrcV2_RegisterHuman";
 
-            // Convert metadataDigest bytes to proper IPFS CIDv0
+            // Convert the view's latest-wins metadataDigest bytes to a proper IPFS CIDv0
             string? cid = null;
             if (!reader.IsDBNull(4))
             {
                 var metadataDigest = (byte[])reader.GetValue(4);
                 cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
             }
-
-            // cidV0Digest should be empty string per remote implementation
-            var cidV0Digest = "";
 
             v2AvatarMap[avatar] = new AvatarInfo(
                 Version: 2,
@@ -187,11 +187,11 @@ public partial class CirclesRpcModule
                 TokenId: avatar,  // For V2, tokenId is the avatar address (for ERC1155)
                 HasV1: false,
                 V1Token: null,
-                CidV0Digest: cidV0Digest,
+                CidV0Digest: "",  // empty string per remote implementation
                 CidV0: cid,
                 IsHuman: isHuman,
-                Name: reader.IsDBNull(2) ? null : reader.GetString(2),
-                Symbol: reader.IsDBNull(5) ? "" : reader.GetString(5)
+                Name: reader.IsDBNull(1) ? null : reader.GetString(1),
+                Symbol: reader.IsDBNull(3) ? "" : reader.GetString(3)
             );
         }
 
