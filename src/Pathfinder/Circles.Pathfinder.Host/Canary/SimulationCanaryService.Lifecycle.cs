@@ -157,7 +157,15 @@ internal sealed partial class SimulationCanaryService
                 // balance and the amount the pathfinder's path required, both at graphBlock. Decode
                 // from the SAME source Classify used (revertData ?? revertMsg) — the selector hex can
                 // arrive in the message field on some nodes.
-                EmitBalanceDriftIfDetected(item, label, revertData ?? revertMsg);
+                var driftEmitted = EmitBalanceDriftIfDetected(item, label, revertData ?? revertMsg);
+
+                // Fall back to the active probe when the payload didn't explain the revert (any other
+                // selector). Skip category=simulation (e.g. operator_not_approved): those paths are
+                // valid w.r.t. balances — the revert is a canary msg.sender artifact, not a shortfall —
+                // so probing them adds no signal and only risks alert noise on the recurring class.
+                // Plain path ⇒ no unwrap prefix to replay.
+                if (!driftEmitted && BalanceProbeEnabled && category != "simulation")
+                    await ProbeBalanceDriftAsync(item, Array.Empty<ResolvedUnwrapCall>(), blockTag, client, ct);
 
                 if (revertData == null && revertMsg?.Contains("revert", StringComparison.OrdinalIgnoreCase) == true)
                 {
@@ -195,27 +203,33 @@ internal sealed partial class SimulationCanaryService
     // The whole body is wrapped in its own narrow try/catch so a future decode/emit regression
     // surfaces as a DISTINCT error rather than masquerading as a surrounding "eth_call
     // network/timeout" catch.
-    private void EmitBalanceDriftIfDetected(CanaryWorkItem item, string label, string? revertPayload)
+    //
+    // Returns true if a drift was emitted from the revert payload. When false, the caller falls back
+    // to the active <see cref="ProbeBalanceDriftAsync"/> probe (see SimulationCanaryService.BalanceProbe.cs),
+    // which catches phantom balances behind revert selectors this payload path cannot decode.
+    private bool EmitBalanceDriftIfDetected(CanaryWorkItem item, string label, string? revertPayload)
     {
         if (label != "insufficient_balance")
-            return;
+            return false;
 
         try
         {
             if (RevertClassifier.TryDecodeInsufficientBalance(revertPayload) is not { } drift)
-                return;
+                return false;
 
             var bucket = RevertClassifier.DriftBucket(drift.Needed, drift.Balance);
             BalanceDriftTotal.WithLabels(bucket).Inc();
             _log.LogError(
                 "[{ReqId}] SimulationCanary: CACHE BALANCE DRIFT holder={Holder} token={Token} " +
-                "graphBlock={Block} onChainBalance={OnChain} needed={Needed} ratioBucket={Bucket}",
+                "graphBlock={Block} onChainBalance={OnChain} needed={Needed} ratioBucket={Bucket} detector=revert_payload",
                 item.ReqId, drift.Holder, drift.Token,
                 item.GraphBlock, drift.Balance, drift.Needed, bucket);
+            return true;
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "[{ReqId}] SimulationCanary: balance-drift decode/emit failed", item.ReqId);
+            return false;
         }
     }
 }

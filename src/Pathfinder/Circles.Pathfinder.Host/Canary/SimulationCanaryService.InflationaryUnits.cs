@@ -86,6 +86,13 @@ internal sealed partial class SimulationCanaryService
     /// Returns null if the call did not succeed, the payload is empty, or the hex
     /// does not decode.
     /// </summary>
+    /// <remarks>
+    /// This is a GENERIC single-ABI-uint256-word decoder, despite the "Convert" in the name (it
+    /// predates its second consumer). It is shared by <c>ExtractInflationaryAmounts</c> (decoding
+    /// <c>convertDemurrageToInflationaryValue</c>) AND the balance probe (decoding <c>balanceOf</c>
+    /// in <c>InterpretBalanceProbeResults</c>). Do NOT specialise it for inflationary conversion —
+    /// that would silently change how the probe reads balances.
+    /// </remarks>
     internal static BigInteger? ParseConvertCallReturnData(JsonElement call)
     {
         if (!call.TryGetProperty("status", out var status) || status.GetString() != "0x1")
