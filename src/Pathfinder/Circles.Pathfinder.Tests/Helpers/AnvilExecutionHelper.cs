@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Circles.Common.Dto;
 using Circles.Common.TestUtils;
+using Circles.Pathfinder.Tests.Scenarios;
 using Nethereum.Util;
 
 namespace Circles.Pathfinder.Tests.Helpers;
@@ -211,7 +212,7 @@ public class AnvilExecutionHelper : IDisposable
             return new ExecutionResult
             {
                 Success = false,
-                Error = ex.Message
+                Error = EnrichRevertReason(ex.Message)
             };
         }
     }
@@ -233,21 +234,59 @@ public class AnvilExecutionHelper : IDisposable
         }
         catch (Exception ex)
         {
-            // Parse revert reason from error message
-            var message = ex.Message;
-            if (message.Contains("revert"))
-            {
-                return message;
-            }
-            return message;
+            // Append a decoded custom-error name for any known selector in the message,
+            // so callers can assert on either the raw selector (0x…) or the symbolic name.
+            return EnrichRevertReason(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Known Circles V2 ScoreGroup mint-policy custom-error selectors (all zero-arg).
+    /// Selectors verified via <c>cast sig</c> against
+    /// circles-groups/src/deployment/OffchainScoreBasedMintPolicy.sol.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> KnownErrorSelectors =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["0x2c53e398"] = "OnlyHub",
+            ["0x3536c874"] = "NotGroupMintPolicy",
+            ["0x2cd981bf"] = "GroupAlreadyInitialized",
+            ["0xd92e233d"] = "ZeroAddress",
+            ["0x013450a6"] = "NotMerkleTreeManager",
+            ["0xa0f984e2"] = "InvalidCollateralForPersonalIssuanceMint",
+            ["0x4100bf1e"] = "NoIssuance",
+            ["0xc809c613"] = "NoSnapshot",
+            ["0x23edbe17"] = "NotAtomicMint",
+            ["0x15561365"] = "InvalidScore",
+            ["0x2c6b2d9b"] = "AmountExceedsScoreLimit",
+            ["0x1fd236d6"] = "CollateralLimitReached",
+            ["0x659c8c43"] = "AmountExceedsCollateralLimit",
+            // OZ standard, frequently the downstream symptom of a bad mint path:
+            ["0x03dee4c5"] = "ERC1155InsufficientBalance",
+        };
+
+    /// <summary>
+    /// Scans a raw revert message for any known 4-byte selector and appends the symbolic
+    /// error name(s) so assertions can match on the human-readable name. Returns the raw
+    /// message unchanged when no known selector is present.
+    /// </summary>
+    public static string EnrichRevertReason(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return raw ?? string.Empty;
+        var matched = new List<string>();
+        foreach (var (selector, name) in KnownErrorSelectors)
+        {
+            if (raw.Contains(selector, StringComparison.OrdinalIgnoreCase))
+                matched.Add($"{name} ({selector})");
+        }
+        return matched.Count > 0 ? $"{raw} [decoded: {string.Join(", ", matched)}]" : raw;
     }
 
     private async Task<JsonElement> GetTransactionReceiptAsync(string txHash)
     {
         // Poll for receipt with exponential backoff.
-        // Anvil proxied through test-env can be slow under load.
-        const int maxAttempts = 20;
+        // Anvil proxied through test-env can be slow under sequential load (multiple txs per fork).
+        const int maxAttempts = 30;
         var delay = 200;
 
         for (int i = 0; i < maxAttempts; i++)
@@ -362,6 +401,115 @@ public class AnvilExecutionHelper : IDisposable
     {
         var callData = BuildOperateFlowMatrixCall(sender, receiver, transfers);
         return await ExecuteTransactionAsync(sender, CirclesHubAddress, callData);
+    }
+
+    /// <summary>
+    /// Fetches a real transaction's (from, to, input) by hash from the fork.
+    /// Returns null when the transaction is not present.
+    /// </summary>
+    public async Task<(string From, string To, string Input)?> GetTransactionByHashAsync(string txHash)
+    {
+        var tx = await CallRpcAsync<JsonElement>("eth_getTransactionByHash", txHash);
+        if (tx.ValueKind == JsonValueKind.Null) return null;
+        var from = tx.GetProperty("from").GetString()!;
+        var to = tx.TryGetProperty("to", out var toEl) && toEl.ValueKind == JsonValueKind.String
+            ? toEl.GetString()!
+            : "";
+        var input = tx.TryGetProperty("input", out var inEl) ? inEl.GetString() ?? "" : "";
+        return (from, to, input);
+    }
+
+    /// <summary>
+    /// Replays a real transaction on the fork (impersonating its original sender),
+    /// optionally applying a single-field calldata mutation to isolate a revert branch.
+    /// The fork must be at the tx's block - 1 so its preconditions still hold.
+    /// </summary>
+    public async Task<ExecutionResult> ReplayTransactionAsync(string txHash, ScenarioMutation? mutation = null)
+    {
+        var tx = await GetTransactionByHashAsync(txHash);
+        if (tx == null)
+            return new ExecutionResult { Success = false, Error = $"Transaction {txHash} not found on fork" };
+
+        var (from, to, input) = tx.Value;
+        if (string.IsNullOrEmpty(to))
+            return new ExecutionResult { Success = false, Error = "Replay of contract-creation tx is not supported" };
+
+        var data = mutation == null ? input : ApplyMutation(input, mutation);
+        return await ExecuteTransactionAsync(from, to, data);
+    }
+
+    /// <summary>
+    /// Applies a deterministic single-field mutation to ABI calldata, used to isolate a
+    /// downstream revert while keeping all other preconditions of a replayed tx valid.
+    /// </summary>
+    public static string ApplyMutation(string data, ScenarioMutation m)
+    {
+        var hex = data.StartsWith("0x") ? data[2..] : data;
+        switch (m.Op.ToLowerInvariant())
+        {
+            case "corrupt":
+                if (!string.IsNullOrEmpty(m.Locator))
+                {
+                    var word = NormalizeWord(m.Locator);
+                    hex = ReplaceOnce(hex, word, FlipFirstByte(word), m);
+                }
+                else
+                {
+                    // Flip the last 32-byte word (tail of the trailing dynamic field, e.g. the proof).
+                    if (hex.Length < 64) throw new InvalidOperationException("Calldata too short to corrupt");
+                    var start = hex.Length - 64;
+                    hex = hex[..start] + FlipFirstByte(hex[start..]);
+                }
+                break;
+
+            case "increment":
+            {
+                var word = NormalizeWord(m.Locator
+                    ?? throw new InvalidOperationException("increment mutation requires a locator (the amount word)"));
+                var cur = BigInteger.Parse("0" + word, System.Globalization.NumberStyles.HexNumber);
+                var delta = BigInteger.Parse(string.IsNullOrEmpty(m.Value) ? "1" : m.Value);
+                var updated = (cur + delta).ToString("x").PadLeft(64, '0');
+                hex = ReplaceOnce(hex, word, updated, m);
+                break;
+            }
+
+            case "zero":
+            {
+                var word = NormalizeWord(m.Locator
+                    ?? throw new InvalidOperationException("zero mutation requires a locator"));
+                hex = ReplaceOnce(hex, word, new string('0', 64), m);
+                break;
+            }
+
+            default:
+                throw new InvalidOperationException($"Unknown mutation op '{m.Op}'");
+        }
+
+        return "0x" + hex;
+    }
+
+    private static string NormalizeWord(string locator)
+    {
+        var w = locator.StartsWith("0x") ? locator[2..] : locator;
+        return w.PadLeft(64, '0').ToLowerInvariant();
+    }
+
+    private static string FlipFirstByte(string word)
+    {
+        // XOR the first byte with 0xff to guarantee a different value.
+        var b = Convert.ToByte(word[..2], 16);
+        return ((byte)(b ^ 0xff)).ToString("x2") + word[2..];
+    }
+
+    private static string ReplaceOnce(string hex, string find, string replacement, ScenarioMutation? m = null)
+    {
+        var idx = hex.IndexOf(find, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0)
+            throw new InvalidOperationException(
+                $"Mutation locator not found in calldata: {find}" + (m != null ? $" (field={m.Field}, op={m.Op})" : ""));
+        if (hex.IndexOf(find, idx + find.Length, StringComparison.OrdinalIgnoreCase) >= 0)
+            throw new InvalidOperationException($"Mutation locator is ambiguous (found more than once): {find}");
+        return hex[..idx] + replacement + hex[(idx + find.Length)..];
     }
 
     /// <summary>

@@ -1,0 +1,23 @@
+{
+  "id": "score-group-init-present-db-001",
+  "name": "ScoreGroup GroupInitialized is present at its init block (46398128)",
+  "category": "group-migration",
+  "description": "Boundary check: the GroupInitialized event for the score group exists at/after block 46398128.",
+  "block": 46398128,
+  "source": "0x93ed5a96347927ff6ff6b790f8cf5258240c321f",
+  "sink": "0x93ed5a96347927ff6ff6b790f8cf5258240c321f",
+  "shouldFindPath": true,
+  "runOnAnvil": false,
+  "skipProjection": true,
+  "dbStateAssertion": {
+    "scalarSql": "SELECT count(*) FROM \"CrcV2_ScoreGroup_GroupInitialized\" WHERE \"blockNumber\" <= 46398128",
+    "expect": "1"
+  },
+  "tags": [
+    "score-group",
+    "init-boundary",
+    "db-state",
+    "P17",
+    "P19"
+  ]
+}
