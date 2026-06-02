@@ -485,8 +485,12 @@ public partial class CirclesRpcModule
             return result;
         }
 
-        // Try cache service first, then fall back to database
-        if (_settings.UseCacheService && _cacheServiceClient != null)
+        // Try cache service first, then fall back to database.
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to the DB path. This lookup is content-addressed (ipfs_files keyed by CID, an
+        // immutable content hash), so its result is block-invariant — bypassing is correct at any
+        // pinned block. The block-sensitive step (which CID an address resolves to) lives upstream.
+        if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {

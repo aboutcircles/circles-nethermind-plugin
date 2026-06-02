@@ -40,8 +40,18 @@ public partial class CirclesRpcModule
             throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
         }
 
-        // If cache service is enabled, try using it first
-        if (_settings.UseCacheService && _cacheServiceClient != null)
+        // If cache service is enabled, try using it first.
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to the DB path. PARTIAL PIN: avatar existence/type/name pin via the V_CrcV2_Avatars
+        // twin, but the metadata CID and short name are still computed from unfiltered base-table
+        // joins (CrcV2_UpdateMetadataDigest / CrcV2_RegisterShortName in FetchV2AvatarsAsync), so
+        // those secondary fields reflect head. This is a strict improvement over the previous
+        // head-only cache result (identity now pins) and is inert without the header. NOTE: the
+        // V_CrcV2_Avatars twin already exposes a pinned, latest-wins "cidV0Digest"; switching the CID
+        // source from the raw join to that twin column would close the CID gap without a new twin —
+        // deferred to a later phase (it is a head-behavior change requiring byte-identical-at-head
+        // verification). The short name has no twin column yet.
+        if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {
