@@ -158,7 +158,14 @@ internal sealed partial class SimulationCanaryService
                 // identically to the plain eth_call path and, being wrapped/ScoreGroup-token-tied,
                 // is the most likely carrier of the signal. Decode from the SAME source Classify
                 // used (revertData ?? revertMsg) — see ParseSimulateV1Response.
-                EmitBalanceDriftIfDetected(item, parsed.Label!, parsed.RevertData ?? parsed.RevertMessage);
+                var driftEmitted = EmitBalanceDriftIfDetected(item, parsed.Label!, parsed.RevertData ?? parsed.RevertMessage);
+
+                // Fall back to the active probe when the payload didn't explain the revert (e.g. the
+                // unclassified 0x66ef7607 class). Skip category=simulation (valid-path canary
+                // artifacts, no balance shortfall). Replay this bundle's unwrap prefix so balanceOf
+                // reflects post-unwrap state — see ProbeBalanceDriftAsync.
+                if (!driftEmitted && BalanceProbeEnabled && parsed.Category != "simulation")
+                    await ProbeBalanceDriftAsync(item, unwrapCalls, blockTag, client, ct);
                 return;
 
             case BundleOutcome.Success:
