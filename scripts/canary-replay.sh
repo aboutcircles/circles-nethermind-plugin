@@ -352,6 +352,7 @@ while IFS= read -r entry; do
     from_tokens=$(printf '%s' "$entry" | jq -c '.fromTokens // []')
     excluded_from_tokens=$(printf '%s' "$entry" | jq -c '.excludedFromTokens // []')
     excluded_to_tokens=$(printf '%s' "$entry" | jq -c '.excludedToTokens // []')
+    req_id=$(printf '%s' "$entry" | jq -r '.reqId // ""')
 
     # Guard against empty maxFlow from parse failures
     [[ -z "$prod_max_flow" ]] && prod_max_flow="0"
@@ -428,9 +429,18 @@ while IFS= read -r entry; do
         CALLDATA_INPUT=$(printf '%s' "$STAGING_RESP" | jq --arg from "$source_addr" --arg to "$sink_addr" --argjson wmap "$WRAPPER_MAP" \
             '{from: $from, to: $to, transfers: .transfers, wrapperMap: $wmap}')
 
-        CALLDATA=$(printf '%s' "$CALLDATA_INPUT" | node "$SCRIPT_DIR/diagnose-swap-calldata.mjs" 2>/dev/null || true)
+        CALLDATA_ERR="$CACHE_DIR/calldata-err.txt"
+        CALLDATA=$(printf '%s' "$CALLDATA_INPUT" | node "$SCRIPT_DIR/diagnose-swap-calldata.mjs" 2>"$CALLDATA_ERR") || CALLDATA=""
 
         if [[ -z "$CALLDATA" ]]; then
+            # Empty calldata = nothing to simulate. Distinguish a real encoder/node failure
+            # (non-empty stderr) from a legitimately empty result, so a systematic calldata-build
+            # break is surfaced as a warning instead of being silently counted as a benign skip
+            # (which would mask on-chain reverts — the exact thing this canary exists to catch).
+            if [[ -s "$CALLDATA_ERR" ]]; then
+                log_warn "$label  calldata build failed — sim skipped (encoder error)"
+                [[ "$VERBOSE" == true ]] && log_dim "$(cat "$CALLDATA_ERR")"
+            fi
             sim_verdict="skip"
             SIM_SKIP=$((SIM_SKIP + 1))
         else
@@ -486,7 +496,7 @@ while IFS= read -r entry; do
                 ;;
             revert)
                 log_fail "$label  ${prod_crc} CRC  ${RED}REVERT: $sim_revert_name${NC}  ${DIM}($comparison)${NC}"
-                [[ "$VERBOSE" == true ]] && log_dim "source=$source_addr sink=$sink_addr block=$prod_graph_block"
+                [[ "$VERBOSE" == true ]] && log_dim "reqId=$req_id source=$source_addr sink=$sink_addr block=$prod_graph_block"
                 ;;
             skip)
                 if [[ "$comparison" == "ERROR" ]]; then
@@ -508,13 +518,14 @@ while IFS= read -r entry; do
 
     # Save result
     jq -n -c \
+        --arg reqId "$req_id" \
         --arg source "$source_addr" --arg sink "$sink_addr" \
         --arg targetFlow "$target_flow" \
         --arg prodMaxFlow "$prod_max_flow" --arg stagingMaxFlow "$staging_max_flow" \
         --arg comparison "$comparison" --arg simVerdict "$sim_verdict" \
         --arg simRevertName "$sim_revert_name" \
         --argjson prodGraphBlock "$prod_graph_block" \
-        '{source, sink, targetFlow, prodMaxFlow, stagingMaxFlow,
+        '{reqId, source, sink, targetFlow, prodMaxFlow, stagingMaxFlow,
           comparison, simVerdict, simRevertName, prodGraphBlock}' \
         >> "$RESULTS_FILE"
 
