@@ -326,7 +326,12 @@ public partial class CirclesRpcModule
         address1 = ValidateAndNormalizeAddress(address1, nameof(address1));
         address2 = ValidateAndNormalizeAddress(address2, nameof(address2));
 
-        if (_settings.UseCacheService && _cacheServiceClient != null)
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to the DB path. PARTIAL PIN: the trust-graph intersection pins (it reads
+        // V_Crc_TrustRelations, which has a circles_at_block twin), but the IsV2Human branch-selector
+        // for address2 reads CrcV2_RegisterHuman at head (registration is effectively static). This is
+        // a strict improvement over the head-only cache result.
+        if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {
