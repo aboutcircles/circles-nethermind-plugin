@@ -97,6 +97,7 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         WHERE t2."group" IS NULL
         """;
 
+    // Standard-only group query (used when score tables are absent / no score policies configured).
     private const string GroupQueryTemplate = """
         SELECT "group" AS group_address
         FROM "CrcV2_RegisterGroup"
@@ -104,6 +105,36 @@ public sealed class HistoricalLoadGraph : ILoadGraph
           AND "blockNumber" <= {0}
         """;
 
+    // Score-aware group query. Mirrors the live groupQuery.sql: a group is supported if its mint
+    // policy is the STANDARD policy OR a SCORE policy (@scoreMintPolicies) that has an indexed
+    // pathMintRouter. Without this branch, score groups (mint = score policy) are never returned by
+    // LoadGroups, so GraphFactory never treats them as groups — the score routers / operator
+    // approvals it loads go unused and historical (X-Max-Block-Number) pathfinding can't mint
+    // score-group tokens, diverging from the live graph.
+    private const string GroupScoreAwareQueryTemplate = """
+        WITH latest_score_group AS (
+            SELECT DISTINCT ON ("group")
+                "group" AS group_address,
+                "pathMintRouter" AS router_address
+            FROM "CrcV2_ScoreGroup_GroupInitialized"
+            WHERE LOWER("emitter") = ANY(@scoreMintPolicies)
+              AND "blockNumber" <= {0}
+            ORDER BY "group", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+        ),
+        supported_groups AS (
+            SELECT g."group" AS group_address
+            FROM "CrcV2_RegisterGroup" g
+            LEFT JOIN latest_score_group sg ON sg.group_address = g."group"
+            WHERE g."blockNumber" <= {0}
+              AND (
+                  g."mint" = LOWER(@mintPolicy)
+                  OR (LOWER(g."mint") = ANY(@scoreMintPolicies) AND sg.router_address IS NOT NULL)
+              )
+        )
+        SELECT group_address FROM supported_groups
+        """;
+
+    // Standard-only group-trust query (used when score tables are absent / no score policies).
     private const string GroupTrustQueryTemplate = """
         WITH trust_state AS (
             SELECT truster, trustee, "expiryTime",
@@ -120,6 +151,39 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         INNER JOIN "CrcV2_RegisterGroup" g ON g."group" = t.truster
         WHERE g."mint" = LOWER(@mintPolicy)
           AND g."blockNumber" <= {0}
+        """;
+
+    // Score-aware group-trust query — same supported_groups predicate as GroupScoreAwareQueryTemplate.
+    private const string GroupTrustScoreAwareQueryTemplate = """
+        WITH trust_state AS (
+            SELECT truster, trustee, "expiryTime",
+                   row_number() OVER (PARTITION BY truster, trustee
+                       ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC) AS rn
+            FROM "CrcV2_Trust"
+            WHERE "blockNumber" <= {0}
+        ), active_trust AS (
+            SELECT truster, trustee FROM trust_state
+            WHERE rn = 1 AND "expiryTime" > (SELECT max("timestamp") FROM "System_Block" WHERE "blockNumber" <= {0})::numeric
+        ), latest_score_group AS (
+            SELECT DISTINCT ON ("group")
+                "group" AS group_address,
+                "pathMintRouter" AS router_address
+            FROM "CrcV2_ScoreGroup_GroupInitialized"
+            WHERE LOWER("emitter") = ANY(@scoreMintPolicies) AND "blockNumber" <= {0}
+            ORDER BY "group", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+        ), supported_groups AS (
+            SELECT g."group" AS group_address
+            FROM "CrcV2_RegisterGroup" g
+            LEFT JOIN latest_score_group sg ON sg.group_address = g."group"
+            WHERE g."blockNumber" <= {0}
+              AND (
+                  g."mint" = LOWER(@mintPolicy)
+                  OR (LOWER(g."mint") = ANY(@scoreMintPolicies) AND sg.router_address IS NOT NULL)
+              )
+        )
+        SELECT t.truster AS group_address, t.trustee AS trusted_token
+        FROM active_trust t
+        INNER JOIN supported_groups g ON g.group_address = t.truster
         """;
 
     private const string RegisteredAvatarsQueryTemplate = """
@@ -351,8 +415,27 @@ public sealed class HistoricalLoadGraph : ILoadGraph
 
     public IEnumerable<string> LoadGroups()
     {
-        var sql = string.Format(GroupQueryTemplate, _blockNumber);
-        return ExecuteParameterizedStringListQuery(sql, "groups");
+        bool scoreAware = _settings.ScoreGroupMintPolicies.Length > 0 && ScoreGroupTablesAvailable();
+        var sql = string.Format(
+            scoreAware ? GroupScoreAwareQueryTemplate : GroupQueryTemplate, _blockNumber);
+
+        var results = new List<string>();
+        using var conn = _dataSource.OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress ?? "");
+        if (scoreAware)
+            cmd.Parameters.AddWithValue("scoreMintPolicies", _settings.ScoreGroupMintPolicies);
+        cmd.CommandTimeout = 60;
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            results.Add(reader.GetString(0));
+
+        _logger.LogInformation(
+            "[HistoricalLoadGraph] Block {Block}: {Count} groups (scoreAware={ScoreAware})",
+            _blockNumber, results.Count, scoreAware);
+        return results;
     }
 
     public IEnumerable<string> LoadOrganizations()
@@ -469,13 +552,17 @@ public sealed class HistoricalLoadGraph : ILoadGraph
 
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
-        var sql = string.Format(GroupTrustQueryTemplate, _blockNumber);
+        bool scoreAware = _settings.ScoreGroupMintPolicies.Length > 0 && ScoreGroupTablesAvailable();
+        var sql = string.Format(
+            scoreAware ? GroupTrustScoreAwareQueryTemplate : GroupTrustQueryTemplate, _blockNumber);
         var results = new List<(string, string)>();
 
         using var conn = _dataSource.OpenConnection();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
         cmd.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress ?? "");
+        if (scoreAware)
+            cmd.Parameters.AddWithValue("scoreMintPolicies", _settings.ScoreGroupMintPolicies);
         cmd.CommandTimeout = 60;
 
         using var reader = cmd.ExecuteReader();
@@ -568,31 +655,6 @@ public sealed class HistoricalLoadGraph : ILoadGraph
                 _blockNumber, _settings.ScoreGroupMintPolicies.Length);
 
         return available;
-    }
-
-    /// <summary>
-    /// Executes a query with @mintPolicy parameter and returns a list of strings from column 0.
-    /// </summary>
-    private List<string> ExecuteParameterizedStringListQuery(string sql, string label)
-    {
-        var results = new List<string>();
-
-        using var conn = _dataSource.OpenConnection();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-        cmd.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress ?? "");
-        cmd.CommandTimeout = 60;
-
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-        {
-            results.Add(reader.GetString(0));
-        }
-
-        _logger.LogInformation(
-            "[HistoricalLoadGraph] Block {Block}: {Count} {Label}",
-            _blockNumber, results.Count, label);
-        return results;
     }
 
     private List<string> ExecuteStringListQuery(string sql, string label)
