@@ -54,6 +54,31 @@ public class TransferCalldataParserTests
         Assert.That(results, Is.Empty);
     }
 
+    [Test]
+    public void ParseCalldata_SafeTransferFrom_ZeroValue_WithData_ReturnsTransferData()
+    {
+        // A 0-value ERC-1155 transfer is the sanctioned way to carry an annotation
+        // alongside ERC20 (gCRC) transfers, which have no `data` param. The parser must
+        // ignore `value` entirely and still surface the data blob.
+        var calldata = BuildSafeTransferFromCalldata(
+            from: Alice,
+            to: Bob,
+            id: 123,
+            value: 0,
+            data: new byte[] { 0x01, 0x02, 0x03, 0x04 }
+        );
+
+        var results = TransferCalldataParser.ParseCalldata(calldata).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(results[0].From, Is.EqualTo(Alice));
+            Assert.That(results[0].To, Is.EqualTo(Bob));
+            Assert.That(results[0].Data, Is.EqualTo(new byte[] { 0x01, 0x02, 0x03, 0x04 }));
+        });
+    }
+
     // ─────────────────────── safeBatchTransferFrom Tests ───────────────────────
 
     [Test]
