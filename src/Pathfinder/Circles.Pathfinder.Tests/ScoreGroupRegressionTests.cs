@@ -117,6 +117,17 @@ public class ScoreGroupRegressionTests
     [TestCaseSource(nameof(ProjectionCases))]
     public async Task Projection(TransferScenario scenario)
     {
+        // Authoring guard (runs even without staging): a score-group projection scenario that expects
+        // a path MUST assert which token gets minted, otherwise it silently degrades to a weak
+        // "found any path" check that wouldn't catch a regressed score-group loader.
+        if (scenario.ShouldFindPath
+            && scenario.Category.StartsWith("score-group", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrEmpty(scenario.ExpectedPathTokenOwner))
+        {
+            Assert.Fail($"{scenario.Id}: a score-group projection scenario with shouldFindPath=true must set " +
+                        "expectedPathTokenOwner (the group token) to prove the path routes through group minting.");
+        }
+
         if (!TestEnvAvailable())
             return;
 
@@ -138,21 +149,24 @@ public class ScoreGroupRegressionTests
 
         try
         {
-            // Score-group features are only loaded by the direct LoadGraph (not the cached/proxy loaders),
-            // so this tier needs a direct, block-pinned DB connection.
-            if (!session.IsDirectConnectionAvailable)
-            {
-                Assert.Ignore("Score-group projection requires a direct DB connection (session.PostgresConnectionString)");
-                return;
-            }
-
+            // ProxyLoadGraph runs every query through the test-env HTTP query proxy with an
+            // inlined "WHERE blockNumber <= N" filter — so it is genuinely block-pinned AND
+            // reachable from a developer machine (no direct DB connection / credentials needed;
+            // staging does not expose Postgres remotely). It now implements the score-group
+            // loaders (group routers, score routers, operator approvals), so the pathfinder
+            // recognizes the score group and applies the router-trust / operator-approval gates
+            // instead of degrading it to a regular group.
+            //
+            // Demurrage is pinned to the block's own timestamp (not UtcNow) so balances match the
+            // historical block exactly — required for older-block tier-C cases to be correct.
             var settings = new Settings
             {
                 DisableConsentedFlow = false,
-                ScoreGroupMintPolicies = [ScoreGroupMintPolicy]
+                ScoreGroupMintPolicies = [ScoreGroupMintPolicy],
+                TargetDemurrageTimestamp = await BlockTimestampAsync(session, scenario.Block)
             };
 
-            var loadGraph = new LoadGraph(session.PostgresConnectionString!, settings);
+            var loadGraph = new ProxyLoadGraph(session, settings);
             var factory = new GraphFactory(RouterAddress, loadGraph);
 
             var trustGraph = factory.V2TrustGraph();
@@ -180,7 +194,26 @@ public class ScoreGroupRegressionTests
             {
                 Assert.That(response.Transfers, Is.Not.Null, $"{scenario.Id}: expected a path");
                 Assert.That(stepCount, Is.GreaterThan(0), $"{scenario.Id}: path has no steps");
-                TestContext.Out.WriteLine($"{scenario.Id}: found path with {stepCount} step(s), maxFlow={response.MaxFlow}");
+
+                // Routing assertion: prove the path actually went THROUGH the score group
+                // (a step mints the group's own token), not merely that some path exists.
+                if (!string.IsNullOrEmpty(scenario.ExpectedPathTokenOwner))
+                {
+                    var owners = response.Transfers!.Select(t => t.TokenOwner).ToList();
+                    Assert.That(
+                        owners.Any(o => string.Equals(o, scenario.ExpectedPathTokenOwner,
+                            StringComparison.OrdinalIgnoreCase)),
+                        Is.True,
+                        $"{scenario.Id}: expected a step minting token {scenario.ExpectedPathTokenOwner} " +
+                        $"(route through the score group), but none found. Token owners: [{string.Join(", ", owners)}]");
+                    TestContext.Out.WriteLine(
+                        $"{scenario.Id}: path routes through {scenario.ExpectedPathTokenOwner} " +
+                        $"({stepCount} step(s), maxFlow={response.MaxFlow})");
+                }
+                else
+                {
+                    TestContext.Out.WriteLine($"{scenario.Id}: found path with {stepCount} step(s), maxFlow={response.MaxFlow}");
+                }
             }
         }
         finally
@@ -363,6 +396,26 @@ public class ScoreGroupRegressionTests
     // =====================================================================
     //                              Helpers
     // =====================================================================
+
+    /// <summary>
+    /// Timestamp of the pinned block (max System_Block.timestamp at or below it), as a
+    /// DateTimeOffset, so the projection tier computes demurrage at the historical block time
+    /// rather than UtcNow. Falls back to UtcNow if the query returns nothing.
+    /// </summary>
+    private static async Task<DateTimeOffset> BlockTimestampAsync(TestEnvironmentClient session, long block)
+    {
+        var scalar = await session.ExecuteScalarAsync(
+            $"SELECT max(\"timestamp\") FROM \"System_Block\" WHERE \"blockNumber\" <= {block}");
+        if (scalar != null && long.TryParse(scalar.ToString(), out var ts) && ts > 0)
+            return DateTimeOffset.FromUnixTimeSeconds(ts);
+
+        // Fail loudly rather than silently falling back to UtcNow: for a pinned historical block
+        // that would compute demurrage at wall-clock time, invalidating every balance in the fixture.
+        // A real indexed block always has a System_Block row, so this only fires on a plumbing bug.
+        Assert.Fail($"Could not resolve System_Block timestamp for pinned block {block} (scalar='{scalar}'). " +
+                    "Refusing to compute demurrage at wall-clock time.");
+        return default; // unreachable — Assert.Fail throws
+    }
 
     private static bool TestEnvAvailable()
     {

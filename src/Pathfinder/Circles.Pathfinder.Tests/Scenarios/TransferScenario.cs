@@ -264,6 +264,16 @@ public record TransferScenario
     public bool SkipProjection { get; init; }
 
     /// <summary>
+    /// Optional: when the projection tier finds a path, assert that at least one transfer
+    /// step carries this token owner (0x-prefixed address, case-insensitive). For ScoreGroup
+    /// routing cases this is the group address — a step minting the group's token proves the
+    /// path actually routed through the score group (and its router), not merely that some
+    /// path exists. Only checked when <see cref="ShouldFindPath"/> is true.
+    /// </summary>
+    [JsonPropertyName("expectedPathTokenOwner")]
+    public string? ExpectedPathTokenOwner { get; init; }
+
+    /// <summary>
     /// Whether this scenario should be executed against the live SDK (sdk-v2) in the
     /// TypeScript e2e suite. Informational marker for cross-repo coverage tracking.
     /// </summary>
