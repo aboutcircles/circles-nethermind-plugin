@@ -1,0 +1,15 @@
+{
+  "id": "score-group-path-mint-through-router-001",
+  "name": "Pathfinder routes a payment through the ScoreGroupMintRouter into the score group (projection)",
+  "category": "score-group-router",
+  "description": "Block-pinned projection tier via ProxyLoadGraph (test-env HTTP query proxy; every query inlines WHERE blockNumber<=N, mirroring the LIVE groupQuery.sql / HistoricalLoadGraph score loaders — NOT the production HistoricalLoadGraph itself, which currently drops score groups; see task #44). The source is a member whose own personal CRC is trusted both by the score group (as collateral) and by the ScoreGroupMintRouter, and whom the router has approved as an ERC-1155 operator. The sink trusts the group token. Verified on staging at block 46488973: source/sink both registered humans; ApprovalForAll(account=SGR, operator=source)=true @46423855; SGR->source and SG->source trusts active (never-expire); sink->SG trust active @46408874; source holds 886 CRC of its own token; no mint-limit row for (SG,source) -> unbounded cap. toTokens is constrained to the group token so the sink can ONLY receive SG: a score group is wrapped-only / sink-only (the unwrapped ERC1155 cannot be held or forwarded by intermediaries), so the only way to deliver SG to the sink is a fresh group mint via the router — which in turn requires the score-group recognition + router-trust + operator-approval gates to all pass. expectedPathTokenOwner asserts a mint step carries the group token (TokenOwner == SG); path existence under toTokens=[SG] is what proves the route went through group minting (a regressed loader that dropped the score group yields ZERO steps). A stronger router-hop assertion (From==SGR) is future work. P16 / build-order #1.",
+  "block": 46488973,
+  "source": "0x1a24d8b3c424dad750423af7955a56aef3912905",
+  "sink": "0x122832c93e7c7bd7191b960513583d1a85735942",
+  "toTokens": ["0x93ed5a96347927ff6ff6b790f8cf5258240c321f"],
+  "shouldFindPath": true,
+  "expectedPathTokenOwner": "0x93ed5a96347927ff6ff6b790f8cf5258240c321f",
+  "runOnAnvil": false,
+  "skipProjection": false,
+  "tags": ["score-group", "router-mint", "projection", "C-path", "P16"]
+}
