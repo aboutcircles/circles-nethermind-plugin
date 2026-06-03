@@ -36,6 +36,13 @@ public partial class NotificationListenerService : BackgroundService
     // RollbackCache.Add throwing on non-monotonic block numbers).
     private readonly SemaphoreSlim _notificationGate = new(1, 1);
 
+    // #74 tail self-heal: throttle reconciliation off the per-block notification cadence, and keep a
+    // small ring of recent reorg points so a correction log can name the likely trigger window.
+    // Both are touched only under _notificationGate.
+    private long _lastReconciledBlock = -1;
+    private readonly LinkedList<long> _recentReorgPoints = new();
+    private const int RecentReorgPointsCapacity = 16;
+
     protected CacheServiceSettings Settings => _settings;
     protected CacheServiceState State => _state;
     protected CacheContainer Caches => _caches;
@@ -194,6 +201,8 @@ public partial class NotificationListenerService : BackgroundService
 
             if (reorgPoint.HasValue)
             {
+                RecordReorgPoint(reorgPoint.Value);
+
                 if (reorgPoint.Value <= _state.WarmupTargetBlock)
                 {
                     _logger.LogWarning(
@@ -264,6 +273,12 @@ public partial class NotificationListenerService : BackgroundService
 
                     _logger.LogInformation("Completed processing blocks {FromBlock} → {ToBlock}. Cache now at block {CurrentBlock}",
                         fromBlock, latestBlock, _state.LastProcessedBlock);
+
+                    // #74 tail self-heal: re-derive recently-active accounts from the authoritative
+                    // DB aggregation and correct any incremental drift (e.g. a reorg-induced
+                    // one-sided over-credit on a group-mint router). Runs here, inside the gate, so
+                    // its monotonic Add at the cache head can't race the next block's writes.
+                    await MaybeReconcileAsync(latestBlock, ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -361,6 +376,54 @@ public partial class NotificationListenerService : BackgroundService
     {
         RewarmupReset.Trigger(_state, ClearAllCaches);
     }
+
+    /// <summary>
+    /// Runs the #74 tail reconciliation, throttled to at most once per
+    /// <see cref="CacheServiceSettings.ReconciliationIntervalBlocks"/> blocks of head advance.
+    /// Best-effort: a failure is logged but never aborts block processing.
+    /// </summary>
+    internal async Task MaybeReconcileAsync(long head, CancellationToken ct)
+    {
+        if (!_settings.ReconciliationEnabled)
+            return;
+
+        if (_lastReconciledBlock >= 0 && head - _lastReconciledBlock < _settings.ReconciliationIntervalBlocks)
+            return;
+
+        try
+        {
+            var corrections = await ReconcileRecentV2BalancesAsync(head, ct);
+
+            // Advance the throttle cursor only on success, so a failed pass retries on the next
+            // block instead of marking itself "done" and suppressing retries for a whole interval.
+            _lastReconciledBlock = head;
+
+            if (corrections > 0)
+            {
+                _logger.LogWarning(
+                    "Tail reconciliation corrected {Count} drifted balance(s) at block {Block} (recentReorgs=[{RecentReorgs}])",
+                    corrections, head, RecentReorgPointsCsv());
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Best-effort: never break block processing. The failure is observable (so a persistently
+            // failing self-heal can be alerted on, not mistaken for a quiet chain), and the throttle
+            // cursor is left unadvanced so the next block retries.
+            CacheMetrics.ReconciliationFailuresTotal.Inc();
+            _logger.LogError(ex, "Tail reconciliation failed at block {Block}", head);
+        }
+    }
+
+    /// <summary>Appends a reorg point to the bounded recent-reorg ring (caller holds the gate).</summary>
+    private void RecordReorgPoint(long reorgBlock)
+    {
+        _recentReorgPoints.AddLast(reorgBlock);
+        while (_recentReorgPoints.Count > RecentReorgPointsCapacity)
+            _recentReorgPoints.RemoveFirst();
+    }
+
+    private string RecentReorgPointsCsv() => string.Join(",", _recentReorgPoints);
 
     protected virtual async Task<long> GetBlockTimestampAsync(long blockNumber, CancellationToken ct)
     {

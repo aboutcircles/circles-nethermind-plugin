@@ -15,6 +15,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Allow the test project to drive internal reconciliation hooks directly. -->
+    <InternalsVisibleTo Include="Circles.Cache.Service.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- ASP.NET Core and Health Checks -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.3" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.3" />
