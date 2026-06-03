@@ -31,21 +31,27 @@ internal class FindPathMetrics
             "circles_consent_paths_dropped_total",
             "Paths dropped due to consented flow rules (intermediary exclusion or validation)");
 
-    // Path audit: Hub.sol rule violations detected in pathfinder output (should always be 0)
+    // Path audit: Hub.sol rule violations detected in pathfinder output (should always be 0).
+    // The "simulated" label is "true" when the request injected what-if state
+    // (simulatedBalances/Trusts/ConsentedAvatars). A simulated source is expected to fail
+    // structural rules like AvatarRegistration (the frontend previews paths for hypothetical,
+    // not-yet-registered users), so alerting excludes simulated="true" — mirroring the canary's
+    // category=simulation exclusion. Real-traffic violations stay simulated="false" and page.
     public static readonly Counter PathAuditViolationsTotal =
         Metrics.CreateCounter(
             "circles_path_audit_violations_total",
             "Hub.sol rule violations detected in pathfinder output",
-            new CounterConfiguration { LabelNames = new[] { "rule" } });
+            new CounterConfiguration { LabelNames = new[] { "rule", "simulated" } });
 
     // Path audit: counts when the safety net replaced a violating response with the empty path.
     // Should track 1:1 with PathAuditViolationsTotal — divergence indicates a code path that
-    // detects but does not block. Counter exists per rule so we can tell which rule triggered.
+    // detects but does not block. Counter exists per rule so we can tell which rule triggered;
+    // "simulated" mirrors PathAuditViolationsTotal.
     public static readonly Counter PathAuditBlockedTotal =
         Metrics.CreateCounter(
             "circles_path_audit_blocked_total",
             "Pathfinder responses replaced with empty path because audit detected a Hub.sol violation",
-            new CounterConfiguration { LabelNames = new[] { "rule" } });
+            new CounterConfiguration { LabelNames = new[] { "rule", "simulated" } });
 
     // Canary: validator threw an unexpected exception (non-zero = validator bug, not pathfinder bug)
     public static readonly Counter CanaryValidatorExceptionTotal =
