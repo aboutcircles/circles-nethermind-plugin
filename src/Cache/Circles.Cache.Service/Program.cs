@@ -127,6 +127,9 @@ logger.LogInformation("PostgreSQL Pool: min={MinPool}, max={MaxPool}",
 logger.LogInformation("PG Notify Channel: {Channel}", settings.PgNotifyChannel);
 logger.LogInformation("Rollback Capacity: {Capacity} blocks", settings.RollbackCapacity);
 logger.LogInformation("Max Catchup Lag: {Lag} blocks", settings.MaxCatchupLag);
+logger.LogInformation("Tail Reconciliation: {Enabled} (window={Window} blocks, every {Interval} blocks)",
+    settings.ReconciliationEnabled ? "enabled" : "disabled",
+    settings.ReconciliationWindowBlocks, settings.ReconciliationIntervalBlocks);
 logger.LogInformation("HTTP Port: {Port}", settings.Port);
 logger.LogInformation("=======================================");
 
