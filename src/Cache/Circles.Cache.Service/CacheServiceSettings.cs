@@ -41,6 +41,49 @@ public class CacheServiceSettings
     public int MaxCatchupLag { get; init; } = 10;
 
     /// <summary>
+    /// Whether the tail self-heal reconciliation runs. When enabled, every
+    /// <see cref="ReconciliationIntervalBlocks"/> blocks the service re-derives the balances of
+    /// recently-active accounts directly from the authoritative DB aggregation and overwrites any
+    /// that drifted (e.g. a reorg-triggered one-sided over-credit on a group-mint router that the
+    /// incremental path advanced past and never re-read). Set false to disable without redeploying.
+    /// Environment variable: RECONCILIATION_ENABLED
+    /// Default: true
+    /// </summary>
+    public bool ReconciliationEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Window (in blocks, back from the cache head) of accounts to re-derive on each reconciliation
+    /// pass. Must comfortably exceed <see cref="ReorgDetectionWindow"/> is NOT required, but it
+    /// should cover the depth at which reorg-induced drift can form; the wider it is, the longer a
+    /// stuck phantom keeps being re-checked. Bounded by the per-account composite index, so cost
+    /// scales with distinct accounts active in the window, not full history.
+    /// Environment variable: RECONCILIATION_WINDOW_BLOCKS
+    /// Default: 256 blocks
+    /// </summary>
+    public int ReconciliationWindowBlocks { get; init; } = 256;
+
+    /// <summary>
+    /// Minimum number of blocks the cache head must advance between reconciliation passes. Throttles
+    /// the (DB-bound) reconciliation off the per-block notification cadence. At ~5s/block, the
+    /// default ≈ 40s between passes.
+    /// Environment variable: RECONCILIATION_INTERVAL_BLOCKS
+    /// Default: 8 blocks
+    /// </summary>
+    public int ReconciliationIntervalBlocks { get; init; } = 8;
+
+    /// <summary>
+    /// Safety cap on the number of recently-active accounts a single reconciliation pass will
+    /// process. Because reconciliation runs inline on the block-ingestion path, a pathological
+    /// window (airdrop, bulk migration) returning tens of thousands of accounts could stall
+    /// ingestion. If the active-account set exceeds this, the pass is skipped (counted via
+    /// <c>circles_cache_reconciliation_skipped_oversized_total</c>) rather than risking a long
+    /// inline query; a smaller subsequent window then heals normally.
+    /// Environment variable: RECONCILIATION_MAX_ACCOUNTS
+    /// Default: 5000 accounts
+    /// </summary>
+    public int ReconciliationMaxAccounts { get; init; } = 5000;
+
+    /// <summary>
     /// HTTP port for the service (health checks and API endpoints).
     /// Environment variable: PORT
     /// Default: 5002
@@ -84,6 +127,24 @@ public class CacheServiceSettings
             throw new InvalidOperationException(
                 $"MAX_CATCHUP_LAG must be non-negative (got {MaxCatchupLag})");
         }
+
+        if (ReconciliationWindowBlocks < 1 || ReconciliationWindowBlocks > 100000)
+        {
+            throw new InvalidOperationException(
+                $"RECONCILIATION_WINDOW_BLOCKS must be between 1 and 100000 (got {ReconciliationWindowBlocks})");
+        }
+
+        if (ReconciliationIntervalBlocks < 1)
+        {
+            throw new InvalidOperationException(
+                $"RECONCILIATION_INTERVAL_BLOCKS must be >= 1 (got {ReconciliationIntervalBlocks})");
+        }
+
+        if (ReconciliationMaxAccounts < 1)
+        {
+            throw new InvalidOperationException(
+                $"RECONCILIATION_MAX_ACCOUNTS must be >= 1 (got {ReconciliationMaxAccounts})");
+        }
     }
 
     /// <summary>
@@ -108,6 +169,21 @@ public class CacheServiceSettings
                 int.TryParse(Environment.GetEnvironmentVariable("MAX_CATCHUP_LAG"), out var lag)
                     ? lag
                     : 10,
+            ReconciliationEnabled =
+                !bool.TryParse(Environment.GetEnvironmentVariable("RECONCILIATION_ENABLED"), out var reconEnabled)
+                || reconEnabled,
+            ReconciliationWindowBlocks =
+                int.TryParse(Environment.GetEnvironmentVariable("RECONCILIATION_WINDOW_BLOCKS"), out var reconWindow)
+                    ? reconWindow
+                    : 256,
+            ReconciliationIntervalBlocks =
+                int.TryParse(Environment.GetEnvironmentVariable("RECONCILIATION_INTERVAL_BLOCKS"), out var reconInterval)
+                    ? reconInterval
+                    : 8,
+            ReconciliationMaxAccounts =
+                int.TryParse(Environment.GetEnvironmentVariable("RECONCILIATION_MAX_ACCOUNTS"), out var reconMaxAccounts)
+                    ? reconMaxAccounts
+                    : 5000,
             Port = int.TryParse(Environment.GetEnvironmentVariable("PORT"), out var port) ? port : 5002,
             IpfsCacheMaxEntries = int.TryParse(Environment.GetEnvironmentVariable("IPFS_CACHE_MAX_ENTRIES"), out var ipfsMax) ? ipfsMax : 50000
         };

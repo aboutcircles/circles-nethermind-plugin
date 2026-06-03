@@ -70,6 +70,33 @@ public static class CacheMetrics
         .CreateCounter("circles_cache_notifications_received_total",
             "Total number of pg_notify notifications received");
 
+    // Tail self-heal reconciliation (#74): re-derives recently-active accounts from the
+    // authoritative DB aggregation and overwrites incremental balances that drifted.
+    public static readonly Counter ReconciliationRunsTotal = Prometheus.Metrics
+        .CreateCounter("circles_cache_reconciliation_runs_total",
+            "Total number of tail balance-reconciliation passes attempted (incremented before any DB read, " +
+            "so a flatlining counter means reconciliation stopped running, not that the chain is quiet)");
+
+    public static readonly Counter ReconciliationFailuresTotal = Prometheus.Metrics
+        .CreateCounter("circles_cache_reconciliation_failures_total",
+            "Tail reconciliation passes that threw (DB down, query timeout, oversized window). A persistently " +
+            "rising counter means drift is no longer being healed — alert on it");
+
+    public static readonly Counter ReconciliationSkippedOversizedTotal = Prometheus.Metrics
+        .CreateCounter("circles_cache_reconciliation_skipped_oversized_total",
+            "Reconciliation passes skipped because the active-account set exceeded ReconciliationMaxAccounts " +
+            "(protects block ingestion from a pathological window)");
+
+    public static readonly Counter ReconciliationCorrectionsTotal = Prometheus.Metrics
+        .CreateCounter("circles_cache_reconciliation_corrections_total",
+            "Balance entries corrected by tail reconciliation, labeled by kind " +
+            "(phantom_cleared = drifted to 0; value_corrected = drifted to a different positive value)",
+            new CounterConfiguration { LabelNames = new[] { "kind" } });
+
+    public static readonly Gauge ReconciliationAccountsScanned = Prometheus.Metrics
+        .CreateGauge("circles_cache_reconciliation_accounts_scanned",
+            "Distinct recently-active accounts scanned by the last reconciliation pass");
+
     // API request metrics (supplement HTTP metrics)
     public static readonly Counter BalanceQueriesTotal = Prometheus.Metrics
         .CreateCounter("circles_cache_balance_queries_total",
