@@ -369,9 +369,14 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         // filter means "no constraint", so without this the pathfinder would silently fall back to
         // delivering an unrequested token (e.g. personal CRC for a "pay only in this group token"
         // request) — a path that can revert on-chain. Insert a sentinel id that matches no real token
-        // (AddressIdPool ids are non-negative) so the sink-token edge filters drop every real edge to
-        // the sink, yielding no path. Scoped to invitation flow (source ≠ sink); swap mode (source ==
-        // sink) routes toTokens through the virtual sink and is left untouched.
+        // so the sink-token edge filters drop every real edge to the sink, yielding no path.
+        // The sentinel value -1 relies on AddressIdPool ids being 0-based / non-negative, so it can
+        // never collide with a real token id.
+        // Scoped to invitation flow (source ≠ sink). Swap mode (source == sink) is deliberately
+        // EXCLUDED here: in swap mode the STEP 2a narrowing above does not run, so toTokensFilter
+        // keeps the explicit entries and the virtual sink is built from them. When those toTokens are
+        // unsatisfiable the swap-mode no-path result is produced by the source==sink path-extraction
+        // guard (degenerate same-source-and-sink path), NOT by this sentinel.
         if (toTokensExplicit && toTokensFilter.Count == 0 && !sourceEqualsSink && sinkId.HasValue)
         {
             const int unsatisfiableToTokenSentinel = -1;
