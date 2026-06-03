@@ -1,0 +1,26 @@
+{
+  "id": "score-group-unsatisfiable-totokens-no-path-001",
+  "name": "Pathfinder returns NO path when toTokens=[score group] but the sink cannot receive it (P11 sink-only, real data)",
+  "category": "score-group-router",
+  "description": "Real-data regression guard for the toTokens-enforcement fix and a P11 (sink-only) negative control. Block-pinned projection tier via ProxyLoadGraph at 46488973, where the score group is fully active (see score-group-path-mint-through-router-001, which mints it for a sink that DOES trust it). Here the sink (0x742b7dbb) is a registered avatar that does NOT trust the score group. Because the score group's unwrapped token is wrapped-only / sink-only (it can only reach a recipient via a fresh group mint, and the mint edge requires the sink to trust the group), the sink cannot receive the score group token at all — so toTokens=[score group] is unsatisfiable and the only correct result is NO path. Verified on staging: trust(0x742b7dbb, score group)=0, yet a regular (unconstrained) findPath delivers 8 steps of other tokens to this sink, so the sink IS reachable — the no-path result is caused purely by the unsatisfiable delivery constraint, not an unreachable sink. Before the fix the pathfinder degraded the emptied toTokens filter to 'no constraint' and returned that 8-step regular path (delivering tokens the caller never requested); the fix forces no path when an explicit toTokens narrows to empty. The dbStateAssertion proves the sink does not trust the group at the pinned block. P11 / toTokens-enforcement.",
+  "block": 46488973,
+  "source": "0x1a24d8b3c424dad750423af7955a56aef3912905",
+  "sink": "0x742b7dbb0f1d330a83497df79075ebc778e6e698",
+  "toTokens": ["0x93ed5a96347927ff6ff6b790f8cf5258240c321f"],
+  "shouldFindPath": false,
+  "runOnAnvil": false,
+  "skipProjection": false,
+  "dbStateAssertion": {
+    "scalarSql": "SELECT count(*) FROM \"V_CrcV2_TrustRelations\" WHERE truster='0x742b7dbb0f1d330a83497df79075ebc778e6e698' AND trustee='0x93ed5a96347927ff6ff6b790f8cf5258240c321f'",
+    "expect": "0"
+  },
+  "tags": [
+    "score-group",
+    "sink-only",
+    "totokens-enforcement",
+    "negative-control",
+    "projection",
+    "C-path",
+    "P11"
+  ]
+}

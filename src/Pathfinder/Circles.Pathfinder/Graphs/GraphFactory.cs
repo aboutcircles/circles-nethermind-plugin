@@ -275,6 +275,12 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         var excludedFromTokensFilter = ResolveFilterAddresses(request?.ExcludedFromTokens);
         var excludedToTokensFilter = ResolveFilterAddresses(request?.ExcludedToTokens);
 
+        // Whether the caller explicitly asked to constrain delivery to a set of tokens. Read from the
+        // raw request, NOT from toTokensFilter — so it stays true even when every requested address is
+        // unresolvable at this block (e.g. a token that does not exist yet). This distinguishes
+        // "no toTokens given" (unconstrained) from "toTokens given but unsatisfiable" (must be no path).
+        var toTokensExplicit = (request?.ToTokens?.Count ?? 0) > 0;
+
         // STEP 1h: Expand filters with wrapper IDs when withWrap is enabled.
         // User-provided filters contain avatar addresses, but wrapped balances use wrapper
         // contract addresses as token IDs. Without expansion, inclusion filters (toTokens,
@@ -356,6 +362,23 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             // Sink doesn't trust ANY tokens - clear the filter (will result in no path)
             _logger.LogWarning("[quantizedMode] Sink trusts no tokens, clearing ToTokens filter");
             toTokensFilter = new HashSet<int>();
+        }
+
+        // STEP 2a1: An explicit toTokens that narrowed to empty is UNSATISFIABLE — the sink can
+        // receive none of the requested tokens (or none resolve at this block). Downstream, an empty
+        // filter means "no constraint", so without this the pathfinder would silently fall back to
+        // delivering an unrequested token (e.g. personal CRC for a "pay only in this group token"
+        // request) — a path that can revert on-chain. Insert a sentinel id that matches no real token
+        // (AddressIdPool ids are non-negative) so the sink-token edge filters drop every real edge to
+        // the sink, yielding no path. Scoped to invitation flow (source ≠ sink); swap mode (source ==
+        // sink) routes toTokens through the virtual sink and is left untouched.
+        if (toTokensExplicit && toTokensFilter.Count == 0 && !sourceEqualsSink && sinkId.HasValue)
+        {
+            const int unsatisfiableToTokenSentinel = -1;
+            _logger.LogInformation(
+                "toTokens ({Count}) all unsatisfiable for sink {Sink}; returning no path",
+                request?.ToTokens?.Count ?? 0, logSink);
+            toTokensFilter = new HashSet<int> { unsatisfiableToTokenSentinel };
         }
 
         // STEP 2a2: Auto-discover tokens for quantizedMode when no ToTokens specified
