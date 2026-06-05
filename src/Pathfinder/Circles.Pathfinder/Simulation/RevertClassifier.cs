@@ -34,6 +34,12 @@ public static class RevertClassifier
     // OpenZeppelin ERC1155 errors
     private const string ERC1155InsufficientBalance = "0x03dee4c5";
     private const string ERC1155InvalidReceiver = "0x57f447ce";
+    // ERC20TokenOfferCycle anti-dump guard (circles-token-offer/src/ERC20TokenOfferCycle.sol):
+    // SoftLock() — a token-offer-cycle SINK's onERC1155Received pre-claim branch reverts when the
+    // CRC sender has over-claimed (totalClaimed[from] > OFFER_TOKEN.balanceOf(from)). A receiver-side
+    // app guard orthogonal to the Circles trust/balance graph: the pathfinder builds a structurally
+    // valid flow but the cycle rejects it because the source over-claimed. Not a pathfinder bug.
+    private const string SoftLock = "0x66ef7607";
 
     // ABI layout after selector: each param is 32 bytes (64 hex chars).
     // CirclesErrorAddressUintArgs: address(32) + uint256(32) + uint8(32) = 96 bytes.
@@ -73,6 +79,9 @@ public static class RevertClassifier
 
         if (Contains(lower, ERC1155InvalidReceiver))
             return ("input", "invalid_receiver");
+
+        if (Contains(lower, SoftLock))
+            return ("input", "soft_lock");
 
         // Generic revert string patterns
         if (lower.Contains("execution reverted"))

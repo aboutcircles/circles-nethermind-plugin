@@ -114,6 +114,62 @@ public class SimulationCanaryBalanceProbeTests
         Assert.That(required.ContainsKey((Arb, GroupToken)), Is.True);
     }
 
+    // --- Inflow netting: a balanced pass-through is not a phantom source (#74 / 2026-06-05) ---
+    private const string Router = "0xdc287474114cc0551a81ddc2eb51783fbf34802f"; // BaseGroupMintRouter
+    private const string Upstream = "0x3333333333333333333333333333333333333333";
+    private const string Collateral = "0x0cd335ea5062f9e86369ff239f65b274e22a7d7e";
+
+    [Test]
+    public void Aggregate_NetsBalancedPassThroughRouter_NotFlagged()
+    {
+        // Group-mint router topology: Upstream forwards collateral INTO the router, the router
+        // forwards the SAME token+amount on to the group token. Hub credits the router (ordered
+        // collateral-in before forward-out) so it never needs a standing balance. The router must
+        // NOT be reported as a required-outflow holder; the genuine upstream source still is.
+        var transfers = new List<TransferPathStep>
+        {
+            Step(Upstream, Router, Collateral, "16896359000000000000"),
+            Step(Router, GroupToken, Collateral, "16896359000000000000")
+        };
+
+        var required = SimulationCanaryService.AggregateRequiredOutflow(transfers);
+
+        Assert.That(required.ContainsKey((Router, Collateral)), Is.False,
+            "balanced pass-through (inflow == outflow) must net to zero, not flag a phantom");
+        Assert.That(required[(Upstream, Collateral)],
+            Is.EqualTo(BigInteger.Parse("16896359000000000000")));
+    }
+
+    [Test]
+    public void Aggregate_NetsPartialInflow_FlagsOnlyExcess()
+    {
+        // Receives 30, sends 100 → genuinely over-sources by 70. Only the unfunded 70 is required.
+        var transfers = new List<TransferPathStep>
+        {
+            Step(Upstream, Router, Collateral, "30"),
+            Step(Router, GroupToken, Collateral, "100")
+        };
+
+        var required = SimulationCanaryService.AggregateRequiredOutflow(transfers);
+
+        Assert.That(required[(Router, Collateral)], Is.EqualTo(new BigInteger(70)));
+    }
+
+    [Test]
+    public void Aggregate_PureSourceWithNoInflow_StillFlaggedFully()
+    {
+        // Regression guard for the real phantom class (e.g. 88fd976f): a holder that sends a token
+        // it never receives in-path must still be flagged for its full outflow after netting.
+        var transfers = new List<TransferPathStep>
+        {
+            Step(Arb, Sink, GroupToken, "4574842999378176")
+        };
+
+        var required = SimulationCanaryService.AggregateRequiredOutflow(transfers);
+
+        Assert.That(required[(Arb, GroupToken)], Is.EqualTo(BigInteger.Parse("4574842999378176")));
+    }
+
     #endregion
 
     #region EncodeBalanceOfCalldata

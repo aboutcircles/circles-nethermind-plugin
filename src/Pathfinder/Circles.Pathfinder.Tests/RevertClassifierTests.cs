@@ -133,6 +133,17 @@ public class RevertClassifierTests
         Assert.That(label, Is.EqualTo("invalid_receiver"));
     }
 
+    [Test]
+    public void SoftLock_ClassifiedAsInput()
+    {
+        // ERC20TokenOfferCycle.SoftLock() — no-arg selector, bare 4 bytes. A token-offer-cycle sink
+        // rejects incoming CRC because the source over-claimed; not a pathfinder bug → category=input
+        // (excluded from the bug/error-rate alerts, mirroring invalid_receiver).
+        var (category, label) = RevertClassifier.Classify("execution reverted: 0x66ef7607");
+        Assert.That(category, Is.EqualTo("input"));
+        Assert.That(label, Is.EqualTo("soft_lock"));
+    }
+
     // ── Edge cases ──────────────────────────────────────────────────
 
     [Test]
