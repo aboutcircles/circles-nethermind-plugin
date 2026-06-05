@@ -17,9 +17,12 @@ namespace Circles.Pathfinder.Host.Canary;
 /// unclassified <c>0x66ef7607</c> revert routing through the same phantom-prone arb+group-token
 /// pair — and those evade both the payload detector AND the Prometheus/Loki alerts
 /// (<c>category=unknown</c> is not <c>category=bug</c>). This probe closes that gap: on any revert
-/// the payload path did not already explain, it compares each holder's required outflow per token
-/// (summed from the path) against the holder's REAL on-chain balance, and emits the same
-/// <c>CACHE BALANCE DRIFT</c> signal when the path demands more than exists.</para>
+/// the payload path did not already explain, it compares each holder's NET required outflow per
+/// token (outflow minus the in-path inflow it receives of that token) against the holder's REAL
+/// on-chain balance, and emits the same <c>CACHE BALANCE DRIFT</c> signal when the path demands
+/// more than exists. Netting is essential: a group-mint router that forwards collateral it received
+/// is a balanced pass-through (real balance legitimately zero), not a phantom — see
+/// <see cref="AggregateRequiredOutflow"/>.</para>
 ///
 /// <para><b>Soundness vs withWrap paths.</b> A naive <c>balanceOf</c> at graphBlock would
 /// false-positive whenever the holder's supply comes from unwrapping wrapper ERC20 into 1155
@@ -63,7 +66,8 @@ internal sealed partial class SimulationCanaryService
     /// <summary>
     /// Probes on-chain balances for each holder the path requires to send, after replaying the
     /// given unwrap prefix, and emits <c>CACHE BALANCE DRIFT</c> for any (holder, token) where the
-    /// path's required outflow exceeds the real balance by ≥2× (or the holder holds nothing).
+    /// path's NET required outflow (outflow minus in-path inflow) exceeds the real balance by ≥2×
+    /// (or the holder holds nothing).
     /// </summary>
     /// <param name="item">The work item whose path transfers are checked.</param>
     /// <param name="unwrapCalls">The unwrap prefix to replay before reading balances. Empty for the
@@ -81,8 +85,8 @@ internal sealed partial class SimulationCanaryService
     {
         try
         {
-            // Aggregate required outflow per (holder, token) from the avatar-resolved transfers —
-            // Hub.balanceOf is keyed by the avatar token id, not the wrapper contract.
+            // Net required outflow per (holder, token) from the avatar-resolved transfers (outflow
+            // minus in-path inflow) — Hub.balanceOf is keyed by the avatar token id, not the wrapper.
             var transfers = ResolveWrapperTokenOwners(item.Transfers, item.WrapperToAvatar);
             var required = AggregateRequiredOutflow(transfers);
             if (required.Count == 0)
@@ -266,31 +270,62 @@ internal sealed partial class SimulationCanaryService
     }
 
     /// <summary>
-    /// Sums per-(holder, token) required outflow from the resolved transfers. Skips edges that do
-    /// not require a pre-existing balance: mints from the zero address, and self-issuance where the
-    /// sender IS the token's avatar (personal-token issuance and group mint, where <c>from == token</c>).
-    /// Keys are lowercased addresses.
+    /// Computes per-(holder, token) NET required balance from the resolved transfers: the holder's
+    /// outflow of a token MINUS the inflow it receives of that same token within the same path.
+    /// Only strictly-positive net amounts are returned.
+    ///
+    /// <para>Netting is the soundness fix for pass-through intermediaries (#74): a group-mint router
+    /// receives a collateral token and forwards the SAME token+amount on to the group. Hub.sol
+    /// executes the flow matrix edge-by-edge in mint-sorted order (collateral-in before forward-out),
+    /// so the router is credited before it sends and never needs a standing balance — its real
+    /// <c>balanceOf</c> is legitimately zero. Summing outflow alone would report the full forwarded
+    /// amount as "needed" against a zero balance and raise a phantom <c>zero_balance</c> drift. By
+    /// subtracting the matching inflow, a balanced pass-through nets to zero (not flagged) while a
+    /// genuine over-source (outflow &gt; inflow, e.g. a cache-inflated balance) still surfaces its
+    /// unfunded excess.</para>
+    ///
+    /// <para>Outflow skips edges that need no pre-existing balance: mints from the zero address, and
+    /// self-issuance where the sender IS the token's avatar (<c>from == token</c>: personal-token
+    /// issuance and group mint). Inflow counts every positive credit of the token to the holder.
+    /// Keys are lowercased addresses.</para>
     /// </summary>
     internal static Dictionary<(string Holder, string Token), BigInteger> AggregateRequiredOutflow(
         IReadOnlyList<TransferPathStep> transfers)
     {
-        var required = new Dictionary<(string, string), BigInteger>();
+        const string zero = "0x0000000000000000000000000000000000000000";
+        var outflow = new Dictionary<(string, string), BigInteger>();
+        var inflow = new Dictionary<(string, string), BigInteger>();
+
         foreach (var t in transfers)
         {
-            var holder = t.From.ToLowerInvariant();
             var token = t.TokenOwner.ToLowerInvariant();
-
-            if (holder is "0x0000000000000000000000000000000000000000")
-                continue; // mint — no prior balance
-            if (holder == token)
-                continue; // self-issuance / group mint — sender mints its own token
-
             if (!BigInteger.TryParse(t.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
                 || value <= 0)
                 continue;
 
-            var key = (holder, token);
-            required[key] = required.TryGetValue(key, out var existing) ? existing + value : value;
+            var from = t.From.ToLowerInvariant();
+            // Outflow: the sender must source 'token', unless it mints (from zero) or self-issues.
+            if (from != zero && from != token)
+            {
+                var k = (from, token);
+                outflow[k] = outflow.TryGetValue(k, out var e) ? e + value : value;
+            }
+
+            // Inflow: the receiver is credited 'token' in-path, available before any later send.
+            var to = t.To.ToLowerInvariant();
+            if (to != zero)
+            {
+                var k = (to, token);
+                inflow[k] = inflow.TryGetValue(k, out var e) ? e + value : value;
+            }
+        }
+
+        var required = new Dictionary<(string, string), BigInteger>();
+        foreach (var (key, outAmount) in outflow)
+        {
+            var net = outAmount - (inflow.TryGetValue(key, out var inAmount) ? inAmount : BigInteger.Zero);
+            if (net > 0)
+                required[key] = net;
         }
 
         return required;
