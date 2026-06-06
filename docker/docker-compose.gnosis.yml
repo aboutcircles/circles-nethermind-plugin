@@ -34,7 +34,7 @@ services:
       --Sync.AncientBodiesBarrier=12500000
       --Sync.AncientReceiptsBarrier=12500000
       --Receipt.StoreReceipts=true
-      --Receipt.TxLookupLimit=0
+      --Receipt.TxLookupLimit=${NETHERMIND_RECEIPT_TX_LOOKUP_LIMIT:-0}
       --log=INFO
       --JsonRpc.Enabled=true
       --JsonRpc.Host=0.0.0.0
