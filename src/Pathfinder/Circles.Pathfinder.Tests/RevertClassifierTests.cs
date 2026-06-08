@@ -144,6 +144,22 @@ public class RevertClassifierTests
         Assert.That(label, Is.EqualTo("soft_lock"));
     }
 
+    [Test]
+    public void ERC20InsufficientBalance_ClassifiedAsInput()
+    {
+        // OZ ERC20InsufficientBalance(sender, balance, needed), selector 0xe450d38c — an ERC20 wrapper
+        // unwrap() asking for more than the holder's live balance (a streamed/volatile demurraged
+        // wrapper whose balance moved between graph-build and execution). Tx-builder (SDK) gap, not a
+        // pathfinder bug → category=input, kept out of the bug/error-rate alerts (mirrors soft_lock).
+        // Classify only inspects the selector, so the trailing words are placeholders (the balance and
+        // needed args are not decoded here).
+        var revert = "execution reverted: 0xe450d38c"
+            + Word("abc") + Word("1") + Word("64");
+        var (category, label) = RevertClassifier.Classify(revert);
+        Assert.That(category, Is.EqualTo("input"));
+        Assert.That(label, Is.EqualTo("wrapper_unwrap_insufficient_balance"));
+    }
+
     // ── Edge cases ──────────────────────────────────────────────────
 
     [Test]
