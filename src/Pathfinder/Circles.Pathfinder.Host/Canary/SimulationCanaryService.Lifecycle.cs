@@ -164,7 +164,11 @@ internal sealed partial class SimulationCanaryService
                 // valid w.r.t. balances — the revert is a canary msg.sender artifact, not a shortfall —
                 // so probing them adds no signal and only risks alert noise on the recurring class.
                 // Plain path ⇒ no unwrap prefix to replay.
-                if (!driftEmitted && BalanceProbeEnabled && category != "simulation")
+                // Also skip wrapper_unwrap_insufficient_balance (kept symmetric with the bundle path):
+                // an unwrap-shortfall revert can't be a true 1155 cache drift, so probing it would only
+                // emit a false zero_balance signal.
+                if (!driftEmitted && BalanceProbeEnabled && category != "simulation"
+                    && label != "wrapper_unwrap_insufficient_balance")
                     await ProbeBalanceDriftAsync(item, Array.Empty<ResolvedUnwrapCall>(), blockTag, client, ct);
 
                 if (revertData == null && revertMsg?.Contains("revert", StringComparison.OrdinalIgnoreCase) == true)

@@ -34,6 +34,14 @@ public static class RevertClassifier
     // OpenZeppelin ERC1155 errors
     private const string ERC1155InsufficientBalance = "0x03dee4c5";
     private const string ERC1155InvalidReceiver = "0x57f447ce";
+    // OpenZeppelin ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed).
+    // Surfaces when an ERC20 wrapper `unwrap()` asks for more than the holder's live balance — i.e. a
+    // demurraged-wrapper source whose on-chain balance moved between graph-build and execution
+    // (e.g. a streaming "proxy inviter" wrapper that is filled and drained continuously). The
+    // pathfinder reported the balance correctly at graphBlock; the gap is build-time-vs-exec-time, so
+    // the tx-builder (SDK) must clamp the unwrap to the live balance. Not a pathfinder/cache bug, and
+    // distinct from the ERC1155 cache-drift signal above.
+    private const string ERC20InsufficientBalance = "0xe450d38c";
     // ERC20TokenOfferCycle anti-dump guard (circles-token-offer/src/ERC20TokenOfferCycle.sol):
     // SoftLock() — a token-offer-cycle SINK's onERC1155Received pre-claim branch reverts when the
     // CRC sender has over-claimed (totalClaimed[from] > OFFER_TOKEN.balanceOf(from)). A receiver-side
@@ -82,6 +90,12 @@ public static class RevertClassifier
 
         if (Contains(lower, SoftLock))
             return ("input", "soft_lock");
+
+        // ERC20 wrapper unwrap asked for more than the holder's live balance (volatile/streamed
+        // demurraged wrapper). Build-time-vs-execution-time gap, fixed in the tx-builder (SDK), not a
+        // pathfinder bug — classify as input so it surfaces named instead of as a generic/unknown revert.
+        if (Contains(lower, ERC20InsufficientBalance))
+            return ("input", "wrapper_unwrap_insufficient_balance");
 
         // Generic revert string patterns
         if (lower.Contains("execution reverted"))

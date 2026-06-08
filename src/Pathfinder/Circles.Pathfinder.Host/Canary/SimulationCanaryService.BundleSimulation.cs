@@ -164,7 +164,12 @@ internal sealed partial class SimulationCanaryService
                 // unclassified 0x66ef7607 class). Skip category=simulation (valid-path canary
                 // artifacts, no balance shortfall). Replay this bundle's unwrap prefix so balanceOf
                 // reflects post-unwrap state — see ProbeBalanceDriftAsync.
-                if (!driftEmitted && BalanceProbeEnabled && parsed.Category != "simulation")
+                // Also skip wrapper_unwrap_insufficient_balance: the failing call IS the unwrap, so the
+                // probe's replay can't materialise the 1155 balance → balanceOf reads 0 → a guaranteed
+                // false zero_balance "drift". This class is already explained (build-vs-exec gap on a
+                // volatile wrapper); the probe can't discriminate it from a real phantom anyway.
+                if (!driftEmitted && BalanceProbeEnabled && parsed.Category != "simulation"
+                    && parsed.Label != "wrapper_unwrap_insufficient_balance")
                     await ProbeBalanceDriftAsync(item, unwrapCalls, blockTag, client, ct);
                 return;
 
