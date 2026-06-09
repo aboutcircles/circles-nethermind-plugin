@@ -392,13 +392,16 @@ public class ProxyLoadGraph : ILoadGraph
     }
 
     /// <summary>
-    /// Explicitly NOT supported via the test-env proxy — the production
-    /// <c>ScoreGroupMintLimitReader</c> needs a direct NpgsqlConnection. Returns empty so the
-    /// pathfinder models the score group with an UNBOUNDED mint cap. This is correct ONLY for
-    /// projection fixtures whose collateral has no mint-limit row (unbounded by definition); a
-    /// mint-limit-dependent case (e.g. P14 "limit reached") must NOT rely on this loader — it
-    /// would pass spuriously. Overridden explicitly (rather than inheriting the silent interface
-    /// default) to make the gap visible. See coverage tracker §5.E.
+    /// Not yet implemented via the test-env proxy — returns empty so the pathfinder
+    /// models the score group with an UNBOUNDED mint cap. This is correct for projection
+    /// fixtures whose scenario does not assert on a mint-limit ceiling; a fixture that
+    /// tests "limit reached" (e.g. P14) must NOT rely on this loader — it would pass
+    /// spuriously. Overridden explicitly to make the gap visible. See coverage tracker §5.E.
+    ///
+    /// Implementation is now possible: <c>ScoreGroupMintLimitReader.BaseRowsSqlHistorical</c>
+    /// works through the proxy (raw tables + block timestamp, no matview). A follow-up
+    /// PR can execute BaseRowsSqlHistorical + HistoricalSql + PersonalSql via
+    /// <c>ExecuteQueryAsync</c> and compute available limits in C#.
     /// </summary>
     public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits() => [];
 
