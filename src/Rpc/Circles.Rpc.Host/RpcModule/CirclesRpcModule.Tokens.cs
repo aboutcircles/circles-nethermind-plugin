@@ -87,7 +87,11 @@ public partial class CirclesRpcModule
     private async Task<Dictionary<string, TokenExposureInfo>> GetTokenExposureIdsAsync(string address)
     {
         var lowerAddress = address; // already validated and lowered by caller
-        var cacheKey = $"tokenExposure:{lowerAddress}";
+        // Key the cache by the pinned block (or "head"): exposure is balance-derived and therefore
+        // block-sensitive, so a head-derived entry must not satisfy a block-N request (or vice
+        // versa) for the same address. Without this, the shared TTL cache would defeat the pin.
+        var pinnedBlock = GetMaxBlockNumberFromHeader();
+        var cacheKey = $"tokenExposure:{(pinnedBlock?.ToString() ?? "head")}:{lowerAddress}";
 
         // Check cache first (5 minute TTL for token exposure data)
         if (_tokenExposureCache.TryGetValue(cacheKey, out Dictionary<string, TokenExposureInfo>? cached) && cached != null)
@@ -115,7 +119,9 @@ public partial class CirclesRpcModule
                 FROM public.""CrcV2_Erc20WrapperTransfer"" wt
                 JOIN public.""CrcV2_ERC20WrapperDeployed"" wd
                   ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 1
-                WHERE wt.""to"" = @address OR wt.""from"" = @address
+                  AND wd.""blockNumber"" <= @maxBlock
+                WHERE (wt.""to"" = @address OR wt.""from"" = @address)
+                  AND wt.""blockNumber"" <= @maxBlock
                 GROUP BY wt.""tokenAddress"", wd.avatar
                 HAVING SUM(CASE
                     WHEN wt.""to"" = @address THEN wt.amount
@@ -136,14 +142,20 @@ public partial class CirclesRpcModule
                              ELSE 0
                          END)
                          * POWER(0.9998013320085989574306481700129226782902039065082930593676448873,
-                             (EXTRACT(EPOCH FROM NOW())::bigint - 1602720000) / 86400
+                             (CASE WHEN @maxBlock >= 9223372036854775807
+                                   THEN EXTRACT(EPOCH FROM NOW())::bigint
+                                   ELSE (SELECT COALESCE(MAX(""timestamp""), EXTRACT(EPOCH FROM NOW())::bigint)
+                                         FROM ""System_Block"" WHERE ""blockNumber"" <= @maxBlock)
+                              END - 1602720000) / 86400
                              - (MAX(wt.""timestamp"") - 1602720000) / 86400
                          )
                        ) as balance
                 FROM public.""CrcV2_Erc20WrapperTransfer"" wt
                 JOIN public.""CrcV2_ERC20WrapperDeployed"" wd
                   ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 0
-                WHERE wt.""to"" = @address OR wt.""from"" = @address
+                  AND wd.""blockNumber"" <= @maxBlock
+                WHERE (wt.""to"" = @address OR wt.""from"" = @address)
+                  AND wt.""blockNumber"" <= @maxBlock
                 GROUP BY wt.""tokenAddress"", wd.avatar
                 HAVING SUM(CASE
                     WHEN wt.""to"" = @address THEN wt.amount
@@ -159,8 +171,9 @@ public partial class CirclesRpcModule
                      , s.""user"" as ""tokenOwner""
                      , v1.""totalBalance"" as balance
                      , false as ""isGroup""
-                FROM  public.""V_CrcV1_BalancesByAccountAndToken"" v1
+                FROM  ""V_CrcV1_BalancesByAccountAndToken"" v1
                 JOIN  public.""CrcV1_Signup"" s ON s.token = v1.""tokenAddress""
+                  AND s.""blockNumber"" <= @maxBlock
                 WHERE v1.account = @address
                   AND v1.""totalBalance"" > 0
 
@@ -178,8 +191,9 @@ public partial class CirclesRpcModule
                      , v2.""tokenAddress"" as ""tokenOwner""
                      , v2.""demurragedTotalBalance"" as balance
                      , rh.avatar IS NULL as ""isGroup""
-                FROM  public.""V_CrcV2_BalancesByAccountAndToken"" v2
+                FROM  ""V_CrcV2_BalancesByAccountAndToken"" v2
                 LEFT JOIN ""CrcV2_RegisterHuman"" rh ON rh.avatar = v2.""tokenAddress""
+                  AND rh.""blockNumber"" <= @maxBlock
                 WHERE v2.account = @address
                   AND v2.""totalBalance"" > 0
 
@@ -189,6 +203,7 @@ public partial class CirclesRpcModule
                 SELECT swb.*, rg.""group"" IS NOT NULL as ""isGroup""
                 FROM static_wrapped_balances swb
                 LEFT JOIN ""CrcV2_RegisterGroup"" rg ON rg.""group"" = swb.""tokenOwner""
+                  AND rg.""blockNumber"" <= @maxBlock
 
                 UNION ALL
 
@@ -196,15 +211,26 @@ public partial class CirclesRpcModule
                 SELECT dwb.*, rg.""group"" IS NOT NULL as ""isGroup""
                 FROM demurraged_wrapped_balances dwb
                 LEFT JOIN ""CrcV2_RegisterGroup"" rg ON rg.""group"" = dwb.""tokenOwner""
+                  AND rg.""blockNumber"" <= @maxBlock
             )
             SELECT ""tokenAddress"", ""type"", ""tokenOwner"", balance, ""isGroup""
             FROM tokens
             WHERE balance > 0
         ";
 
-        await using var connection = await _dataSource.OpenConnectionAsync();
+        // Route through CreateConnectionAsync (not the raw datasource) so this read joins the
+        // request's connection funnel and carries the same block GUC + search_path. Inert without
+        // the header (production): @maxBlock binds to bigint max, so every "blockNumber" <= @maxBlock
+        // filter is a no-op, the de-qualified V1/V2 balance views resolve to public (the twin schema
+        // does not exist on prod), and the demurrage anchor stays NOW() — byte-identical to prior
+        // behaviour. Under a header, ConnectionPinning has SET search_path = circles_at_block, public,
+        // so the de-qualified views resolve to the pinned twins and @maxBlock = the header block, so
+        // the raw-table CTEs (wrappers / signup / register) and the demurrage anchor all reconstruct
+        // as-of block N. The block-keyed cache above keeps head and block-N results separate.
+        await using var connection = await CreateConnectionAsync();
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", lowerAddress);
+        command.Parameters.AddWithValue("maxBlock", pinnedBlock ?? long.MaxValue);
 
         var tokenExposureIds = new Dictionary<string, TokenExposureInfo>();
         await using var reader = await command.ExecuteReaderAsync();
@@ -261,8 +287,14 @@ public partial class CirclesRpcModule
     {
         var lowerTokenAddress = ValidateAndNormalizeAddress(tokenAddress, nameof(tokenAddress));
 
-        // If cache service is enabled, try using it first
-        if (_settings.UseCacheService && _cacheServiceClient != null)
+        // If cache service is enabled, try using it first.
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to the DB path. NOTE: only the V2-avatar (ERC1155) classification is block-pinned
+        // there (via the V_CrcV2_Avatars twin); the V1-signup and ERC20-wrapper lookups still read
+        // head. Token type/owner is effectively static once created, so this is acceptable until
+        // those lookups gain block filters in a later phase. The batch variant (GetTokenInfoBatch)
+        // applies the same bypass — its fallback fans out to this exact method per address.
+        if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {
@@ -397,8 +429,12 @@ public partial class CirclesRpcModule
             throw new ArgumentOutOfRangeException(nameof(tokenAddresses), "Batch size exceeds 1000");
         }
 
-        // If cache service is enabled, try batch API for efficiency
-        if (_settings.UseCacheService && _cacheServiceClient != null)
+        // If cache service is enabled, try batch API for efficiency.
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache so the
+        // fallback below fans out to GetTokenInfo per address — which itself is block-pinned
+        // (V2-avatar classification via the V_CrcV2_Avatars twin; V1/wrapper lookups read head, same
+        // static-type rationale as the single variant). Matches GetTokenInfo's bypass exactly.
+        if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {

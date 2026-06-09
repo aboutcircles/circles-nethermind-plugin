@@ -262,6 +262,59 @@ public class NotificationListenerServiceTests
         caches.V1Avatars.Count.Should().Be(0);
     }
 
+    [Fact]
+    public async Task DeepReorg_BeyondRollbackCapacity_WithinDetectionWindow_TriggersFullRewarmup()
+    {
+        // The reorg-detection window (12) is wider than the rollback capacity (3). A reorg 8 blocks
+        // deep (block 12 with head 20) is OUTSIDE the rollback window but INSIDE the detection
+        // window, so the block ring buffer still retains block 12 and detects the hash change.
+        // Because it's deeper than the rollback capacity, RollbackAll throws "beyond stored history"
+        // (caught) → full re-warmup, the safe recovery. With a buffer sized only to RollbackCapacity
+        // (the pre-decoupling behavior) block 12 would have been evicted and the reorg silently
+        // missed, leaving balances desynced.
+        var settings = new CacheServiceSettings
+        {
+            RollbackCapacity = 3,
+            ReorgDetectionWindow = 12,
+            PostgresConnectionString = "Host=localhost"
+        };
+        var state = new CacheServiceState(settings.RollbackCapacity, settings.ReorgDetectionWindow)
+        {
+            LastProcessedBlock = 20,
+            WarmupComplete = true,
+            WarmupTargetBlock = 5,
+            CurrentBlockTimestamp = 12345
+        };
+
+        // Seed the detection-window buffer with blocks 9..20 (old hashes).
+        state.BlockRingBuffer.UpdateFromBlocks(
+            Enumerable.Range(9, 12).Select(b => ((long)b, $"0x{b}-old")).ToArray());
+
+        var caches = new CacheContainer(settings.RollbackCapacity);
+        SeedAllCachesAtBlock(caches, 17);
+        // Only the last RollbackCapacity (3) blocks of diffs are retained → oldest is 18, so a
+        // rollback to block 12 is beyond stored history and throws.
+        caches.V1Avatars.Add(18, "0xa", ("CrcV1_Signup", "0xt"));
+        caches.V1Avatars.Add(19, "0xb", ("CrcV1_Signup", "0xt"));
+        caches.V1Avatars.Add(20, "0xc", ("CrcV1_Signup", "0xt"));
+
+        // Block 12's hash changed (reorg 8 deep, above the warmup boundary 5).
+        var blocks = Enumerable.Range(9, 12)
+            .Select(b => ((long)b, b == 12 ? "0x12-new" : $"0x{b}-old"))
+            .ToList();
+
+        var service = new TestNotificationListenerService(settings, state, caches, blocks);
+
+        await service.InvokeHandleAsync("{}", CancellationToken.None);
+
+        // Deep reorg detected → RollbackAll threw → full re-warmup (not a silent miss, not a normal
+        // forward process).
+        service.ProcessedRanges.Should().BeEmpty();
+        state.WarmupComplete.Should().BeFalse();
+        state.LastProcessedBlock.Should().Be(-1);
+        caches.V1Avatars.Count.Should().Be(0);
+    }
+
     private sealed class TestNotificationListenerService : NotificationListenerService
     {
         private readonly List<(long BlockNumber, string BlockHash)> _blocks;

@@ -1,0 +1,25 @@
+{
+  "id": "score-group-router-amount-exceeds-001",
+  "name": "ScoreGroup router mint reverts AmountExceedsCollateralLimit",
+  "category": "score-group-router",
+  "description": "Direct beforeMintPolicy (impersonating the Hub), minter=pathMintRouter, amount=1e33 for a real router collateral. Exceeds (historicalSupply+personalMint - treasuryBalance) so the policy reverts AmountExceedsCollateralLimit (selector 0x659c8c43 — matches a real Gnosis capture).",
+  "block": 46406943,
+  "source": "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8",
+  "sink": "0x450d68272e43c4cab7cbc7faa37893a50fae9569",
+  "shouldFindPath": false,
+  "runOnAnvil": true,
+  "skipProjection": true,
+  "expectedRevertReason": "AmountExceedsCollateralLimit",
+  "replayCalldata": {
+    "from": "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8",
+    "to": "0x450d68272e43c4cab7cbc7faa37893a50fae9569",
+    "input": "0xb7038259000000000000000000000000e171a76de6b645a28b3767f84b177a4f6659a3d700000000000000000000000093ed5a96347927ff6ff6b790f8cf5258240c321f00000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000036f2d51dbc9d318c67a84211011d368bce677820000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000314dc6448d9338c15b0a000000000000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "tags": [
+    "score-group",
+    "router-mint",
+    "revert",
+    "synthesized",
+    "P3"
+  ]
+}

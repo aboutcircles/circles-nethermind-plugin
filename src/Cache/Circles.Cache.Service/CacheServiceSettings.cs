@@ -34,6 +34,19 @@ public class CacheServiceSettings
     public int RollbackCapacity { get; init; } = 12;
 
     /// <summary>
+    /// Number of recent block hashes retained for reorg DETECTION (the BlockRingBuffer size and the
+    /// number of blocks fetched per notification). Decoupled from <see cref="RollbackCapacity"/>:
+    /// the rollback fast-path can only undo <see cref="RollbackCapacity"/> blocks of balance diffs,
+    /// but reorgs deeper than that must still be DETECTED so they trigger a safe full re-warmup
+    /// instead of being silently missed (which leaves the in-memory balances desynced from the DB
+    /// until the next rewarmup). Block hashes are cheap (~70 bytes each), so this can be much larger
+    /// than the rollback window. Must be >= RollbackCapacity.
+    /// Environment variable: REORG_DETECTION_WINDOW
+    /// Default: 256 blocks
+    /// </summary>
+    public int ReorgDetectionWindow { get; init; } = 256;
+
+    /// <summary>
     /// Maximum lag (in blocks) allowed before the service is considered "not ready".
     /// Environment variable: MAX_CATCHUP_LAG
     /// Default: 10 blocks
@@ -122,6 +135,12 @@ public class CacheServiceSettings
                 $"ROLLBACK_CAPACITY must be between 1 and 1000 (got {RollbackCapacity})");
         }
 
+        if (ReorgDetectionWindow < RollbackCapacity || ReorgDetectionWindow > 10000)
+        {
+            throw new InvalidOperationException(
+                $"REORG_DETECTION_WINDOW must be between RollbackCapacity ({RollbackCapacity}) and 10000 (got {ReorgDetectionWindow})");
+        }
+
         if (MaxCatchupLag < 0)
         {
             throw new InvalidOperationException(
@@ -165,6 +184,10 @@ public class CacheServiceSettings
                 int.TryParse(Environment.GetEnvironmentVariable("ROLLBACK_CAPACITY"), out var capacity)
                     ? capacity
                     : 12,
+            ReorgDetectionWindow =
+                int.TryParse(Environment.GetEnvironmentVariable("REORG_DETECTION_WINDOW"), out var detectionWindow)
+                    ? detectionWindow
+                    : 256,
             MaxCatchupLag =
                 int.TryParse(Environment.GetEnvironmentVariable("MAX_CATCHUP_LAG"), out var lag)
                     ? lag

@@ -123,8 +123,12 @@ public partial class CirclesRpcModule
     {
         groupAddress = ValidateAndNormalizeAddress(groupAddress, nameof(groupAddress));
 
-        // If cache service is enabled and no cursor (first page), try cache first
-        if (_settings.UseCacheService && _cacheServiceClient != null && string.IsNullOrEmpty(cursor))
+        // If cache service is enabled and no cursor (first page), try cache first.
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to GetGroupMembershipInternal, which fully pins: it reads V_CrcV2_GroupMemberships,
+        // which has a circles_at_block twin.
+        if (_settings.UseCacheService && _cacheServiceClient != null && string.IsNullOrEmpty(cursor)
+            && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {
@@ -183,8 +187,12 @@ public partial class CirclesRpcModule
     {
         memberAddress = ValidateAndNormalizeAddress(memberAddress, nameof(memberAddress));
 
-        // If cache service is enabled and no cursor (first page), try cache first
-        if (_settings.UseCacheService && _cacheServiceClient != null && string.IsNullOrEmpty(cursor))
+        // If cache service is enabled and no cursor (first page), try cache first.
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to GetGroupMembershipInternal, which fully pins: it reads V_CrcV2_GroupMemberships,
+        // which has a circles_at_block twin.
+        if (_settings.UseCacheService && _cacheServiceClient != null && string.IsNullOrEmpty(cursor)
+            && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {

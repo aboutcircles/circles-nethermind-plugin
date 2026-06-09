@@ -40,8 +40,15 @@ public partial class CirclesRpcModule
             throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
         }
 
-        // If cache service is enabled, try using it first
-        if (_settings.UseCacheService && _cacheServiceClient != null)
+        // If cache service is enabled, try using it first.
+        // Block-pinned requests (X-Max-Block-Number present) bypass the head-only cache and fall
+        // through to the DB path. PARTIAL PIN: avatar existence/type/name AND the metadata CID now
+        // pin via the V_CrcV2_Avatars twin (FetchV2AvatarsAsync reads the view's latest-wins
+        // "cidV0Digest" column). The short name is still computed from an unfiltered base-table join
+        // (CrcV2_RegisterShortName) — it has no twin column yet, so that single secondary field
+        // reflects head. This is a strict improvement over the previous head-only cache result and
+        // is inert without the header.
+        if (_settings.UseCacheService && _cacheServiceClient != null && GetMaxBlockNumberFromHeader() is null)
         {
             try
             {
@@ -136,39 +143,64 @@ public partial class CirclesRpcModule
     }
 
     /// <summary>
+    /// V2 avatar info query used by the DB-fallback path (cache miss / cache failure / block-pinned).
+    ///
+    /// CID source is the view's own latest-wins "cidV0Digest" column. V_CrcV2_Avatars derives it
+    /// via DISTINCT ON (avatar) / LATERAL ORDER BY blockNumber DESC LIMIT 1, and the circles_at_block
+    /// twin adds "blockNumber &lt;= pin_block()". Reading it here — instead of a separate, unfiltered,
+    /// un-ordered LEFT JOIN on CrcV2_UpdateMetadataDigest — (1) pins the CID under X-Max-Block-Number,
+    /// (2) removes a nondeterministic multi-row join (the old join picked an arbitrary metadata row
+    /// when an avatar had several updates), and (3) aligns the DB fallback with the cache path, which
+    /// also returns the latest CID.
+    ///
+    /// Symbol source is the group's "CrcV2_RegisterGroup".symbol (a text column), matching the cache
+    /// path which serves the group's registration symbol (e.g. "gCRC") for groups and null/"" for
+    /// non-groups. The earlier code mis-sourced Symbol from "CrcV2_RegisterShortName".shortName — a
+    /// numeric column that is (a) the wrong field (the short name is not exposed by this RPC; AvatarInfo
+    /// has no ShortName) and (b) a hard crash, since reader.GetString on a numeric throws
+    /// InvalidCastException. That latent defect was dormant only because head traffic is served by the
+    /// cache; block-pinned reads (and cache-failure fallbacks) hit this DB path and 500'd for every
+    /// avatar that had a registered short name. symbol is immutable post-registration and existence is
+    /// gated by the pinned V_CrcV2_Avatars row, so the unpinned base-table join is correct. The join is
+    /// 1:1 — Hub.registerGroup reverts if the avatar is already registered, so there is exactly one
+    /// CrcV2_RegisterGroup row per group and the LEFT JOIN cannot fan out (and matches null → "" for
+    /// non-groups).
+    ///
+    /// Column order is contractual: avatar(0), name(1), type(2), symbol(3), cidV0Digest(4).
+    /// Exposed as <c>internal const</c> so a Testcontainers regression test runs the exact production
+    /// SQL (no drift) and proves the numeric-shortName crash class can never return.
+    /// </summary>
+    internal const string V2AvatarInfoSql = @"
+            SELECT a.avatar, a.name, a.type, g.symbol, a.""cidV0Digest""
+            FROM ""V_CrcV2_Avatars"" a
+            LEFT JOIN ""CrcV2_RegisterGroup"" g ON g.""group"" = a.avatar
+            WHERE a.avatar = ANY(@addresses)";
+
+    /// <summary>
     /// Fetches V2 avatar information from the database.
     /// </summary>
     private async Task<Dictionary<string, AvatarInfo>> FetchV2AvatarsAsync(string[] addresses)
     {
         var v2AvatarMap = new Dictionary<string, AvatarInfo>();
-        const string v2Sql = @"
-            SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.""metadataDigest"", rsn.""shortName"", a.""cidV0Digest""
-            FROM ""V_CrcV2_Avatars"" a
-            LEFT JOIN ""CrcV2_UpdateMetadataDigest"" rn ON rn.avatar = a.avatar
-            LEFT JOIN ""CrcV2_RegisterShortName"" rsn ON rsn.avatar = a.avatar
-            WHERE a.avatar = ANY(@addresses)";
 
         await using var connection = await CreateConnectionAsync();
-        await using var cmd = new NpgsqlCommand(v2Sql, connection);
+        await using var cmd = new NpgsqlCommand(V2AvatarInfoSql, connection);
         cmd.Parameters.AddWithValue("addresses", addresses);
         await using var reader = await cmd.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
         {
             var avatar = reader.GetString(0);
-            var avatarType = reader.GetString(3);
+            var avatarType = reader.GetString(2);
             var isHuman = avatarType == "CrcV2_RegisterHuman";
 
-            // Convert metadataDigest bytes to proper IPFS CIDv0
+            // Convert the view's latest-wins metadataDigest bytes to a proper IPFS CIDv0
             string? cid = null;
             if (!reader.IsDBNull(4))
             {
                 var metadataDigest = (byte[])reader.GetValue(4);
                 cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
             }
-
-            // cidV0Digest should be empty string per remote implementation
-            var cidV0Digest = "";
 
             v2AvatarMap[avatar] = new AvatarInfo(
                 Version: 2,
@@ -177,11 +209,11 @@ public partial class CirclesRpcModule
                 TokenId: avatar,  // For V2, tokenId is the avatar address (for ERC1155)
                 HasV1: false,
                 V1Token: null,
-                CidV0Digest: cidV0Digest,
+                CidV0Digest: "",  // empty string per remote implementation
                 CidV0: cid,
                 IsHuman: isHuman,
-                Name: reader.IsDBNull(2) ? null : reader.GetString(2),
-                Symbol: reader.IsDBNull(5) ? "" : reader.GetString(5)
+                Name: reader.IsDBNull(1) ? null : reader.GetString(1),
+                Symbol: reader.IsDBNull(3) ? "" : reader.GetString(3)
             );
         }
 

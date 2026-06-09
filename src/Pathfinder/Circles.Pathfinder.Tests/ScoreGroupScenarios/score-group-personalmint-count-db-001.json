@@ -1,0 +1,22 @@
+{
+  "id": "score-group-personalmint-count-db-001",
+  "name": "Indexed PersonalMinted count is block-pinned (19 at 46488973)",
+  "category": "score-group-mint",
+  "description": "Asserts the indexed CrcV2_ScoreGroup_PersonalMinted row count at the last active block.",
+  "block": 46488973,
+  "source": "0x93ed5a96347927ff6ff6b790f8cf5258240c321f",
+  "sink": "0x93ed5a96347927ff6ff6b790f8cf5258240c321f",
+  "shouldFindPath": true,
+  "runOnAnvil": false,
+  "skipProjection": true,
+  "dbStateAssertion": {
+    "scalarSql": "SELECT count(*) FROM \"CrcV2_ScoreGroup_PersonalMinted\" WHERE \"blockNumber\" <= 46488973",
+    "expect": "19"
+  },
+  "tags": [
+    "score-group",
+    "personal-mint",
+    "db-state",
+    "P-DB"
+  ]
+}

@@ -58,7 +58,7 @@ public sealed class CacheLoadGraph : ILoadGraph
                 AddressIdPool.IdOf(row.Account.ToLowerInvariant()),
                 AddressIdPool.IdOf(row.TokenAddress.ToLowerInvariant()),
                 row.IsWrapped,
-                string.Equals(row.CirclesType, "static", StringComparison.OrdinalIgnoreCase));
+                string.Equals(row.DemurrageMode, "static", StringComparison.OrdinalIgnoreCase));
         }
     }
 

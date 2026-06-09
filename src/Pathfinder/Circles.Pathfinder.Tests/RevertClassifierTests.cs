@@ -133,6 +133,33 @@ public class RevertClassifierTests
         Assert.That(label, Is.EqualTo("invalid_receiver"));
     }
 
+    [Test]
+    public void SoftLock_ClassifiedAsInput()
+    {
+        // ERC20TokenOfferCycle.SoftLock() — no-arg selector, bare 4 bytes. A token-offer-cycle sink
+        // rejects incoming CRC because the source over-claimed; not a pathfinder bug → category=input
+        // (excluded from the bug/error-rate alerts, mirroring invalid_receiver).
+        var (category, label) = RevertClassifier.Classify("execution reverted: 0x66ef7607");
+        Assert.That(category, Is.EqualTo("input"));
+        Assert.That(label, Is.EqualTo("soft_lock"));
+    }
+
+    [Test]
+    public void ERC20InsufficientBalance_ClassifiedAsInput()
+    {
+        // OZ ERC20InsufficientBalance(sender, balance, needed), selector 0xe450d38c — an ERC20 wrapper
+        // unwrap() asking for more than the holder's live balance (a streamed/volatile demurraged
+        // wrapper whose balance moved between graph-build and execution). Tx-builder (SDK) gap, not a
+        // pathfinder bug → category=input, kept out of the bug/error-rate alerts (mirrors soft_lock).
+        // Classify only inspects the selector, so the trailing words are placeholders (the balance and
+        // needed args are not decoded here).
+        var revert = "execution reverted: 0xe450d38c"
+            + Word("abc") + Word("1") + Word("64");
+        var (category, label) = RevertClassifier.Classify(revert);
+        Assert.That(category, Is.EqualTo("input"));
+        Assert.That(label, Is.EqualTo("wrapper_unwrap_insufficient_balance"));
+    }
+
     // ── Edge cases ──────────────────────────────────────────────────
 
     [Test]
@@ -237,5 +264,64 @@ public class RevertClassifierTests
         int codeByteOffset = 8 + 64 + 62;
         var result = RevertClassifier.ExtractCodeByte(data, "0xc14c0700", codeByteOffset);
         Assert.That(result, Is.EqualTo(expected));
+    }
+
+    // ── ERC1155InsufficientBalance decode (#74 cache-balance-drift) ──
+
+    [Test]
+    public void DecodeInsufficientBalance_ExtractsHolderTokenBalanceNeeded()
+    {
+        // ERC1155InsufficientBalance(sender, balance, needed, tokenId), selector 0x03dee4c5.
+        // tokenId is uint160(token), so the token address is the word's low 20 bytes.
+        // Low-entropy placeholder 20-byte addresses (the decoder only cares about the
+        // low-20-byte extraction, not the specific value; keeps the secret scanner quiet).
+        var holder = new string('a', 40);
+        var token = new string('b', 40);
+        var data = "0x03dee4c5" + Word(holder) + Word("1") + Word("a") + Word(token);
+
+        var info = RevertClassifier.TryDecodeInsufficientBalance(data);
+
+        Assert.That(info, Is.Not.Null);
+        Assert.That(info!.Value.Holder, Is.EqualTo("0x" + holder));
+        Assert.That(info.Value.Token, Is.EqualTo("0x" + token));
+        Assert.That(info.Value.Balance, Is.EqualTo((System.Numerics.BigInteger)1));
+        Assert.That(info.Value.Needed, Is.EqualTo((System.Numerics.BigInteger)10)); // 0xa
+    }
+
+    [Test]
+    public void DecodeInsufficientBalance_HandlesLargeUint256WithoutSignFlip()
+    {
+        // A balance whose top hex nibble is >= 8 must not be parsed as negative.
+        var big = "f".PadRight(64, 'f'); // 2^256 - 16^63-ish, top nibble 0xf
+        var data = "0x03dee4c5" + Word("aaa") + big + Word("1") + Word("bbb");
+
+        var info = RevertClassifier.TryDecodeInsufficientBalance(data);
+
+        Assert.That(info, Is.Not.Null);
+        Assert.That(info!.Value.Balance.Sign, Is.EqualTo(1)); // strictly positive
+    }
+
+    [Test]
+    public void DecodeInsufficientBalance_NullForWrongSelectorOrTruncated()
+    {
+        Assert.That(RevertClassifier.TryDecodeInsufficientBalance(AddressUintRevert("aaa", "bbb", "21")), Is.Null);
+        Assert.That(RevertClassifier.TryDecodeInsufficientBalance(null), Is.Null);
+        Assert.That(RevertClassifier.TryDecodeInsufficientBalance(""), Is.Null);
+        Assert.That(RevertClassifier.TryDecodeInsufficientBalance("0x03dee4c5" + Word("aaa")), Is.Null); // too short
+    }
+
+    // ── DriftBucket boundaries (feed the circles_canary_balance_drift_total metric label) ──
+
+    [TestCase(1, 1, "le_1x")]
+    [TestCase(3, 1, "ge_2x")]
+    [TestCase(10, 1, "ge_10x")]
+    [TestCase(100, 1, "ge_100x")]
+    [TestCase(5, 0, "zero_balance")]
+    [TestCase(0, 0, "none")]
+    public void DriftBucket_BucketsByNeededOverOnChainRatio(int needed, int onChain, string expected)
+    {
+        var bucket = RevertClassifier.DriftBucket(
+            (System.Numerics.BigInteger)needed, (System.Numerics.BigInteger)onChain);
+        Assert.That(bucket, Is.EqualTo(expected));
     }
 }

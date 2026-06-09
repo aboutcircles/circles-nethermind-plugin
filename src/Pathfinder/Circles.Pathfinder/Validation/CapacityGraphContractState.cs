@@ -10,6 +10,7 @@ namespace Circles.Pathfinder.Validation;
 public sealed class CapacityGraphContractState : IContractState
 {
     private readonly CapacityGraph _graph;
+    private Dictionary<(int Holder, int Token), long>? _balanceIndex;
 
     public CapacityGraphContractState(CapacityGraph graph)
     {
@@ -181,5 +182,36 @@ public sealed class CapacityGraphContractState : IContractState
         return _graph.ScoreGroupMintLimits.TryGetValue((groupId, collateralId), out var limit)
             ? limit
             : null;
+    }
+
+    /// <summary>
+    /// Returns the graph's view of (holder, token) bare-ERC1155 balance in graph
+    /// units (wei / 10^12). Backed by the holder→pool(token) edges built in
+    /// GraphFactory.AddHolderToTokenEdges_Pooled. Lazy O(|E|) one-pass index;
+    /// subsequent lookups are O(1).
+    /// </summary>
+    public long? GetHolderBalance(string holder, string token)
+    {
+        if (!AddressIdPool.TryIdOf(holder.ToLowerInvariant(), out int holderId))
+            return null;
+        if (!AddressIdPool.TryIdOf(token.ToLowerInvariant(), out int tokenId))
+            return null;
+
+        if (_balanceIndex == null)
+        {
+            var idx = new Dictionary<(int Holder, int Token), long>();
+            foreach (var e in _graph.Edges)
+            {
+                if (!AddressIdPool.IsBalanceNode(e.To))
+                    continue;
+                var toName = AddressIdPool.StringOf(e.To);
+                if (!toName.StartsWith("tpool-", StringComparison.Ordinal))
+                    continue;
+                idx[(e.From, e.Token)] = e.InitialCapacity;
+            }
+            _balanceIndex = idx;
+        }
+
+        return _balanceIndex.TryGetValue((holderId, tokenId), out var cap) ? cap : null;
     }
 }

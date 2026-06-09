@@ -51,6 +51,11 @@ public class HubContractValidatorTests
         public Dictionary<(string Group, string Collateral), long> ScoreGroupMintLimits { get; set; }
             = new();
 
+        // (holder, token) → balance in graph units (wei / 10^12). Missing keys map to
+        // GetHolderBalance() == null, which Rule 13 treats as zero (flagged when any outflow).
+        public Dictionary<(string Holder, string Token), long> HolderBalances { get; set; }
+            = new();
+
         // (account, operator) tuples lowercased. Membership grants approval — but only when
         // StrictApprovals is true. Default behavior is permissive (returns true regardless),
         // matching the IContractState default so existing tests don't have to seed anything.
@@ -58,6 +63,11 @@ public class HubContractValidatorTests
         public bool StrictApprovals { get; set; }
 
         public string? RouterAddress => Router;
+        // IsRouter mirrors production: ScoreRouters in production are added to
+        // RouterNodes via SetGroupRouter → SetRouter (CapacityGraph.cs:123,133),
+        // so a score router satisfies BOTH IsRouter and IsScoreRouter. The mock
+        // preserves that coupling so existing ApproveCRCRequired tests still
+        // exercise the score-router→ApproveCRCRequired path via IsRouter(to).
         public bool IsRouter(string address) =>
             (Router != null && string.Equals(Router, address, StringComparison.OrdinalIgnoreCase))
             || Routers.Contains(address)
@@ -88,6 +98,14 @@ public class HubContractValidatorTests
         {
             if (!StrictApprovals) return true;
             return Approvals.Contains((account.ToLowerInvariant(), @operator.ToLowerInvariant()));
+        }
+
+        public long? GetHolderBalance(string holder, string token)
+        {
+            return HolderBalances.TryGetValue(
+                (holder.ToLowerInvariant(), token.ToLowerInvariant()), out var bal)
+                ? bal
+                : null;
         }
     }
 
@@ -1299,5 +1317,212 @@ public class HubContractValidatorTests
         Assert.That(violations, Is.Empty,
             "Wrapper-keyed lookup must succeed without wrapper resolution; " +
             "if Rule 12 resolved to Alice, the lookup would miss and fail-close.");
+    }
+
+    // ═══════════════════════════════════════════
+    // Rule 13: HolderBalanceAvailable (observe-only warning)
+    // ═══════════════════════════════════════════
+
+    [Test]
+    public void Rule13_HolderBalanceAvailable_NoViolation_WhenOutflowWithinBalance()
+    {
+        var state = DefaultState();
+        // Alice has 5 graph units = 5e12 wei of TokenA (its own token).
+        state.HolderBalances[(Alice.ToLowerInvariant(), Alice.ToLowerInvariant())] = 5;
+
+        // 3 wei outflow << 5e12 wei available
+        var steps = new[] { Step(Alice, Bob, Alice, "3") };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateHolderBalanceAvailable(steps, state, violations);
+
+        Assert.That(violations, Is.Empty);
+    }
+
+    [Test]
+    public void Rule13_HolderBalanceAvailable_FlagsOvershoot_AsWarning()
+    {
+        var state = DefaultState();
+        // Alice has 1 graph unit = 1e12 wei of TokenA.
+        state.HolderBalances[(Alice.ToLowerInvariant(), Alice.ToLowerInvariant())] = 1;
+
+        // Demand 7.3e16 wei → 73,000× over-ask (matches the 88fd976f shape).
+        var steps = new[] { Step(Alice, Bob, Alice, "73000000000000000") };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateHolderBalanceAvailable(steps, state, violations);
+
+        Assert.That(violations, Has.Count.EqualTo(1));
+        Assert.That(violations[0].Severity, Is.EqualTo("warning"),
+            "Rule must use warning severity so FindPathHandler does NOT replace the response.");
+        Assert.That(violations[0].Rule, Is.EqualTo("HolderBalanceAvailable"));
+        Assert.That(violations[0].Message, Does.Contain("overshoot"));
+        Assert.That(violations[0].Message, Does.Contain(Alice.ToLowerInvariant()));
+    }
+
+    [Test]
+    public void Rule13_HolderBalanceAvailable_SumsAcrossEdgesPerHolderToken()
+    {
+        var state = DefaultState();
+        // Alice has 1 graph unit = 1e12 wei of TokenA. Two edges each within balance
+        // individually but together overshoot.
+        state.HolderBalances[(Alice.ToLowerInvariant(), Alice.ToLowerInvariant())] = 1;
+
+        var steps = new[]
+        {
+            Step(Alice, Bob, Alice, "800000000000"),    // 0.8e12 wei (within)
+            Step(Alice, Carol, Alice, "800000000000"),  // another 0.8e12 wei
+            // Aggregate outflow = 1.6e12 wei > 1e12 wei available
+        };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateHolderBalanceAvailable(steps, state, violations);
+
+        Assert.That(violations, Has.Count.EqualTo(1),
+            "Per-edge totals are summed before comparing to the cached balance.");
+    }
+
+    [Test]
+    public void Rule13_HolderBalanceAvailable_SkipsGroupSenders()
+    {
+        var state = DefaultState();
+        state.Groups.Add(GroupA);
+        // GroupA has NO holder balance entry — but as a group, it can mint unlimited.
+
+        var steps = new[] { Step(GroupA, Bob, GroupA, "9999999999999999999999999") };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateHolderBalanceAvailable(steps, state, violations);
+
+        Assert.That(violations, Is.Empty,
+            "Group senders are unbounded mint sources; no balance check applies.");
+    }
+
+    [Test]
+    public void Rule13_HolderBalanceAvailable_SkipsRouterSenders()
+    {
+        var state = DefaultState();
+        // Router senders are proxies; their flow is gated by ScoreGroupMintLimits (Rule 12),
+        // not by holder balance.
+        var steps = new[] { Step(Router, GroupA, Alice, "9999999999999999999999999") };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateHolderBalanceAvailable(steps, state, violations);
+
+        Assert.That(violations, Is.Empty);
+    }
+
+    [Test]
+    public void Rule13_HolderBalanceAvailable_UnknownBalance_FlagsAsWarning()
+    {
+        var state = DefaultState();
+        // Alice has NO entry for TokenA in HolderBalances — treated as zero.
+
+        var steps = new[] { Step(Alice, Bob, Alice, "1000000000000") };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateHolderBalanceAvailable(steps, state, violations);
+
+        Assert.That(violations, Has.Count.EqualTo(1));
+        Assert.That(violations[0].Severity, Is.EqualTo("warning"));
+        Assert.That(violations[0].Message, Does.Contain("no balance entry"));
+    }
+
+    [Test]
+    public void Rule13_HolderBalanceAvailable_LooksUpUnderWrapperKeyNotUnderlying()
+    {
+        // Production: GraphFactory.AddHolderToTokenEdges_Pooled stores wrapped
+        // balances under the WRAPPER token id (bn.Token == wrapper_id when
+        // bn.IsWrapped). The rule must mirror that keying — looking up by raw
+        // token id, NOT resolving wrapper→underlying. Resolving would always
+        // miss the wrapped-balance entry and produce a false-positive
+        // "no balance entry" warning on every withWrap=true path.
+        var state = DefaultState();
+        var wrapper = "0x0000000000000000000000000000000000000777";
+        state.Wrappers[wrapper] = Alice;
+
+        // Bob holds 5 graph units keyed under the WRAPPER (matches production).
+        state.HolderBalances[(Bob.ToLowerInvariant(), wrapper.ToLowerInvariant())] = 5;
+
+        // Step uses wrapper as TokenOwner; rule should find the balance under
+        // the wrapper key (no resolution), 2e12 wei << 5e12 wei available.
+        var steps = new[] { Step(Bob, Carol, wrapper, "2000000000000") };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateHolderBalanceAvailable(steps, state, violations);
+
+        Assert.That(violations, Is.Empty,
+            "Wrapper balances are keyed under the wrapper id by AddHolderToTokenEdges_Pooled; " +
+            "the rule must look up under the wrapper key, not resolve to underlying.");
+    }
+
+    [Test]
+    public void Rule13_HolderBalanceAvailable_BalanceUnderUnderlyingOnly_FlagsViolation()
+    {
+        // Negative case for the F4 invariant: a balance recorded only under the
+        // underlying avatar (NOT the wrapper) must NOT be found when the step
+        // references the wrapper id. No cross-key fallback exists in production;
+        // the rule must flag the missing wrapper-keyed entry to surface the
+        // genuine "no wrapped balance available" condition.
+        var state = DefaultState();
+        var wrapper = "0x0000000000000000000000000000000000000777";
+        state.Wrappers[wrapper] = Alice;
+
+        // Balance only under the underlying — wrapper-keyed lookup must miss.
+        state.HolderBalances[(Bob.ToLowerInvariant(), Alice.ToLowerInvariant())] = 5;
+
+        var steps = new[] { Step(Bob, Carol, wrapper, "2000000000000") };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateHolderBalanceAvailable(steps, state, violations);
+
+        Assert.That(violations, Has.Count.EqualTo(1));
+        Assert.That(violations[0].Severity, Is.EqualTo("warning"));
+        Assert.That(violations[0].Message, Does.Contain("no balance entry"));
+    }
+
+    [Test]
+    public void Rule13_HolderBalanceAvailable_SkipsScoreRouterSenders()
+    {
+        // Rule 13 skips score-router senders (proxies, not real holders).
+        // Production couples IsRouter + IsScoreRouter for score routers
+        // (CapacityGraph.SetGroupRouter → SetRouter adds to RouterNodes), so
+        // both predicates fire in real life. Rule 13 carries an explicit
+        // IsScoreRouter skip after the IsRouter skip as defensive coverage —
+        // this test enforces "score-router senders are exempt" end-to-end,
+        // regardless of which predicate ends up matching.
+        var state = DefaultState();
+        var scoreRouterOnly = "0x000000000000000000000000000000000000005c";
+        state.ScoreRouters.Add(scoreRouterOnly);
+        // ScoreRouter has NO holder balance entry — must be exempt anyway.
+
+        var steps = new[] { Step(scoreRouterOnly, GroupA, Alice, "9999999999999999999999999") };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateHolderBalanceAvailable(steps, state, violations);
+
+        Assert.That(violations, Is.Empty,
+            "Score-router senders are proxies; their flow is gated by ScoreGroupMintLimits (Rule 12), " +
+            "not by holder balance.");
+    }
+
+    [Test]
+    public void Rule13_HolderBalanceAvailable_UnparseableValue_EmitsWarning()
+    {
+        // F5: parse failure must emit a warning so corrupted Value strings show
+        // up in metrics instead of silently dropping out of the aggregation.
+        var state = DefaultState();
+        state.HolderBalances[(Alice.ToLowerInvariant(), Alice.ToLowerInvariant())] = 5;
+
+        var steps = new[] { Step(Alice, Bob, Alice, "not-a-number") };
+
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateHolderBalanceAvailable(steps, state, violations);
+
+        Assert.That(violations, Has.Count.EqualTo(1));
+        Assert.That(violations[0].Severity, Is.EqualTo("warning"));
+        Assert.That(violations[0].Rule, Is.EqualTo("HolderBalanceAvailable"));
+        Assert.That(violations[0].Message, Does.Contain("unparseable"));
+        Assert.That(violations[0].EdgeIndex, Is.EqualTo(0));
     }
 }

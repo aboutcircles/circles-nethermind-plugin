@@ -534,6 +534,11 @@ public class IntegrationTests : IAsyncLifetime
         var state = new CacheServiceState(rollbackCapacity: 8);
         var caches = new CacheContainer(rollbackCapacity: 8);
         caches.Groups.Add(1, group, ("Test Group", "0xmint", "TG"));
+        // The trustee must be a registered avatar for ProcessV2TrustAsync to record the membership
+        // (the registration gate added to NotificationListenerService.V2Trust.cs:68). Register the
+        // included member so the group→member membership is upserted; the excluded member stays
+        // unregistered and is excluded by trust direction (its only edge is member→group).
+        caches.V2Avatars.Add(block, includedMember, ("CrcV2_RegisterHuman", 12345));
 
         await using var dataSource = NpgsqlDataSource.Create(_connectionString!);
         var listener = new TestableNotificationListenerService(settings, state, caches, dataSource);
@@ -646,6 +651,139 @@ public class IntegrationTests : IAsyncLifetime
         worker1Value.Should().Be("before");
         worker2Value.Should().Be("before");
         latestValue.Should().Be("after");
+    }
+
+    [RequiresDockerFact]
+    public async Task NotificationListener_V2_WrapperBlockBeforeErc1155Block_InSameRange_DoesNotThrowAndBalancesCorrect()
+    {
+        // Repro for the cross-handler block-monotonicity crash.
+        // ProcessV2EventsAsync runs the ERC1155 transfer handler then the ERC20-wrapper transfer
+        // handler against the SAME V2BalancesByAccountAndToken cache. When a wrapper transfer sits
+        // at a LOWER block than the highest ERC1155 transfer block in the same range, the wrapper
+        // handler's per-block flush calls RollbackCache.Add with a block < the cache's last block,
+        // which throws "Block number must be monotonically increasing". Wrap/unwrap-heavy avatars
+        // (whose 1155 and wrapper transfers interleave across blocks in one batch) trigger this.
+        var avatar = "0x00000000000000000000000000000000000000a7";  // 1155 token owner
+        var wrapper = "0x00000000000000000000000000000000000000b7"; // erc20 wrapper contract
+        var holder = "0x00000000000000000000000000000000000000c7";
+        var zero = "0x0000000000000000000000000000000000000000";
+        const long wrapperBlock = 9400;  // LOWER
+        const long erc1155Block = 9401;   // HIGHER
+        var wei = BigInteger.Parse("5000000000000000000"); // 5 * 10^18 = 5 tokens
+
+        await using (var conn = new NpgsqlConnection(_connectionString))
+        {
+            await conn.OpenAsync();
+
+            // Register the avatar (validates its 1155 token) and deploy a wrapper (validates the
+            // wrapper token) at the lower block — both are processed before transfers in ProcessV2EventsAsync.
+            await ExecAsync(conn,
+                @"INSERT INTO ""CrcV2_RegisterHuman"" (""blockNumber"",""timestamp"",""transactionIndex"",""logIndex"",""transactionHash"",""avatar"",""inviter"")
+                  VALUES (@b,1,0,0,'0xrh',@a,'0x0')",
+                ("b", wrapperBlock), ("a", avatar));
+            await ExecAsync(conn,
+                @"INSERT INTO ""CrcV2_ERC20WrapperDeployed"" (""blockNumber"",""timestamp"",""transactionIndex"",""logIndex"",""transactionHash"",avatar,""erc20Wrapper"",""circlesType"")
+                  VALUES (@b,1,0,1,'0xwd',@a,@w,0)",
+                ("b", wrapperBlock), ("a", avatar), ("w", wrapper));
+
+            // Wrapper transfer (mint to holder) at the LOWER block.
+            await ExecAsync(conn,
+                @"INSERT INTO ""CrcV2_Erc20WrapperTransfer"" (""blockNumber"",""timestamp"",""transactionIndex"",""logIndex"",""transactionHash"",""tokenAddress"",""from"",""to"",amount)
+                  VALUES (@b,1,0,2,'0xwt',@w,@z,@h,@amt)",
+                ("b", wrapperBlock), ("w", wrapper), ("z", zero), ("h", holder), ("amt", wei));
+
+            // ERC1155 transfer (mint to holder) at the HIGHER block.
+            await ExecAsync(conn,
+                @"INSERT INTO ""CrcV2_TransferSingle"" (""blockNumber"",""timestamp"",""transactionIndex"",""logIndex"",""transactionHash"",""operator"",""from"",""to"",id,value,""tokenAddress"")
+                  VALUES (@b,1,0,0,'0xts','0xop',@z,@h,1,@amt,@t)",
+                ("b", erc1155Block), ("z", zero), ("h", holder), ("amt", wei), ("t", avatar));
+        }
+
+        var settings = new CacheServiceSettings { PostgresConnectionString = _connectionString! };
+        var state = new CacheServiceState(rollbackCapacity: 12);
+        var caches = new CacheContainer(rollbackCapacity: 12);
+        await using var dataSource = NpgsqlDataSource.Create(_connectionString!);
+        var listener = new TestableNotificationListenerService(settings, state, caches, dataSource);
+
+        // Before the fix this throws ArgumentException (monotonic violation). After: succeeds.
+        var act = async () => await listener.ProcessRangeAsync(wrapperBlock, erc1155Block, CancellationToken.None);
+        await act.Should().NotThrowAsync();
+
+        // Both balances must be present and correct (disjoint token namespaces).
+        caches.V2BalancesByAccountAndToken.TryGetValue($"{holder}:{avatar}", out var erc1155Bal).Should().BeTrue();
+        erc1155Bal.Should().Be(5m);
+        caches.V2BalancesByAccountAndToken.TryGetValue($"{holder}:{wrapper}", out var wrapperBal).Should().BeTrue();
+        wrapperBal.Should().Be(5m);
+    }
+
+    [RequiresDockerFact]
+    public async Task NotificationListener_V2_SenderDebits_AcrossInterleavedBlocks_BalancesCorrect()
+    {
+        // Exercises the merged path's SENDER-DEBIT branch (from != 0x0) for BOTH token namespaces
+        // across interleaved blocks, with wrapper transfers at a lower block than 1155 transfers
+        // (the monotonicity-crash trigger). Verifies the debit arithmetic the #74 drift concerns.
+        var avatar = "0x00000000000000000000000000000000000000a8";  // 1155 token owner
+        var wrapper = "0x00000000000000000000000000000000000000b8"; // erc20 wrapper contract
+        var holder = "0x00000000000000000000000000000000000000c8";
+        var recipient = "0x00000000000000000000000000000000000000d8";
+        var zero = "0x0000000000000000000000000000000000000000";
+        var ten = BigInteger.Parse("10000000000000000000"); // 10
+        var three = BigInteger.Parse("3000000000000000000"); // 3
+        var four = BigInteger.Parse("4000000000000000000"); // 4
+
+        await using (var conn = new NpgsqlConnection(_connectionString))
+        {
+            await conn.OpenAsync();
+            // Registration + wrapper deploy at block 9499 (before transfers).
+            await ExecAsync(conn,
+                @"INSERT INTO ""CrcV2_RegisterHuman"" (""blockNumber"",""timestamp"",""transactionIndex"",""logIndex"",""transactionHash"",""avatar"",""inviter"")
+                  VALUES (9499,1,0,0,'0xrh',@a,'0x0')", ("a", avatar));
+            await ExecAsync(conn,
+                @"INSERT INTO ""CrcV2_ERC20WrapperDeployed"" (""blockNumber"",""timestamp"",""transactionIndex"",""logIndex"",""transactionHash"",avatar,""erc20Wrapper"",""circlesType"")
+                  VALUES (9499,1,0,1,'0xwd',@a,@w,0)", ("a", avatar), ("w", wrapper));
+
+            // Block 9500 mints: 1155 to holder, wrapper to holder.
+            await ExecAsync(conn,
+                @"INSERT INTO ""CrcV2_TransferSingle"" (""blockNumber"",""timestamp"",""transactionIndex"",""logIndex"",""transactionHash"",""operator"",""from"",""to"",id,value,""tokenAddress"")
+                  VALUES (9500,1,0,0,'0xm1','0xop',@z,@h,1,@v,@t)", ("z", zero), ("h", holder), ("v", ten), ("t", avatar));
+            await ExecAsync(conn,
+                @"INSERT INTO ""CrcV2_Erc20WrapperTransfer"" (""blockNumber"",""timestamp"",""transactionIndex"",""logIndex"",""transactionHash"",""tokenAddress"",""from"",""to"",amount)
+                  VALUES (9500,1,0,1,'0xmw',@w,@z,@h,@v)", ("w", wrapper), ("z", zero), ("h", holder), ("v", ten));
+
+            // Block 9501 sends (DEBITS from holder): 1155 H->R (3), wrapper H->R (4).
+            await ExecAsync(conn,
+                @"INSERT INTO ""CrcV2_TransferSingle"" (""blockNumber"",""timestamp"",""transactionIndex"",""logIndex"",""transactionHash"",""operator"",""from"",""to"",id,value,""tokenAddress"")
+                  VALUES (9501,1,0,0,'0xs1','0xop',@h,@r,1,@v,@t)", ("h", holder), ("r", recipient), ("v", three), ("t", avatar));
+            await ExecAsync(conn,
+                @"INSERT INTO ""CrcV2_Erc20WrapperTransfer"" (""blockNumber"",""timestamp"",""transactionIndex"",""logIndex"",""transactionHash"",""tokenAddress"",""from"",""to"",amount)
+                  VALUES (9501,1,0,1,'0xsw',@w,@h,@r,@v)", ("w", wrapper), ("h", holder), ("r", recipient), ("v", four));
+        }
+
+        var settings = new CacheServiceSettings { PostgresConnectionString = _connectionString! };
+        var state = new CacheServiceState(rollbackCapacity: 12);
+        var caches = new CacheContainer(rollbackCapacity: 12);
+        await using var dataSource = NpgsqlDataSource.Create(_connectionString!);
+        var listener = new TestableNotificationListenerService(settings, state, caches, dataSource);
+
+        var act = async () => await listener.ProcessRangeAsync(9499, 9501, CancellationToken.None);
+        await act.Should().NotThrowAsync();
+
+        // Holder debited on both tokens; recipient credited; arithmetic correct across the merged pass.
+        caches.V2BalancesByAccountAndToken.TryGetValue($"{holder}:{avatar}", out var hA).Should().BeTrue();
+        hA.Should().Be(7m); // 10 - 3
+        caches.V2BalancesByAccountAndToken.TryGetValue($"{recipient}:{avatar}", out var rA).Should().BeTrue();
+        rA.Should().Be(3m);
+        caches.V2BalancesByAccountAndToken.TryGetValue($"{holder}:{wrapper}", out var hW).Should().BeTrue();
+        hW.Should().Be(6m); // 10 - 4
+        caches.V2BalancesByAccountAndToken.TryGetValue($"{recipient}:{wrapper}", out var rW).Should().BeTrue();
+        rW.Should().Be(4m);
+    }
+
+    private static async Task ExecAsync(NpgsqlConnection conn, string sql, params (string Name, object Value)[] ps)
+    {
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        foreach (var (name, value) in ps) cmd.Parameters.AddWithValue(name, value);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     private sealed class TestableNotificationListenerService : NotificationListenerService

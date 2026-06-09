@@ -121,6 +121,79 @@ internal sealed class FindPathHandler(
         value?.Replace("\r", string.Empty).Replace("\n", string.Empty);
 
     /// <summary>
+    /// Comma-joins a token-filter list for the structured request log (CR/LF stripped per element),
+    /// or "" when null/empty. These filters materially change which path the solver builds (e.g.
+    /// group-targeted payments), so they must be logged for the canary replay to reconstruct the
+    /// exact request shape. Comma-separated so the value stays a single space-delimited token.
+    /// </summary>
+    private static string SanitizeTokenList(IReadOnlyList<string>? tokens) =>
+        tokens is not { Count: > 0 }
+            ? string.Empty
+            : string.Join(",", tokens.Select(t => SanitizeForLog(t)));
+
+    /// <summary>
+    /// Count of a simulation-override list for the structured request log (0 when null/empty).
+    /// A non-zero count means the request injected what-if balances/trusts/consent the solver used
+    /// but the log can't carry verbatim, so the canary replay can't faithfully reconstruct it — the
+    /// replay classifies such requests as skipped rather than as a (false) maxFlow divergence.
+    /// </summary>
+    private static int SimCount<T>(IReadOnlyCollection<T>? list) => list?.Count ?? 0;
+
+    /// <summary>
+    /// Rules a simulated request can legitimately trip because the injected what-if entity isn't
+    /// real on-chain: an unregistered hypothetical avatar (AvatarRegistration), an unregistered
+    /// hypothetical group (GroupRegistration), or a flow permitted only via a simulated trust/consent
+    /// (IsPermittedFlow). ONLY these are eligible for simulated="true" (alert-excluded). Every other
+    /// rule — FlowConservation, CollateralBeforeMint, VertexOrdering, NoZeroFlow, AddressFormat,
+    /// TokenIdValidity, ScoreGroupMintLimitsHonored, ValidatorException — validates the solver's own
+    /// output and is a real pathfinder bug regardless of injected state, so it always pages.
+    /// </summary>
+    private static readonly HashSet<string> SimulatedExcusableRules =
+        new(StringComparer.Ordinal) { "AvatarRegistration", "GroupRegistration", "IsPermittedFlow" };
+
+    /// <summary>
+    /// Records the path-audit violation + blocked counters for a rejected response, tagging each
+    /// series with <c>simulated</c> ("true"/"false"). The exclusion is gated PER-RULE, not per
+    /// request: a violation is tagged simulated="true" (alert-excluded) only when the request
+    /// injected what-if state AND the rule is in <see cref="SimulatedExcusableRules"/>. This way a
+    /// frontend what-if preview (e.g. AvatarRegistration on a hypothetical source) stops paging,
+    /// but a genuine solver-integrity bug riding on a simulated request (e.g. FlowConservation)
+    /// still pages. The aggregate "any" series is excused only when every violated rule is excusable
+    /// and there is no validator exception — otherwise a real bug could hide behind a true-tagged
+    /// "any". Mirrors the canary's category=simulation exclusion. Violations and blocked increment
+    /// 1:1 (the safety net always replaces a violating response with the empty path).
+    /// </summary>
+    internal static void RecordPathAuditViolation(MaxFlowResponse mfr, bool simulated)
+    {
+        void Bump(string rule)
+        {
+            var sim = simulated && SimulatedExcusableRules.Contains(rule) ? "true" : "false";
+            FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule, sim).Inc();
+            FindPathMetrics.PathAuditBlockedTotal.WithLabels(rule, sim).Inc();
+        }
+
+        // "any" is excused only when the whole rejection is attributable to simulated input —
+        // every violated rule excusable and no validator exception. A mixed rejection (one
+        // excusable rule + one integrity rule) keeps "any" simulated="false" so it still pages.
+        bool allExcusable = simulated
+                            && !mfr.ValidatorException
+                            && mfr.ValidationViolationRules is { Count: > 0 }
+                            && mfr.ValidationViolationRules.All(SimulatedExcusableRules.Contains);
+        var anySim = allExcusable ? "true" : "false";
+        FindPathMetrics.PathAuditViolationsTotal.WithLabels("any", anySim).Inc();
+        FindPathMetrics.PathAuditBlockedTotal.WithLabels("any", anySim).Inc();
+
+        if (mfr.ValidationViolationRules != null)
+        {
+            foreach (var rule in mfr.ValidationViolationRules)
+                Bump(rule);
+        }
+
+        if (mfr.ValidatorException)
+            Bump("ValidatorException"); // never excusable → always simulated="false"
+    }
+
+    /// <summary>
     /// Extracts X-Max-Block-Number header from the current HTTP request, if present.
     /// When set, the pathfinder uses a historical graph at that block instead of the live graph.
     /// </summary>
@@ -212,6 +285,16 @@ internal sealed class FindPathHandler(
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
 
+                // A request carrying what-if overrides (simulatedBalances/Trusts/ConsentedAvatars)
+                // can legitimately trip input-dependent audit rules (AvatarRegistration etc.) on a
+                // hypothetical, not-yet-registered source the frontend is previewing. hasSimulated
+                // lets RecordPathAuditViolation tag those excusable violations simulated="true" so
+                // alerting excludes previews — solver-integrity rules still page. (Also reused below
+                // to skip the on-chain canary.)
+                bool hasSimulated = (request.SimulatedBalances?.Count > 0)
+                                    || (request.SimulatedTrusts?.Count > 0)
+                                    || (request.SimulatedConsentedAvatars?.Count > 0);
+
                 // Path audit: when HubContractValidator detected Hub.sol rule violations OR
                 // threw an unexpected exception, the produced path is unsafe (would either
                 // revert on-chain or could not be vouched for). Record metrics, log, then
@@ -220,29 +303,15 @@ internal sealed class FindPathHandler(
                 // MaxFlowResponse — never errors.
                 if (mfr.ValidationErrors > 0 || mfr.ValidatorException)
                 {
-                    FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
-                    if (mfr.ValidationViolationRules != null)
-                    {
-                        foreach (var rule in mfr.ValidationViolationRules)
-                            FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule).Inc();
-                    }
-                    if (mfr.ValidatorException)
-                        FindPathMetrics.PathAuditViolationsTotal.WithLabels("ValidatorException").Inc();
-
                     log.LogError(
                         "Path audit: validator rejected response — replacing path with empty response. " +
-                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}, ValidatorException={ValidatorException}",
-                        safeSource, safeSink, mfr.GraphBlock,
-                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors, mfr.ValidatorException);
+                        "Source={Source}, Sink={Sink}, Block={Block}, TargetFlow={TargetFlow}, Steps={Steps}, " +
+                        "Errors={Errors}, ValidatorException={ValidatorException}, simulated={Simulated}, reqId={ReqId}",
+                        safeSource, safeSink, mfr.GraphBlock, safeTargetFlow,
+                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors, mfr.ValidatorException,
+                        hasSimulated, mfr.ReqId ?? "-");
 
-                    FindPathMetrics.PathAuditBlockedTotal.WithLabels("any").Inc();
-                    if (mfr.ValidationViolationRules != null)
-                    {
-                        foreach (var rule in mfr.ValidationViolationRules)
-                            FindPathMetrics.PathAuditBlockedTotal.WithLabels(rule).Inc();
-                    }
-                    if (mfr.ValidatorException)
-                        FindPathMetrics.PathAuditBlockedTotal.WithLabels("ValidatorException").Inc();
+                    RecordPathAuditViolation(mfr, hasSimulated);
 
                     var emptyResponse = new MaxFlowResponse("0", new List<TransferPathStep>(), null)
                     {
@@ -251,13 +320,23 @@ internal sealed class FindPathHandler(
                         ConsentDroppedPaths = mfr.ConsentDroppedPaths,
                         ValidationErrors = mfr.ValidationErrors,
                         ValidationViolationRules = mfr.ValidationViolationRules,
-                        ValidatorException = mfr.ValidatorException
+                        ValidatorException = mfr.ValidatorException,
+                        ValidationWarnings = mfr.ValidationWarnings,
+                        ValidationWarningRules = mfr.ValidationWarningRules,
                     };
                     result = emptyResponse;
                     mfr = emptyResponse;
                 }
                 if (mfr.ValidatorException)
                     FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
+
+                // Warning-severity violations: observe-only, response NOT replaced.
+                // Per-rule counter for alerting; the original response is preserved.
+                if (mfr.ValidationWarnings > 0 && mfr.ValidationWarningRules != null)
+                {
+                    foreach (var rule in mfr.ValidationWarningRules)
+                        FindPathMetrics.PathAuditWarningsTotal.WithLabels(rule).Inc();
+                }
 
                 // Simulation canary: enqueue for async on-chain validation.
                 // Skip when:
@@ -268,10 +347,6 @@ internal sealed class FindPathHandler(
                 // withWrap=true is handled via eth_simulateV1 bundle inside the canary:
                 // source's Wrapper.unwrap() calls run before operateFlowMatrix in a single
                 // shared-state simulation, mirroring how the SDK builds the on-chain tx.
-                bool hasSimulated = (request.SimulatedBalances?.Count > 0)
-                                    || (request.SimulatedTrusts?.Count > 0)
-                                    || (request.SimulatedConsentedAvatars?.Count > 0);
-
                 bool sourceUnsimulatable = false;
                 if (!string.IsNullOrEmpty(request.Source)
                     && AddressIdPool.TryIdOf(request.Source.ToLowerInvariant(), out int sourceId))
@@ -343,21 +418,29 @@ internal sealed class FindPathHandler(
                 }
 
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} simBalances={SimBalances} simTrusts={SimTrusts} simConsented={SimConsented} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     mfr.MaxFlow, mfr.Transfers?.Count ?? 0, request.MaxTransfers ?? -1,
                     graphBlock, sw.ElapsedMilliseconds, 200,
-                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+                    request.WithWrap ?? false, request.QuantizedMode ?? false,
+                    SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
+                    SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    SimCount(request.SimulatedBalances), SimCount(request.SimulatedTrusts), SimCount(request.SimulatedConsentedAvatars),
+                    mfr.ReqId ?? "-");
             }
             else
             {
                 // /findMaxFlow returns long, not MaxFlowResponse
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} simBalances={SimBalances} simTrusts={SimTrusts} simConsented={SimConsented} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     result, 0, request.MaxTransfers ?? -1,
                     graphBlock, sw.ElapsedMilliseconds, 200,
-                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+                    request.WithWrap ?? false, request.QuantizedMode ?? false,
+                    SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
+                    SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    SimCount(request.SimulatedBalances), SimCount(request.SimulatedTrusts), SimCount(request.SimulatedConsentedAvatars),
+                    "-");
             }
 
             return Results.Ok(result);
@@ -471,33 +554,26 @@ internal sealed class FindPathHandler(
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
 
+                // Input-dependent rules can be excused per-rule when simulated (see live path);
+                // solver-integrity rules still page. Historical (X-Max-Block-Number) requests can
+                // carry simulatedBalances/Trusts too.
+                bool hasSimulated = (request.SimulatedBalances?.Count > 0)
+                                    || (request.SimulatedTrusts?.Count > 0)
+                                    || (request.SimulatedConsentedAvatars?.Count > 0);
+
                 // Track Hub.sol rule violations or validator exceptions (same as live path)
                 // — and replace with empty.
                 if (mfr.ValidationErrors > 0 || mfr.ValidatorException)
                 {
-                    FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
-                    if (mfr.ValidationViolationRules != null)
-                    {
-                        foreach (var rule in mfr.ValidationViolationRules)
-                            FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule).Inc();
-                    }
-                    if (mfr.ValidatorException)
-                        FindPathMetrics.PathAuditViolationsTotal.WithLabels("ValidatorException").Inc();
-
                     log.LogError(
                         "Historical path audit: validator rejected response — replacing path with empty response. " +
-                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}, ValidatorException={ValidatorException}",
-                        safeSource, safeSink, blockNumber,
-                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors, mfr.ValidatorException);
+                        "Source={Source}, Sink={Sink}, Block={Block}, TargetFlow={TargetFlow}, Steps={Steps}, " +
+                        "Errors={Errors}, ValidatorException={ValidatorException}, simulated={Simulated}, reqId={ReqId}",
+                        safeSource, safeSink, blockNumber, safeTargetFlow,
+                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors, mfr.ValidatorException,
+                        hasSimulated, mfr.ReqId ?? "-");
 
-                    FindPathMetrics.PathAuditBlockedTotal.WithLabels("any").Inc();
-                    if (mfr.ValidationViolationRules != null)
-                    {
-                        foreach (var rule in mfr.ValidationViolationRules)
-                            FindPathMetrics.PathAuditBlockedTotal.WithLabels(rule).Inc();
-                    }
-                    if (mfr.ValidatorException)
-                        FindPathMetrics.PathAuditBlockedTotal.WithLabels("ValidatorException").Inc();
+                    RecordPathAuditViolation(mfr, hasSimulated);
 
                     var emptyResponse = new MaxFlowResponse("0", new List<TransferPathStep>(), null)
                     {
@@ -506,7 +582,9 @@ internal sealed class FindPathHandler(
                         ConsentDroppedPaths = mfr.ConsentDroppedPaths,
                         ValidationErrors = mfr.ValidationErrors,
                         ValidationViolationRules = mfr.ValidationViolationRules,
-                        ValidatorException = mfr.ValidatorException
+                        ValidatorException = mfr.ValidatorException,
+                        ValidationWarnings = mfr.ValidationWarnings,
+                        ValidationWarningRules = mfr.ValidationWarningRules,
                     };
                     result = emptyResponse;
                     mfr = emptyResponse;
@@ -518,21 +596,37 @@ internal sealed class FindPathHandler(
                 if (mfr.ValidatorException)
                     FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
 
+                // Mirror the live-path's warning bucket on the historical path so
+                // diagnostic rules show up in telemetry for X-Max-Block-Number requests too.
+                if (mfr.ValidationWarnings > 0 && mfr.ValidationWarningRules != null)
+                {
+                    foreach (var rule in mfr.ValidationWarningRules)
+                        FindPathMetrics.PathAuditWarningsTotal.WithLabels(rule).Inc();
+                }
+
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} simBalances={SimBalances} simTrusts={SimTrusts} simConsented={SimConsented} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     mfr.MaxFlow, mfr.Transfers?.Count ?? 0, request.MaxTransfers ?? -1,
                     blockNumber, sw.ElapsedMilliseconds, 200,
-                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+                    request.WithWrap ?? false, request.QuantizedMode ?? false,
+                    SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
+                    SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    SimCount(request.SimulatedBalances), SimCount(request.SimulatedTrusts), SimCount(request.SimulatedConsentedAvatars),
+                    mfr.ReqId ?? "-");
             }
             else
             {
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} fromTokens={FromTokens} toTokens={ToTokens} excludedFromTokens={ExcludedFromTokens} excludedToTokens={ExcludedToTokens} simBalances={SimBalances} simTrusts={SimTrusts} simConsented={SimConsented} reqId={ReqId}",
                     route, safeSource, safeSink, safeTargetFlow,
                     result, 0, request.MaxTransfers ?? -1,
                     blockNumber, sw.ElapsedMilliseconds, 200,
-                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+                    request.WithWrap ?? false, request.QuantizedMode ?? false,
+                    SanitizeTokenList(request.FromTokens), SanitizeTokenList(request.ToTokens),
+                    SanitizeTokenList(request.ExcludedFromTokens), SanitizeTokenList(request.ExcludedToTokens),
+                    SimCount(request.SimulatedBalances), SimCount(request.SimulatedTrusts), SimCount(request.SimulatedConsentedAvatars),
+                    "-");
             }
 
             return Results.Ok(result);

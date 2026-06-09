@@ -97,16 +97,150 @@ public class ProxyLoadGraph : ILoadGraph
         WHERE t2."group" IS NULL
         """;
 
-    // Group query with temporal filter — {1} = mint policy address from Settings.StandardMintPolicyAddress
+    // Group query with temporal filter. Score-aware (mirrors live groupQuery.sql): includes
+    // groups whose mint policy is the STANDARD policy ({1}) OR a SCORE policy ({2}) that has an
+    // indexed pathMintRouter. Without the score branch, score groups never become GroupNodes and
+    // the pathfinder degrades them to non-groups (no mint edges at all).
     private const string GroupQueryTemplate = """
+        WITH latest_score_group AS (
+            SELECT DISTINCT ON ("group")
+                "group" AS group_address,
+                "pathMintRouter" AS router_address
+            FROM "CrcV2_ScoreGroup_GroupInitialized"
+            WHERE LOWER("emitter") = ANY({2})
+              AND "blockNumber" <= {0}
+            ORDER BY "group", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+        ),
+        supported_groups AS (
+            SELECT g."group" AS group_address
+            FROM "CrcV2_RegisterGroup" g
+            LEFT JOIN latest_score_group sg ON sg.group_address = g."group"
+            WHERE g."blockNumber" <= {0}
+              AND (
+                  g."mint" = LOWER('{1}')
+                  OR (LOWER(g."mint") = ANY({2}) AND sg.router_address IS NOT NULL)
+              )
+        )
+        SELECT group_address FROM supported_groups
+        """;
+
+    // Group trust query with temporal filter. Score-aware: the trusting group may use the STANDARD
+    // policy ({1}) or a SCORE policy ({2}) with a router. NB: unlike the live groupTrustQuery.sql this
+    // omits the trustee registered-avatars filter (acceptable for current fixtures whose collateral is
+    // a registered avatar; mirrors the pre-existing ProxyLoadGraph trust query). Follow-up if a fixture
+    // ever needs unregistered-trustee exclusion.
+    private const string GroupTrustQueryTemplate = """
+        WITH trust_state AS (
+            SELECT truster, trustee, "expiryTime",
+                   row_number() OVER (PARTITION BY truster, trustee
+                       ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC) AS rn
+            FROM "CrcV2_Trust"
+            WHERE "blockNumber" <= {0}
+        ), active_trust AS (
+            SELECT truster, trustee FROM trust_state
+            WHERE rn = 1 AND "expiryTime" > (SELECT max("timestamp") FROM "System_Block" WHERE "blockNumber" <= {0})::numeric
+        ), latest_score_group AS (
+            SELECT DISTINCT ON ("group")
+                "group" AS group_address,
+                "pathMintRouter" AS router_address
+            FROM "CrcV2_ScoreGroup_GroupInitialized"
+            WHERE LOWER("emitter") = ANY({2}) AND "blockNumber" <= {0}
+            ORDER BY "group", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+        ), supported_groups AS (
+            SELECT g."group" AS group_address
+            FROM "CrcV2_RegisterGroup" g
+            LEFT JOIN latest_score_group sg ON sg.group_address = g."group"
+            WHERE g."blockNumber" <= {0}
+              AND (
+                  g."mint" = LOWER('{1}')
+                  OR (LOWER(g."mint") = ANY({2}) AND sg.router_address IS NOT NULL)
+              )
+        )
+        SELECT t.truster AS group_address, t.trustee AS trusted_token
+        FROM active_trust t
+        INNER JOIN supported_groups g ON g.group_address = t.truster
+        """;
+
+    private const string RegisteredAvatarsQueryTemplate = """
+        SELECT avatar FROM "V_CrcV2_Avatars"
+        WHERE "blockNumber" <= {0}
+        """;
+
+    // ── Score-group loaders ───────────────────────────────────────────────
+    // Ported from HistoricalLoadGraph (the direct-DB loader). The proxy executes raw SQL with
+    // no parameter binding, so {1}=score-mint-policy array literal, {2}=standard mint policy,
+    // {3}=standard group router are inlined. All addresses come from Settings / DB rows (trusted,
+    // hex-only) — not user input — so inlining carries no injection surface. Block-pinned via {0}.
+
+    // Group → path-mint router. Score groups use their indexed pathMintRouter; standard groups
+    // fall back to the standard router. Mirrors GroupRoutersQueryTemplate.
+    private const string GroupRoutersQueryTemplate = """
+        WITH latest_score_group AS (
+            SELECT DISTINCT ON ("group")
+                "group" AS group_address,
+                "pathMintRouter" AS router_address
+            FROM "CrcV2_ScoreGroup_GroupInitialized"
+            WHERE LOWER("emitter") = ANY({1})
+              AND "blockNumber" <= {0}
+            ORDER BY "group", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+        ),
+        supported_groups AS (
+            SELECT g."group" AS group_address, g."mint", sg.router_address
+            FROM "CrcV2_RegisterGroup" g
+            LEFT JOIN latest_score_group sg ON sg.group_address = g."group"
+            WHERE g."blockNumber" <= {0}
+              AND (
+                  g."mint" = LOWER('{2}')
+                  OR (LOWER(g."mint") = ANY({1}) AND sg.router_address IS NOT NULL)
+              )
+        )
+        SELECT group_address,
+               CASE WHEN router_address IS NOT NULL THEN router_address ELSE LOWER('{3}') END
+        FROM supported_groups
+        """;
+
+    // Score-group path-mint routers. Mirrors ScoreRoutersQueryTemplate.
+    private const string ScoreRoutersQueryTemplate = """
+        SELECT DISTINCT LOWER("pathMintRouter") AS router_address
+        FROM "CrcV2_ScoreGroup_GroupInitialized"
+        WHERE LOWER("emitter") = ANY({1}) AND "blockNumber" <= {0}
+        """;
+
+    // Latest approved operator approvals for the given accounts. Mirrors OperatorApprovalsQueryTemplate.
+    // {1} = account array literal.
+    private const string OperatorApprovalsQueryTemplate = """
+        SELECT account, operator FROM (
+            SELECT DISTINCT ON (LOWER("account"), LOWER("operator"))
+                LOWER("account") AS account,
+                LOWER("operator") AS operator,
+                "approved" AS approved
+            FROM "CrcV2_ApprovalForAll"
+            WHERE LOWER("account") = ANY({1}) AND "blockNumber" <= {0}
+            ORDER BY LOWER("account"), LOWER("operator"),
+                     "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+        ) latest
+        WHERE approved = true
+        """;
+
+    private const string ConsentedFlowQueryTemplate = """
+        SELECT DISTINCT ON (avatar) avatar, flag
+        FROM "CrcV2_SetAdvancedUsageFlag"
+        WHERE "blockNumber" <= {0}
+        ORDER BY avatar, "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+        """;
+
+    // Standard-only fallbacks used when no score policies are configured. These keep the exact
+    // pre-score behavior (and avoid referencing CrcV2_ScoreGroup_GroupInitialized) for the other
+    // suites that share ProxyLoadGraph (ScenarioTests etc.), mirroring the live loader's
+    // ScoreGroupTablesAvailable guard which falls back to the standard-only *.fallback.sql.
+    private const string GroupQueryStandardTemplate = """
         SELECT "group" AS group_address
         FROM "CrcV2_RegisterGroup"
         WHERE "mint" = LOWER('{1}')
           AND "blockNumber" <= {0}
         """;
 
-    // Group trust query with temporal filter — {1} = mint policy address
-    private const string GroupTrustQueryTemplate = """
+    private const string GroupTrustQueryStandardTemplate = """
         WITH trust_state AS (
             SELECT truster, trustee, "expiryTime",
                    row_number() OVER (PARTITION BY truster, trustee
@@ -122,18 +256,6 @@ public class ProxyLoadGraph : ILoadGraph
         INNER JOIN "CrcV2_RegisterGroup" g ON g."group" = t.truster
         WHERE g."mint" = LOWER('{1}')
           AND g."blockNumber" <= {0}
-        """;
-
-    private const string RegisteredAvatarsQueryTemplate = """
-        SELECT avatar FROM "V_CrcV2_Avatars"
-        WHERE "blockNumber" <= {0}
-        """;
-
-    private const string ConsentedFlowQueryTemplate = """
-        SELECT DISTINCT ON (avatar) avatar, flag
-        FROM "CrcV2_SetAdvancedUsageFlag"
-        WHERE "blockNumber" <= {0}
-        ORDER BY avatar, "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
         """;
 
     public ProxyLoadGraph(TestEnvironmentClient client, Settings settings)
@@ -226,7 +348,13 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<string> LoadGroups()
     {
-        var query = string.Format(GroupQueryTemplate, _client.BlockNumber, _settings.StandardMintPolicyAddress);
+        var scoreAware = _settings.ScoreGroupMintPolicies.Length > 0;
+        var query = scoreAware
+            ? string.Format(GroupQueryTemplate, _client.BlockNumber,
+                _settings.StandardMintPolicyAddress.ToLowerInvariant(),
+                SqlArrayLiteral(_settings.ScoreGroupMintPolicies))
+            : string.Format(GroupQueryStandardTemplate, _client.BlockNumber,
+                _settings.StandardMintPolicyAddress.ToLowerInvariant());
         var response = _client.ExecuteQueryAsync(query, maxRows: 10000).GetAwaiter().GetResult();
         var results = new List<string>();
 
@@ -243,7 +371,13 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
-        var query = string.Format(GroupTrustQueryTemplate, _client.BlockNumber, _settings.StandardMintPolicyAddress);
+        var scoreAware = _settings.ScoreGroupMintPolicies.Length > 0;
+        var query = scoreAware
+            ? string.Format(GroupTrustQueryTemplate, _client.BlockNumber,
+                _settings.StandardMintPolicyAddress.ToLowerInvariant(),
+                SqlArrayLiteral(_settings.ScoreGroupMintPolicies))
+            : string.Format(GroupTrustQueryStandardTemplate, _client.BlockNumber,
+                _settings.StandardMintPolicyAddress.ToLowerInvariant());
         var response = _client.ExecuteQueryAsync(query, maxRows: 100000).GetAwaiter().GetResult();
         var results = new List<(string GroupAddress, string TrustedToken)>();
 
@@ -255,6 +389,92 @@ public class ProxyLoadGraph : ILoadGraph
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Not yet implemented via the test-env proxy — returns empty so the pathfinder
+    /// models the score group with an UNBOUNDED mint cap. This is correct for projection
+    /// fixtures whose scenario does not assert on a mint-limit ceiling; a fixture that
+    /// tests "limit reached" (e.g. P14) must NOT rely on this loader — it would pass
+    /// spuriously. Overridden explicitly to make the gap visible. See coverage tracker §5.E.
+    ///
+    /// Implementation is now possible: <c>ScoreGroupMintLimitReader.BaseRowsSqlHistorical</c>
+    /// works through the proxy (raw tables + block timestamp, no matview). A follow-up
+    /// PR can execute BaseRowsSqlHistorical + HistoricalSql + PersonalSql via
+    /// <c>ExecuteQueryAsync</c> and compute available limits in C#.
+    /// </summary>
+    public IEnumerable<(string GroupAddress, string CollateralToken, string AvailableLimit)> LoadScoreGroupMintLimits() => [];
+
+    public IEnumerable<(string GroupAddress, string RouterAddress)> LoadGroupRouters()
+    {
+        if (_settings.ScoreGroupMintPolicies.Length == 0)
+            return [];
+
+        var query = string.Format(
+            GroupRoutersQueryTemplate,
+            _client.BlockNumber,
+            SqlArrayLiteral(_settings.ScoreGroupMintPolicies),
+            _settings.StandardMintPolicyAddress.ToLowerInvariant(),
+            _settings.GroupRouterAddress.ToLowerInvariant());
+
+        var response = _client.ExecuteQueryAsync(query, maxRows: 10000).GetAwaiter().GetResult();
+        var results = new List<(string GroupAddress, string RouterAddress)>();
+        foreach (var row in response.Rows)
+            results.Add((GetString(row[0]).ToLowerInvariant(), GetString(row[1]).ToLowerInvariant()));
+        return results;
+    }
+
+    public IEnumerable<string> LoadScoreRouters()
+    {
+        if (_settings.ScoreGroupMintPolicies.Length == 0)
+            return [];
+
+        var query = string.Format(
+            ScoreRoutersQueryTemplate,
+            _client.BlockNumber,
+            SqlArrayLiteral(_settings.ScoreGroupMintPolicies));
+
+        var response = _client.ExecuteQueryAsync(query, maxRows: 1000).GetAwaiter().GetResult();
+        var results = new List<string>();
+        foreach (var row in response.Rows)
+            results.Add(GetString(row[0]).ToLowerInvariant());
+        return results;
+    }
+
+    public IEnumerable<(string Account, string Operator)> LoadOperatorApprovals(IEnumerable<string> accounts)
+    {
+        var accountSet = accounts
+            .Where(a => !string.IsNullOrWhiteSpace(a))
+            .Select(a => a.ToLowerInvariant())
+            .Distinct()
+            .ToArray();
+        if (accountSet.Length == 0)
+            return [];
+
+        var query = string.Format(
+            OperatorApprovalsQueryTemplate,
+            _client.BlockNumber,
+            SqlArrayLiteral(accountSet));
+
+        var response = _client.ExecuteQueryAsync(query, maxRows: 100000).GetAwaiter().GetResult();
+        var results = new List<(string Account, string Operator)>();
+        foreach (var row in response.Rows)
+            results.Add((GetString(row[0]).ToLowerInvariant(), GetString(row[1]).ToLowerInvariant()));
+        return results;
+    }
+
+    /// <summary>
+    /// Builds a Postgres text[] array literal — ARRAY['a','b'] — from address-like strings.
+    /// Values are lowercased and single quotes are doubled defensively; inputs are hex addresses
+    /// from Settings / DB rows, never user input.
+    /// </summary>
+    private static string SqlArrayLiteral(IEnumerable<string> values)
+    {
+        var quoted = values
+            .Select(v => $"'{v.ToLowerInvariant().Replace("'", "''")}'")
+            .ToList();
+        // Empty must be typed so Postgres can resolve "= ANY(...)" — ARRAY[] alone is untyped.
+        return quoted.Count == 0 ? "ARRAY[]::text[]" : $"ARRAY[{string.Join(",", quoted)}]";
     }
 
     public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()

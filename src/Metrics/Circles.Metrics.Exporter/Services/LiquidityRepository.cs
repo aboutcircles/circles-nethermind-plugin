@@ -23,8 +23,8 @@ public class LiquidityRepository
     // Combined list for queries
     private static readonly string[] BalancerVaultAddresses = { BalancerV2VaultAddress, BalancerV3VaultAddress };
 
-    // Whale threshold: 5000 tokens (5e21 wei for 18-decimal tokens)
-    private const decimal WhaleThreshold = 5_000_000_000_000_000_000_000m; // 5e21
+    // Whale threshold: 10000 tokens (1e22 wei for 18-decimal tokens)
+    private const decimal WhaleThreshold = 10_000_000_000_000_000_000_000m; // 1e22
 
     public LiquidityRepository(
         string connectionString,

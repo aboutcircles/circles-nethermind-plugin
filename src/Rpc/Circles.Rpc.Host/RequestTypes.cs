@@ -56,4 +56,28 @@ public class JsonRpcError
     public int Code { get; set; }
     public string? Message { get; set; }
     public object? Data { get; set; }
+
+    // Standard JSON-RPC 2.0 error codes (https://www.jsonrpc.org/specification#error_object).
+    // Factories produce wire-identical output to the original ad-hoc constructions.
+    public static JsonRpcError ParseError() =>
+        new() { Code = -32700, Message = "Parse error" };
+
+    public static JsonRpcError InvalidRequest(string? detail = null) =>
+        new() { Code = -32600, Message = detail is null ? "Invalid Request" : $"Invalid Request: {detail}" };
+
+    public static JsonRpcError MethodNotFound(string method) =>
+        new() { Code = -32601, Message = $"Method not found: {method}" };
+
+    public static JsonRpcError InvalidParams(string? detail = null) =>
+        new() { Code = -32602, Message = detail ?? "Invalid params" };
+
+    public static JsonRpcError Internal(string detail = "Internal server error") =>
+        new() { Code = -32603, Message = detail };
+
+    // Server-defined error range: -32000 to -32099.
+    public static JsonRpcError RateLimited() =>
+        new() { Code = -32000, Message = "Rate limit exceeded" };
+
+    public static JsonRpcError ServerBusy() =>
+        new() { Code = -32000, Message = "Server busy" };
 }

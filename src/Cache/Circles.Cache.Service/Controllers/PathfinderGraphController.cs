@@ -276,7 +276,7 @@ public class PathfinderGraphController : ControllerBase
                 TokenAddress: tokenAddress,
                 LastActivity: lastActivity,
                 IsWrapped: isWrapped,
-                CirclesType: isStatic ? "static" : "demurraged"
+                DemurrageMode: isStatic ? "static" : "demurraged"
             ));
         }
 

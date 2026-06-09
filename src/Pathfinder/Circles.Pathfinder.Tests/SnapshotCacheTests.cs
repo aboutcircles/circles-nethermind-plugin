@@ -1,6 +1,7 @@
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.State;
+using Circles.Pathfinder.Tests.Helpers;
 using NUnit.Framework;
 
 namespace Circles.Pathfinder.Tests;
@@ -103,6 +104,91 @@ public class SnapshotCacheTests
         cache.GetOrBuildSnapshot(state);
 
         Assert.That(cache.CachedBlockNumber, Is.EqualTo(100));
+    }
+
+    // ─────────────────────── Historical (block-pinned) snapshot ───────────────────────
+
+    /// <summary>
+    /// Builds a minimal in-memory GraphFactory (one trust + one balance) so the historical
+    /// snapshot path has non-empty trust/balance graphs to project.
+    /// </summary>
+    private static GraphFactory CreateFactory()
+    {
+        // Allocate ids in the global pool first (MockLoadGraph.AddTrust(int,int) resolves them
+        // back to addresses via AddressIdPool.StringOf, which requires prior registration).
+        var source = AddressIdPool.IdOf("0x0000000000000000000000000000000000000001");
+        var token = AddressIdPool.IdOf("0x000000000000000000000000000000000000000a");
+        var mock = new MockLoadGraph();
+        mock.AddTrust(source, token);
+        mock.AddBalance(source, token, 200_000_000L);
+        return new GraphFactory("0x0000000000000000000000000000000000000000", mock);
+    }
+
+    [Test]
+    public void GetOrBuildHistoricalSnapshot_ReturnsJsonWithBlockEtag()
+    {
+        var cache = new SnapshotCache();
+
+        var (json, etag) = cache.GetOrBuildHistoricalSnapshot(CreateFactory(), 42);
+
+        Assert.That(json, Is.Not.Null);
+        Assert.That(json.Length, Is.GreaterThan(0));
+        Assert.That(etag, Is.EqualTo("\"historical-42\""),
+            "Historical ETag should be namespaced by block (never aliases the live ETag)");
+        Assert.That(etag, Is.EqualTo(SnapshotCache.HistoricalETag(42)),
+            "Endpoint and cache must agree on the historical ETag format");
+    }
+
+    [Test]
+    public void GetOrBuildHistoricalSnapshot_SameBlock_ReturnsCached()
+    {
+        var cache = new SnapshotCache();
+        var factory = CreateFactory();
+
+        var (json1, etag1) = cache.GetOrBuildHistoricalSnapshot(factory, 42);
+        var (json2, etag2) = cache.GetOrBuildHistoricalSnapshot(factory, 42);
+
+        Assert.That(ReferenceEquals(json1, json2), Is.True,
+            "Same block should return the same cached byte[] reference (single-slot cache hit)");
+        Assert.That(etag1, Is.EqualTo(etag2));
+    }
+
+    [Test]
+    public void GetOrBuildHistoricalSnapshot_DifferentBlock_Rebuilds()
+    {
+        var cache = new SnapshotCache();
+        var factory = CreateFactory();
+
+        var (json1, etag1) = cache.GetOrBuildHistoricalSnapshot(factory, 42);
+        var (json2, etag2) = cache.GetOrBuildHistoricalSnapshot(factory, 99);
+
+        Assert.That(etag1, Is.EqualTo("\"historical-42\""));
+        Assert.That(etag2, Is.EqualTo("\"historical-99\""));
+        Assert.That(ReferenceEquals(json1, json2), Is.False,
+            "Different block should rebuild (single slot evicted)");
+    }
+
+    [Test]
+    public void HistoricalETag_NeverAliasesLiveETag_ForSameBlock()
+    {
+        // The live ETag is the bare block number; the historical ETag is namespaced. The two must
+        // differ for the same block so a client mixing modes can't get a cross-variant 304.
+        Assert.That(SnapshotCache.HistoricalETag(100), Is.Not.EqualTo("\"100\""));
+        Assert.That(SnapshotCache.HistoricalETag(100), Is.EqualTo("\"historical-100\""));
+    }
+
+    [Test]
+    public void GetOrBuildHistoricalSnapshot_DoesNotTouchLiveSlot()
+    {
+        var cache = new SnapshotCache();
+
+        cache.GetOrBuildHistoricalSnapshot(CreateFactory(), 42);
+
+        // The historical slot is independent of the live slot.
+        Assert.That(cache.CurrentETag, Is.Null,
+            "Historical builds must not populate the live ETag");
+        Assert.That(cache.CachedBlockNumber, Is.EqualTo(-1),
+            "Historical builds must not populate the live cached block number");
     }
 
     [Test]

@@ -254,72 +254,20 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         // The 'data' bytes parameter is not emitted in events, only available in calldata
         if (!transaction.Data.IsEmpty && transaction.Data.Length > 4)
         {
-            var hasTransferEvents = eventsv2.Any(e =>
-                e is TransferSingle or TransferBatch);
+            var transferDataEvents = TransferDataExtractor.Extract(
+                eventsv2,
+                transaction.Data.ToArray(),
+                block.Number,
+                (long)block.Timestamp,
+                transactionIndex,
+                transaction.Hash!.ToString(true),
+                syntheticLogIndex);
 
-            if (hasTransferEvents)
+            foreach (var transferData in transferDataEvents)
             {
-                var transferDataEvents = ParseTransferDataFromCalldata(
-                    block, transactionIndex, transaction, syntheticLogIndex);
-
-                foreach (var transferData in transferDataEvents)
-                {
-                    syntheticLogIndex--;
-                    yield return transferData;
-                }
+                yield return transferData;
             }
         }
-    }
-
-    /// <summary>
-    /// Extracts TransferData events from transaction calldata.
-    /// Handles safeTransferFrom, safeBatchTransferFrom, and operateFlowMatrix calls.
-    /// Returns a list because iterators can't use ref parameters.
-    /// </summary>
-    private static List<TransferData> ParseTransferDataFromCalldata(
-        Block block,
-        int transactionIndex,
-        Transaction transaction,
-        int startingLogIndex)
-    {
-        var results = new List<TransferData>();
-
-        try
-        {
-            // Use CalldataUnwrapper to handle ERC-4337 and Safe wrapper contracts
-            // before parsing the inner Hub calldata for transfer data.
-            // Note: UnwrapAndParse uses yield return, so exceptions are thrown during
-            // enumeration, not during the initial call. The try-catch must wrap the foreach.
-            var parsedData = CalldataUnwrapper.UnwrapAndParse(transaction.Data.ToArray());
-
-            int logIndex = startingLogIndex;
-            foreach (var (from, to, data) in parsedData)
-            {
-                // Skip empty data - transfers are still auditable via TransferSingle/TransferBatch
-                if (data.Length == 0)
-                    continue;
-
-                results.Add(new TransferData(
-                    block.Number,
-                    (long)block.Timestamp,
-                    transactionIndex,
-                    logIndex--,  // negative index for synthetic events
-                    transaction.Hash!.ToString(true),
-                    "",  // emitter - empty for calldata-derived events
-                    from,
-                    to,
-                    data
-                ));
-            }
-        }
-        catch (Exception)
-        {
-            // Expected for transactions that have TransferSingle/TransferBatch events but
-            // aren't calling Circles Hub (selector collisions, other ERC-1155 contracts).
-            // Silently skip - the transfer events are still indexed from logs.
-        }
-
-        return results;
     }
 
     public IEnumerable<IIndexEvent> ParseLog(
