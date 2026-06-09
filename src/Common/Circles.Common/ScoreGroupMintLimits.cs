@@ -313,7 +313,7 @@ public static class ScoreGroupMintLimitReader
         return rows;
     }
 
-    private static IReadOnlyList<ScoreGroupMintLimitBaseRow> ReadBaseRows(
+    internal static IReadOnlyList<ScoreGroupMintLimitBaseRow> ReadBaseRows(
         NpgsqlConnection connection,
         string[] policies,
         int commandTimeoutSeconds,

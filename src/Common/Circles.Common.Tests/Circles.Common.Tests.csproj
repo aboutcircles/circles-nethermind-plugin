@@ -21,6 +21,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Circles.Common\Circles.Common.csproj" />
+      <ProjectReference Include="..\Circles.Common.TestUtils\Circles.Common.TestUtils.csproj" />
       <ProjectReference Include="..\..\Index\Circles.Index.ContractClient\Circles.Index.ContractClient.csproj" />
     </ItemGroup>
 
