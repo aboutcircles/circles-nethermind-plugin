@@ -31,6 +31,12 @@ public static class ScoreGroupMintLimitReader
     /// actually hold tokens. Groups not in the override map fall back to
     /// single-treasury behavior — the override list defaults to
     /// <c>ARRAY[treasury]</c>.
+    ///
+    /// Balance computation: instead of querying the <c>V_CrcV2_BalancesByAccountAndToken</c>
+    /// view (which FULL JOINs all 140K rows in the materialized table before filtering),
+    /// this query inlines the view's logic with the tokenAddress filter applied before the
+    /// FULL JOIN. The materialized table has an index on tokenAddress so only the handful of
+    /// relevant score-group token rows are scanned.
     /// </summary>
     private const string BaseRowsSql = """
         WITH latest_score_group AS (
@@ -82,11 +88,74 @@ public static class ScoreGroupMintLimitReader
             INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = t.trustee
             WHERE (@collateralTokenFilter::text IS NULL OR t.trustee = @collateralTokenFilter)
         ),
+        -- Inline the V_CrcV2_BalancesByAccountAndToken view logic with the tokenAddress
+        -- filter applied before the FULL JOIN so the planner uses the tokenAddress index
+        -- on M_CrcV2_BalancesByAccountAndToken instead of scanning all 140K rows.
+        watermark AS (
+            SELECT COALESCE(MAX("_maxBlock"), 0) AS wm FROM "M_CrcV2_BalancesByAccountAndToken"
+        ),
+        delta_tx AS (
+            SELECT "timestamp", "from" AS account, "tokenAddress", id, -value AS delta
+            FROM "CrcV2_TransferSingle"
+            WHERE "blockNumber" > (SELECT wm FROM watermark)
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            UNION ALL
+            SELECT "timestamp", "to" AS account, "tokenAddress", id, value AS delta
+            FROM "CrcV2_TransferSingle"
+            WHERE "blockNumber" > (SELECT wm FROM watermark)
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            UNION ALL
+            SELECT "timestamp", "from" AS account, "tokenAddress", id, -value AS delta
+            FROM "CrcV2_TransferBatch"
+            WHERE "blockNumber" > (SELECT wm FROM watermark)
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            UNION ALL
+            SELECT "timestamp", "to" AS account, "tokenAddress", id, value AS delta
+            FROM "CrcV2_TransferBatch"
+            WHERE "blockNumber" > (SELECT wm FROM watermark)
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+        ),
+        delta_agg AS (
+            SELECT account, id::text AS "tokenId", "tokenAddress",
+                   MAX("timestamp") AS "lastActivity", SUM(delta) AS "totalBalance"
+            FROM delta_tx
+            GROUP BY account, id, "tokenAddress"
+        ),
+        filtered_mat AS (
+            SELECT account, "tokenId", "tokenAddress", "lastActivity", "totalBalance"
+            FROM "M_CrcV2_BalancesByAccountAndToken"
+            WHERE "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+              AND account <> '0x0000000000000000000000000000000000000000'
+        ),
+        merged AS (
+            SELECT
+                COALESCE(m.account, d.account) AS account,
+                COALESCE(m."tokenId", d."tokenId") AS "tokenId",
+                COALESCE(m."tokenAddress", d."tokenAddress") AS "tokenAddress",
+                GREATEST(COALESCE(m."lastActivity", 0), COALESCE(d."lastActivity", 0)) AS "lastActivity",
+                COALESCE(m."totalBalance", 0) + COALESCE(d."totalBalance", 0) AS "totalBalance"
+            FROM filtered_mat m
+            FULL JOIN delta_agg d
+                ON m.account = d.account
+               AND m."tokenId" = d."tokenId"
+               AND m."tokenAddress" = d."tokenAddress"
+        ),
+        balances AS (
+            SELECT account, "tokenId", "tokenAddress",
+                   floor("totalBalance" * power(
+                       0.9998013320085989574306481700129226782902039065082930593676448873,
+                       (extract(epoch from now())::bigint - 1602720000) / 86400
+                       - ("lastActivity" - 1602720000) / 86400
+                   )) AS "demurragedTotalBalance"
+            FROM merged
+            WHERE account <> '0x0000000000000000000000000000000000000000'
+              AND "totalBalance" > 0
+        ),
         token_supply AS (
             SELECT
                 b."tokenAddress",
                 SUM(b."demurragedTotalBalance")::text AS current_supply
-            FROM "V_CrcV2_BalancesByAccountAndToken" b
+            FROM balances b
             INNER JOIN (SELECT DISTINCT trusted_token FROM group_tokens) gt
                 ON gt.trusted_token = b."tokenAddress"
             GROUP BY b."tokenAddress"
@@ -97,7 +166,7 @@ public static class ScoreGroupMintLimitReader
             gt.policy,
             COALESCE((
                 SELECT SUM(b."demurragedTotalBalance")
-                FROM "V_CrcV2_BalancesByAccountAndToken" b
+                FROM balances b
                 WHERE b.account = ANY(gt.treasuries)
                   AND b."tokenAddress" = gt.trusted_token
             ), 0)::text AS treasury_balance,
