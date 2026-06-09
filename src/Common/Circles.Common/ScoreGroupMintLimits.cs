@@ -176,6 +176,134 @@ public static class ScoreGroupMintLimitReader
             ON ts."tokenAddress" = gt.trusted_token;
         """;
 
+    /// <summary>
+    /// Historical variant of <see cref="BaseRowsSql"/> used when <c>maxBlock</c> is non-null.
+    /// Bypasses <c>M_CrcV2_BalancesByAccountAndToken</c> (the matview, which only holds HEAD
+    /// state and has no block-pinned twin in the test environment) and instead aggregates
+    /// directly from raw <c>CrcV2_TransferSingle/Batch</c> tables with
+    /// <c>WHERE "blockNumber" &lt;= @maxBlock</c>. Demurrage is anchored to the block's own
+    /// timestamp from <c>System_Block</c>, mirroring the <c>circles_at_block</c> schema's
+    /// <c>pin_timestamp()</c> function. This makes parity tests and any future historical
+    /// point-in-time queries produce correct results.
+    /// </summary>
+    internal const string BaseRowsSqlHistorical = """
+        WITH latest_score_group AS (
+            SELECT DISTINCT ON ("group")
+                "group" AS group_address,
+                LOWER("emitter") AS policy
+            FROM "CrcV2_ScoreGroup_GroupInitialized"
+            WHERE (@maxBlock::bigint IS NULL OR "blockNumber" <= @maxBlock)
+              AND LOWER("emitter") = ANY(@scoreMintPolicies)
+            ORDER BY "group", "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+        ),
+        score_groups AS (
+            SELECT
+                LOWER(g."group") AS group_address,
+                LOWER(g."treasury") AS treasury,
+                LOWER(COALESCE(lsg.policy, g."mint")) AS policy
+            FROM "CrcV2_RegisterGroup" g
+            LEFT JOIN latest_score_group lsg ON LOWER(lsg.group_address) = LOWER(g."group")
+            WHERE (@maxBlock::bigint IS NULL OR g."blockNumber" <= @maxBlock)
+              AND LOWER(g."mint") = ANY(@scoreMintPolicies)
+              AND lsg.group_address IS NOT NULL
+              AND (@groupAddressFilter::text IS NULL OR LOWER(g."group") = @groupAddressFilter)
+        ),
+        treasury_overrides AS (
+            SELECT
+                LOWER(agg) AS aggregator,
+                string_to_array(LOWER(subs_csv), ',') AS subs
+            FROM unnest(
+                @subTreasuryAggregators::text[],
+                @subTreasuryLists::text[]
+            ) AS u(agg, subs_csv)
+        ),
+        effective_treasuries AS (
+            SELECT
+                sg.group_address,
+                sg.policy,
+                COALESCE(o.subs, ARRAY[sg.treasury]::text[]) AS treasuries
+            FROM score_groups sg
+            LEFT JOIN treasury_overrides o ON o.aggregator = sg.treasury
+        ),
+        group_tokens AS (
+            SELECT
+                et.group_address,
+                et.treasuries,
+                et.policy,
+                t.trustee AS trusted_token
+            FROM effective_treasuries et
+            INNER JOIN "V_CrcV2_TrustRelations" t ON t.truster = et.group_address
+            INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = t.trustee
+            WHERE (@collateralTokenFilter::text IS NULL OR t.trustee = @collateralTokenFilter)
+        ),
+        block_ts AS (
+            SELECT MAX("timestamp") AS ts
+            FROM "System_Block"
+            WHERE "blockNumber" <= @maxBlock
+        ),
+        raw_tx AS (
+            SELECT "timestamp", "from" AS account, "tokenAddress", id, -value AS delta
+            FROM "CrcV2_TransferSingle"
+            WHERE "blockNumber" <= @maxBlock
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            UNION ALL
+            SELECT "timestamp", "to" AS account, "tokenAddress", id, value AS delta
+            FROM "CrcV2_TransferSingle"
+            WHERE "blockNumber" <= @maxBlock
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            UNION ALL
+            SELECT "timestamp", "from" AS account, "tokenAddress", id, -value AS delta
+            FROM "CrcV2_TransferBatch"
+            WHERE "blockNumber" <= @maxBlock
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            UNION ALL
+            SELECT "timestamp", "to" AS account, "tokenAddress", id, value AS delta
+            FROM "CrcV2_TransferBatch"
+            WHERE "blockNumber" <= @maxBlock
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+        ),
+        raw_agg AS (
+            SELECT account, id::text AS "tokenId", "tokenAddress",
+                   MAX("timestamp") AS "lastActivity", SUM(delta) AS "totalBalance"
+            FROM raw_tx
+            GROUP BY account, id, "tokenAddress"
+        ),
+        balances AS (
+            SELECT account, "tokenId", "tokenAddress",
+                   floor("totalBalance" * power(
+                       0.9998013320085989574306481700129226782902039065082930593676448873,
+                       ((SELECT ts FROM block_ts) - 1602720000) / 86400
+                       - ("lastActivity" - 1602720000) / 86400
+                   )) AS "demurragedTotalBalance"
+            FROM raw_agg
+            WHERE account <> '0x0000000000000000000000000000000000000000'
+              AND "totalBalance" > 0
+        ),
+        token_supply AS (
+            SELECT
+                b."tokenAddress",
+                SUM(b."demurragedTotalBalance")::text AS current_supply
+            FROM balances b
+            INNER JOIN (SELECT DISTINCT trusted_token FROM group_tokens) gt
+                ON gt.trusted_token = b."tokenAddress"
+            GROUP BY b."tokenAddress"
+        )
+        SELECT
+            gt.group_address,
+            gt.trusted_token,
+            gt.policy,
+            COALESCE((
+                SELECT SUM(b."demurragedTotalBalance")
+                FROM balances b
+                WHERE b.account = ANY(gt.treasuries)
+                  AND b."tokenAddress" = gt.trusted_token
+            ), 0)::text AS treasury_balance,
+            COALESCE(ts.current_supply, '0') AS current_supply
+        FROM group_tokens gt
+        LEFT JOIN token_supply ts
+            ON ts."tokenAddress" = gt.trusted_token;
+        """;
+
     // HistoricalSupply is now per-(group, collateral) in the prod contract — the
     // event added `address indexed group`, so a single policy serving multiple
     // groups (via initializeGroup) tracks supply scoped to each group rather
@@ -313,20 +441,15 @@ public static class ScoreGroupMintLimitReader
         return rows;
     }
 
-    // NOTE — maxBlock partial coverage: group discovery CTEs (latest_score_group,
-    // score_groups, group_tokens) are correctly frozen at maxBlock. The balance
-    // computation (filtered_mat + delta_tx + balances) is NOT — it uses the current
-    // state of M_CrcV2_BalancesByAccountAndToken (a materialized view with no
-    // historical snapshots) plus live delta transfers, regardless of maxBlock.
-    // This matches the pre-existing behaviour of V_CrcV2_BalancesByAccountAndToken,
-    // which had the same limitation.
-    //
-    // In production maxBlock is always null, so this has no practical effect.
-    // In the test environment, block-pinned sessions freeze the matview at the
-    // pinned block, so results are correct there too. A fix would require replacing
-    // filtered_mat with a full raw-table aggregation (WHERE blockNumber <= maxBlock),
-    // bypassing the matview entirely — only worth doing if historical point-in-time
-    // mint-limit queries become a real requirement.
+    // Two SQL paths selected at runtime:
+    //   maxBlock IS NULL  → BaseRowsSql: fast matview + delta tail, demurrage at NOW().
+    //                       Used by the live pathfinder (HEAD state queries).
+    //   maxBlock IS NOT NULL → BaseRowsSqlHistorical: aggregates raw transfer tables with
+    //                       blockNumber <= @maxBlock, demurrage anchored to the block's
+    //                       own timestamp. Used by HistoricalLoadGraph (snapshot/historical-graph
+    //                       endpoint) and parity tests. NOTE: raw-table scan cost scales with
+    //                       transfer volume at the pinned block; acceptable for snapshot use-case
+    //                       but avoid using for tight latency paths.
     internal static IReadOnlyList<ScoreGroupMintLimitBaseRow> ReadBaseRows(
         NpgsqlConnection connection,
         string[] policies,
@@ -351,8 +474,9 @@ public static class ScoreGroupMintLimitReader
             .Select(kv => string.Join(",", kv.Value.Select(addr => addr.Trim().ToLowerInvariant())))
             .ToArray();
 
+        var sql = maxBlock.HasValue ? BaseRowsSqlHistorical : BaseRowsSql;
         var rows = new List<ScoreGroupMintLimitBaseRow>();
-        using var command = new NpgsqlCommand(BaseRowsSql, connection, transaction);
+        using var command = new NpgsqlCommand(sql, connection, transaction);
         command.CommandTimeout = commandTimeoutSeconds;
         command.Parameters.AddWithValue("scoreMintPolicies", policies);
         command.Parameters.AddWithValue("subTreasuryAggregators", subTreasuryAggregators);
