@@ -79,6 +79,17 @@ public partial class CirclesRpcModule
         return normalized;
     }
 
+    private static IEnumerable<FilterPredicateDto> FlattenFilterPredicates(IEnumerable<IFilterPredicateDto> predicates)
+    {
+        foreach (var p in predicates)
+        {
+            if (p is FilterPredicateDto fp) yield return fp;
+            else if (p is ConjunctionDto cj && cj.Predicates != null)
+                foreach (var nested in FlattenFilterPredicates(cj.Predicates))
+                    yield return nested;
+        }
+    }
+
     private static string BuildInClause(
         string column,
         string parameterPrefix,
@@ -349,7 +360,7 @@ public partial class CirclesRpcModule
 
         if (query.Filter != null)
         {
-            foreach (var f in query.Filter.OfType<FilterPredicateDto>())
+            foreach (var f in FlattenFilterPredicates(query.Filter))
                 if (f.Column != null) AssertColumnExists(f.Column, "Filter");
         }
 
