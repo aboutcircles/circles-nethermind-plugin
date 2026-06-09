@@ -117,12 +117,21 @@ public sealed class ScoreGroupBaseRowsQueryParityTests
         await using var conn = new NpgsqlConnection(connStr);
         await conn.OpenAsync();
 
+        // Use a read-only transaction so both queries share the same snapshot and
+        // NOW() is frozen to a single point in time.  Without this, a UTC day
+        // boundary between the two statements would cause demurrage day indices
+        // to differ, producing CurrentSupply divergences of more than ±1 per token.
+        await using var tx = await conn.BeginTransactionAsync(
+            System.Data.IsolationLevel.RepeatableRead);
+
         string[] policies = [ScoreGroupMintPolicy];
-        var referenceRows = await RunReferenceQueryAsync(conn, policies, TestBlock);
+        var referenceRows = await RunReferenceQueryAsync(conn, tx, policies, TestBlock);
         var optimizedRows = ScoreGroupMintLimitReader.ReadBaseRows(
             conn, policies, commandTimeoutSeconds: 60, maxBlock: TestBlock,
-            transaction: null, groupAddressFilter: null, collateralTokenFilter: null,
+            transaction: tx, groupAddressFilter: null, collateralTokenFilter: null,
             subTreasuryOverrides: null);
+
+        await tx.RollbackAsync();
 
         // Build lookup keyed by (group, collateral)
         var refByKey = referenceRows.ToDictionary(
@@ -137,7 +146,7 @@ public sealed class ScoreGroupBaseRowsQueryParityTests
         foreach (var opt in optimizedRows)
         {
             var key = (opt.GroupAddress, opt.CollateralToken);
-            Assert.That(refByKey.ContainsKey(key),
+            Assert.That(refByKey.ContainsKey(key), Is.True,
                 $"Optimized row ({opt.GroupAddress}, {opt.CollateralToken}) missing from reference results");
 
             var @ref = refByKey[key];
@@ -147,8 +156,9 @@ public sealed class ScoreGroupBaseRowsQueryParityTests
                 $"TreasuryBalance mismatch for ({opt.GroupAddress}, {opt.CollateralToken}): " +
                 $"optimized={opt.TreasuryBalance} ref={@ref.TreasuryBalance}");
 
-            // Current supply: demurrage uses NOW() so may differ by <1 unit per day elapsed
-            // between the two query executions within the same transaction — tolerate ±1.
+            // Current supply: demurrage uses NOW() which is snapshot-frozen within the
+            // shared transaction, so both queries see the same day index.  Tolerate ±1
+            // for any remaining integer-rounding differences in demurrage arithmetic.
             var supplyDelta = BigInteger.Abs(opt.CurrentSupply - @ref.CurrentSupply);
             Assert.That(supplyDelta <= BigInteger.One,
                 $"CurrentSupply differs by {supplyDelta} for ({opt.GroupAddress}, {opt.CollateralToken}): " +
@@ -158,11 +168,12 @@ public sealed class ScoreGroupBaseRowsQueryParityTests
 
     private static async Task<List<ScoreGroupMintLimitBaseRow>> RunReferenceQueryAsync(
         NpgsqlConnection conn,
+        NpgsqlTransaction? transaction,
         string[] policies,
         long maxBlock)
     {
         var rows = new List<ScoreGroupMintLimitBaseRow>();
-        await using var cmd = new NpgsqlCommand(ReferenceBaseRowsSql, conn);
+        await using var cmd = new NpgsqlCommand(ReferenceBaseRowsSql, conn, transaction);
         cmd.CommandTimeout = 120;
         cmd.Parameters.AddWithValue("scoreMintPolicies", policies);
         cmd.Parameters.AddWithValue("subTreasuryAggregators", Array.Empty<string>());
