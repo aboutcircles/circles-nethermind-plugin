@@ -313,6 +313,20 @@ public static class ScoreGroupMintLimitReader
         return rows;
     }
 
+    // NOTE — maxBlock partial coverage: group discovery CTEs (latest_score_group,
+    // score_groups, group_tokens) are correctly frozen at maxBlock. The balance
+    // computation (filtered_mat + delta_tx + balances) is NOT — it uses the current
+    // state of M_CrcV2_BalancesByAccountAndToken (a materialized view with no
+    // historical snapshots) plus live delta transfers, regardless of maxBlock.
+    // This matches the pre-existing behaviour of V_CrcV2_BalancesByAccountAndToken,
+    // which had the same limitation.
+    //
+    // In production maxBlock is always null, so this has no practical effect.
+    // In the test environment, block-pinned sessions freeze the matview at the
+    // pinned block, so results are correct there too. A fix would require replacing
+    // filtered_mat with a full raw-table aggregation (WHERE blockNumber <= maxBlock),
+    // bypassing the matview entirely — only worth doing if historical point-in-time
+    // mint-limit queries become a real requirement.
     internal static IReadOnlyList<ScoreGroupMintLimitBaseRow> ReadBaseRows(
         NpgsqlConnection connection,
         string[] policies,
