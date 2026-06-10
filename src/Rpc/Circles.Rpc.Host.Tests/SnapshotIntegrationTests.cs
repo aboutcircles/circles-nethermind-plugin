@@ -193,7 +193,8 @@ public class RpcQuerySnapshotTests
         else
         {
             var result = await _session.ExecuteScalarAsync(sql, parameters);
-            return Convert.ToInt64(result ?? 0);
+            // Proxy cells arrive as boxed JsonElement (not IConvertible) — go through the string form.
+            return long.Parse(result?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }
@@ -427,7 +428,9 @@ public class AvatarQuerySnapshotTests
             WHERE ""avatar"" = @address",
             new Dictionary<string, object?> { ["address"] = KnownSource });
 
-        Assert.That(count, Is.EqualTo(1), $"Source address {KnownSource} should exist in avatars");
+        // V_Crc_Avatars is the combined V1+V2 view: an avatar registered in both protocol
+        // versions legitimately yields one row per version.
+        Assert.That(count, Is.GreaterThanOrEqualTo(1), $"Source address {KnownSource} should exist in avatars");
     }
 
     [Test]
@@ -441,7 +444,7 @@ public class AvatarQuerySnapshotTests
             WHERE ""avatar"" = @address",
             new Dictionary<string, object?> { ["address"] = KnownSink });
 
-        Assert.That(count, Is.EqualTo(1), $"Sink address {KnownSink} should exist in avatars");
+        Assert.That(count, Is.GreaterThanOrEqualTo(1), $"Sink address {KnownSink} should exist in avatars");
     }
 
     [Test]
@@ -515,7 +518,8 @@ public class AvatarQuerySnapshotTests
         else
         {
             var result = await _session.ExecuteScalarAsync(sql, parameters);
-            return Convert.ToInt64(result ?? 0);
+            // Proxy cells arrive as boxed JsonElement (not IConvertible) — go through the string form.
+            return long.Parse(result?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }
@@ -634,7 +638,8 @@ public class TransactionHistorySnapshotTests
         else
         {
             var result = await _session.ExecuteScalarAsync(sql, parameters);
-            return Convert.ToInt64(result ?? 0);
+            // Proxy cells arrive as boxed JsonElement (not IConvertible) — go through the string form.
+            return long.Parse(result?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }

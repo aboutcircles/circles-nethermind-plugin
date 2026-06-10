@@ -212,7 +212,7 @@ public class RpcScenarioTests
                     WHERE ""account"" = @address AND ""balance"" > 0",
                     new Dictionary<string, object?> { ["address"] = scenario.Source });
 
-                var sourceBalances = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+                var sourceBalances = long.Parse(result.Rows.FirstOrDefault()?[0]?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
                 TestContext.Out.WriteLine($"Scenario {scenario.Id}: Source has {sourceBalances} token balances");
 
                 if (scenario.ShouldFindPath)

@@ -270,16 +270,19 @@ public class SnapshotIntegrationTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        // Query without explicit block filter should respect session's max block
+        // Test-env sessions pin VIEWS through the circles_at_block twins (search_path +
+        // circles.max_block_number). Raw tables are intentionally NOT pinned — explicit
+        // "blockNumber" <= N filters are the caller's responsibility there. Assert the
+        // pinning guarantee on a twinned view, not a raw table.
         var result = await _session!.ExecuteQueryAsync(@"
-            SELECT MAX(""blockNumber"") FROM ""CrcV2_Trust""");
+            SELECT MAX(""blockNumber"") FROM ""V_CrcV2_Avatars""");
 
         var maxBlock = CellToInt64(result.Rows.FirstOrDefault()?[0]);
 
-        // Should not exceed session block due to circles.max_block_number
+        Assert.That(maxBlock, Is.GreaterThan(0), "Pinned view should not be empty");
         Assert.That(maxBlock, Is.LessThanOrEqualTo(TestBlock),
-            $"Max block {maxBlock} should not exceed session block {TestBlock}");
+            $"Pinned view max block {maxBlock} should not exceed session block {TestBlock}");
 
-        TestContext.Out.WriteLine($"Max trust block: {maxBlock} (session limit: {TestBlock})");
+        TestContext.Out.WriteLine($"Max avatar block via pinned view: {maxBlock} (session limit: {TestBlock})");
     }
 }
