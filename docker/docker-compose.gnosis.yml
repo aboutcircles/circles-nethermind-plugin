@@ -389,7 +389,7 @@ services:
       - Balancer__ApiUrl=${BALANCER_API_URL:-https://api-v3.balancer.fi/graphql}
       - Balancer__ReferenceScrcAddress=${BALANCER_REFERENCE_SCRC:-}
       - Deployment__Environments__Staging=${DEPLOYMENT__ENVIRONMENTS__STAGING:-}
-      - ConnectionStrings__RepScoreDb=${METRICS_REP_SCORE_DB_CONN:-}
+      - ConnectionStrings__RepScoreDb=${METRICS_REP_SCORE_DB_HOST:+Server=${METRICS_REP_SCORE_DB_HOST};Port=${METRICS_REP_SCORE_DB_PORT:-5432};Database=circles_rep_score;User Id=${METRICS_DB_USER:-${POSTGRES_USER}};Password=${METRICS_DB_PASSWORD:-${POSTGRES_PASSWORD}};Application Name=metrics-exporter;Maximum Pool Size=3;}
     deploy:
       resources:
         limits:
