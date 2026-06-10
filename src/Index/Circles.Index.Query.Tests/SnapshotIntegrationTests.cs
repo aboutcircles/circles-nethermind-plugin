@@ -17,6 +17,12 @@ public class SnapshotIntegrationTests
     private const long TestBlock = 43193632;
     private TestEnvironmentClient? _session;
 
+    // Cells arrive as native types over a direct DB connection but as boxed JsonElement
+    // through the HTTP query proxy — Convert.ToInt64 throws on JsonElement, so normalize
+    // through the string form.
+    private static long CellToInt64(object? cell) =>
+        long.Parse(cell?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
+
     [OneTimeSetUp]
     public async Task Setup()
     {
@@ -32,12 +38,12 @@ public class SnapshotIntegrationTests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy");
+                Assert.Fail("Test environment not healthy");
             }
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -94,7 +100,7 @@ public class SnapshotIntegrationTests
             });
 
         Assert.That(result, Is.Not.Null);
-        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var count = CellToInt64(result.Rows.FirstOrDefault()?[0]);
         Assert.That(count, Is.GreaterThan(0));
         TestContext.Out.WriteLine($"Trust events after block {TestBlock - 10000}: {count}");
     }
@@ -139,7 +145,7 @@ public class SnapshotIntegrationTests
         long prevBlock = long.MaxValue;
         foreach (var row in result.Rows)
         {
-            var blockNum = Convert.ToInt64(row[0]);
+            var blockNum = CellToInt64(row[0]);
             Assert.That(blockNum, Is.LessThanOrEqualTo(prevBlock), "Should be in descending order");
             prevBlock = blockNum;
         }
@@ -205,7 +211,7 @@ public class SnapshotIntegrationTests
             SELECT COUNT(*) FROM ""CrcV1_Signup"" WHERE ""blockNumber"" <= @block",
             new Dictionary<string, object?> { ["block"] = TestBlock });
 
-        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var count = CellToInt64(result.Rows.FirstOrDefault()?[0]);
         Assert.That(count, Is.GreaterThan(0), "Should have V1 signups");
         TestContext.Out.WriteLine($"V1 signups: {count}");
     }
@@ -219,7 +225,7 @@ public class SnapshotIntegrationTests
             SELECT COUNT(*) FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @block",
             new Dictionary<string, object?> { ["block"] = TestBlock });
 
-        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var count = CellToInt64(result.Rows.FirstOrDefault()?[0]);
         Assert.That(count, Is.GreaterThan(0), "Should have V2 registrations");
         TestContext.Out.WriteLine($"V2 RegisterHuman events: {count}");
     }
@@ -232,7 +238,7 @@ public class SnapshotIntegrationTests
         var result = await _session!.ExecuteQueryAsync(@"
             SELECT MAX(""blockNumber"") FROM ""System_Block""");
 
-        var maxBlock = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var maxBlock = CellToInt64(result.Rows.FirstOrDefault()?[0]);
         Assert.That(maxBlock, Is.GreaterThanOrEqualTo(TestBlock), "Should have blocks indexed up to test block");
         TestContext.Out.WriteLine($"Max indexed block: {maxBlock}");
     }
@@ -253,7 +259,7 @@ public class SnapshotIntegrationTests
         foreach (var view in views)
         {
             var result = await _session!.ExecuteQueryAsync($"SELECT COUNT(*) FROM \"{view}\"");
-            var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+            var count = CellToInt64(result.Rows.FirstOrDefault()?[0]);
             TestContext.Out.WriteLine($"{view}: {count} rows");
             Assert.That(count, Is.GreaterThanOrEqualTo(0), $"View {view} should be queryable");
         }
@@ -264,16 +270,19 @@ public class SnapshotIntegrationTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        // Query without explicit block filter should respect session's max block
+        // Test-env sessions pin VIEWS through the circles_at_block twins (search_path +
+        // circles.max_block_number). Raw tables are intentionally NOT pinned — explicit
+        // "blockNumber" <= N filters are the caller's responsibility there. Assert the
+        // pinning guarantee on a twinned view, not a raw table.
         var result = await _session!.ExecuteQueryAsync(@"
-            SELECT MAX(""blockNumber"") FROM ""CrcV2_Trust""");
+            SELECT MAX(""blockNumber"") FROM ""V_CrcV2_Avatars""");
 
-        var maxBlock = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var maxBlock = CellToInt64(result.Rows.FirstOrDefault()?[0]);
 
-        // Should not exceed session block due to circles.max_block_number
+        Assert.That(maxBlock, Is.GreaterThan(0), "Pinned view should not be empty");
         Assert.That(maxBlock, Is.LessThanOrEqualTo(TestBlock),
-            $"Max block {maxBlock} should not exceed session block {TestBlock}");
+            $"Pinned view max block {maxBlock} should not exceed session block {TestBlock}");
 
-        TestContext.Out.WriteLine($"Max trust block: {maxBlock} (session limit: {TestBlock})");
+        TestContext.Out.WriteLine($"Max avatar block via pinned view: {maxBlock} (session limit: {TestBlock})");
     }
 }

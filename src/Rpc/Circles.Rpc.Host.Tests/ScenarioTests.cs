@@ -125,7 +125,7 @@ public class RpcScenarioTests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy");
+                Assert.Fail("Test environment not healthy");
             }
 
             var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
@@ -141,7 +141,7 @@ public class RpcScenarioTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -212,7 +212,7 @@ public class RpcScenarioTests
                     WHERE ""account"" = @address AND ""balance"" > 0",
                     new Dictionary<string, object?> { ["address"] = scenario.Source });
 
-                var sourceBalances = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+                var sourceBalances = long.Parse(result.Rows.FirstOrDefault()?[0]?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
                 TestContext.Out.WriteLine($"Scenario {scenario.Id}: Source has {sourceBalances} token balances");
 
                 if (scenario.ShouldFindPath)

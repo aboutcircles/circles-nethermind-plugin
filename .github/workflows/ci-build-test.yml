@@ -94,7 +94,10 @@ jobs:
         env:
           TEST_ENV_URL: https://staging.circlesubi.network/test-env
         run: |
-          dotnet test --no-build -c Release \
+          # -m:1 serializes test assemblies: the staging test-env enforces a global
+          # 10-session cap, and parallel assemblies (each holding sessions for shared
+          # graph/anvil caches) exhaust it.
+          dotnet test --no-build -c Release -m:1 \
             --filter "Category=Snapshot" \
             --logger "trx;LogFileName=snapshot-tests.trx" \
             --results-directory TestResults/snapshot
@@ -111,7 +114,9 @@ jobs:
   regression-tests:
     runs-on: ubuntu-latest
     # Now runs on PRs too - test-env returns sanitized errors (no credential exposure)
-    needs: build-and-test
+    # Chained after snapshot-tests (not just build-and-test) so the two jobs never
+    # compete for the test-env's global 10-session cap.
+    needs: [build-and-test, snapshot-tests]
 
     steps:
       - name: Check out code
@@ -134,7 +139,8 @@ jobs:
         env:
           TEST_ENV_URL: https://staging.circlesubi.network/test-env
         run: |
-          dotnet test --no-build -c Release \
+          # -m:1: see snapshot-tests — bounded by the test-env global session cap.
+          dotnet test --no-build -c Release -m:1 \
             --filter "Category=Regression" \
             --logger "trx;LogFileName=regression-tests.trx" \
             --results-directory TestResults/regression
