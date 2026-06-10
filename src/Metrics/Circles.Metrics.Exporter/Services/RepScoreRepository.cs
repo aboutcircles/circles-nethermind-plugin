@@ -114,27 +114,27 @@ public class RepScoreRepository
     {
         const string sql = """
             SELECT
-                COUNT(*)                                                           AS member_count,
-                COALESCE(AVG(score), 0)                                            AS avg,
-                COALESCE(PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY score), 0)  AS median,
-                COALESCE(STDDEV(score), 0)                                         AS stddev,
-                COALESCE(PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY score), 0)  AS p25,
-                COALESCE(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY score), 0)  AS p75,
-                COALESCE(PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY score), 0)  AS p90,
-                COUNT(*) FILTER (WHERE score = 0)                                  AS zero_count,
-                COALESCE(COUNT(*) FILTER (WHERE score >= @high)::double precision
-                    / NULLIF(COUNT(*), 0), 0)                                      AS high_share,
-                COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(computed_at))), 999999)   AS refresh_age,
-                COUNT(*) FILTER (WHERE score >= 0.0  AND score < 0.1)  AS b0,
-                COUNT(*) FILTER (WHERE score >= 0.1  AND score < 0.2)  AS b10,
-                COUNT(*) FILTER (WHERE score >= 0.2  AND score < 0.3)  AS b20,
-                COUNT(*) FILTER (WHERE score >= 0.3  AND score < 0.4)  AS b30,
-                COUNT(*) FILTER (WHERE score >= 0.4  AND score < 0.5)  AS b40,
-                COUNT(*) FILTER (WHERE score >= 0.5  AND score < 0.6)  AS b50,
-                COUNT(*) FILTER (WHERE score >= 0.6  AND score < 0.7)  AS b60,
-                COUNT(*) FILTER (WHERE score >= 0.7  AND score < 0.8)  AS b70,
-                COUNT(*) FILTER (WHERE score >= 0.8  AND score < 0.9)  AS b80,
-                COUNT(*) FILTER (WHERE score >= 0.9  AND score <= 1.0) AS b90
+                COUNT(*)                                                                      AS member_count,
+                COALESCE(AVG(score) * 100, 0)                                                 AS avg,
+                COALESCE(PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY score) * 100, 0)        AS median,
+                COALESCE(STDDEV(score) * 100, 0)                                              AS stddev,
+                COALESCE(PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY score) * 100, 0)        AS p25,
+                COALESCE(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY score) * 100, 0)        AS p75,
+                COALESCE(PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY score) * 100, 0)        AS p90,
+                COUNT(*) FILTER (WHERE score = 0)                                              AS zero_count,
+                COALESCE(COUNT(*) FILTER (WHERE score * 100 >= @high)::double precision
+                    / NULLIF(COUNT(*), 0), 0)                                                  AS high_share,
+                COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(computed_at))), 999999)               AS refresh_age,
+                COUNT(*) FILTER (WHERE score * 100 >= 0   AND score * 100 < 10)   AS b0,
+                COUNT(*) FILTER (WHERE score * 100 >= 10  AND score * 100 < 20)   AS b10,
+                COUNT(*) FILTER (WHERE score * 100 >= 20  AND score * 100 < 30)   AS b20,
+                COUNT(*) FILTER (WHERE score * 100 >= 30  AND score * 100 < 40)   AS b30,
+                COUNT(*) FILTER (WHERE score * 100 >= 40  AND score * 100 < 50)   AS b40,
+                COUNT(*) FILTER (WHERE score * 100 >= 50  AND score * 100 < 60)   AS b50,
+                COUNT(*) FILTER (WHERE score * 100 >= 60  AND score * 100 < 70)   AS b60,
+                COUNT(*) FILTER (WHERE score * 100 >= 70  AND score * 100 < 80)   AS b70,
+                COUNT(*) FILTER (WHERE score * 100 >= 80  AND score * 100 < 90)   AS b80,
+                COUNT(*) FILTER (WHERE score * 100 >= 90  AND score * 100 <= 100) AS b90
             FROM rep_score_state
             WHERE group_id = @groupId
             """;
@@ -203,7 +203,7 @@ public class RepScoreRepository
                   AND s.avatar IS NULL
             )
             SELECT
-                COUNT(*) FILTER (WHERE prev_score - score >= @drop AND prev_score > score) AS drops_24h,
+                COUNT(*) FILTER (WHERE (prev_score - score) * 100 >= @drop AND prev_score > score) AS drops_24h,
                 COUNT(*) FILTER (WHERE prev_score > 0 AND score = 0)                       AS new_zero_24h,
                 COUNT(*) FILTER (WHERE prev_is_member = false OR prev_is_member IS NULL)   AS new_members_24h,
                 (SELECT cnt FROM lost)                                                     AS lost_members_24h
@@ -304,10 +304,10 @@ public class RepScoreRepository
         while (await reader.ReadAsync(ct))
         {
             var avatar = reader.GetString(0).ToLowerInvariant();
-            var score = reader.IsDBNull(1) ? 0.0 : reader.GetDouble(1);
-            if (score >= _highScoreThreshold)
+            var score100 = (reader.IsDBNull(1) ? 0.0 : reader.GetDouble(1)) * 100.0;
+            if (score100 >= _highScoreThreshold)
                 highRep.Add(avatar);
-            else if (score < 0.001)
+            else if (score100 < 0.1)
                 zeroRep.Add(avatar);
         }
 
