@@ -20,7 +20,8 @@ namespace Circles.Pathfinder.Tests;
 /// - Tests create sessions with Anvil fork for contract execution
 ///
 /// The tests run by default but gracefully skip when TEST_ENV_URL is not set.
-/// CI triggers these tests automatically on merges to main/dev branches.
+/// Not selected by any CI job — run them explicitly (e.g.
+/// --filter "TestCategory=RequiresAnvil") with TEST_ENV_URL set.
 /// </summary>
 [TestFixture]
 [Category("RequiresTestEnv")]

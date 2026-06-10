@@ -7,6 +7,7 @@ RUN echo "Building for architecture: ${TARGETARCH}"
 
 # Copy shared build props (defines TFM)
 COPY Directory.Build.props ./
+COPY Directory.Packages.props ./
 
 # Copy Index, Common, and Pathfinder sources (Pathfinder depends on Circles.Common)
 COPY ./src/Index ./Index

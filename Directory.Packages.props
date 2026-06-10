@@ -23,7 +23,9 @@
     <PackageVersion Include="Nethereum.Web3" Version="6.1.0" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.5.0" />
     <!-- Must stay compatible with the Nethermind runtime image in docker/Index.Dockerfile
-         (currently nethermind/nethermind:1.37.2) — bump both together. -->
+         (currently nethermind/nethermind:1.37.2). The ref-assemblies package may trail the
+         runtime image by a patch release (currently 1.37.1 vs image 1.37.2); keep both within
+         the same minor and bump together once the matching ref-assemblies release exists. -->
     <PackageVersion Include="Nethermind.ReferenceAssemblies" Version="1.37.1" />
     <PackageVersion Include="Npgsql" Version="10.0.1" />
     <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.1" />

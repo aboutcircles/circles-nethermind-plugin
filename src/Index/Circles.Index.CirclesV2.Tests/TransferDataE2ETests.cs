@@ -5,13 +5,15 @@ namespace Circles.Index.CirclesV2.Tests;
 /// <summary>
 /// End-to-end tests for TransferData indexing against real blockchain data.
 ///
-/// These tests are marked as [Explicit] because they require:
-/// 1. PostgreSQL database with indexed data (staging or production)
-/// 2. Environment variables: CIRCLES_CONNECTION_STRING
+/// The schema/unit tests in this fixture run everywhere with no external
+/// dependencies. The two E2E placeholder methods carry method-level [Explicit]
+/// (skipped in normal runs; executed only when selected directly, e.g.
+/// dotnet test --filter "Name~E2E_") and additionally self-skip via
+/// Assert.Ignore when CIRCLES_CONNECTION_STRING is not set.
 ///
-/// To run these tests:
+/// To run the E2E methods:
 /// 1. Set up environment: source docker/.env (or staging env)
-/// 2. Run: dotnet test --filter "TransferDataE2E" -- NUnit.DefaultTestParams.Explicit=true
+/// 2. Run: dotnet test --filter "Name~E2E_VerifyTransferDataInDatabase"
 ///
 /// Alternatively, use the test-rpc.sh script to verify TransferData events via RPC.
 /// </summary>

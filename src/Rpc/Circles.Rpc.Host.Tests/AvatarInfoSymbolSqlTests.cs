@@ -23,6 +23,7 @@ namespace Circles.Rpc.Host.Tests;
 /// <see cref="long.MaxValue"/>, so the old join would have crashed on the very rows asserted here.
 /// </summary>
 [TestFixture]
+[Category("RequiresDocker")]
 public class AvatarInfoSymbolSqlTests
 {
     // A real V2 short name is a uint > 2^63 once base58-decoded; numeric, not text. The score group

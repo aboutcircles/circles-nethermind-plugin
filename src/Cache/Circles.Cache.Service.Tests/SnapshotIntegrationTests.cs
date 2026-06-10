@@ -8,6 +8,7 @@ namespace Circles.Cache.Service.Tests;
 /// Integration tests that verify cache service queries work against real Circles data.
 /// These tests run by default but skip gracefully when TEST_ENV_URL is not set.
 /// </summary>
+[Trait("Category", "RequiresTestEnv")]
 public class SnapshotIntegrationTests : IAsyncLifetime
 {
     private static readonly bool TestEnvConfigured =

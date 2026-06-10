@@ -97,8 +97,7 @@ jobs:
           dotnet test --no-build -c Release \
             --filter "Category=Snapshot" \
             --logger "trx;LogFileName=snapshot-tests.trx" \
-            --results-directory TestResults/snapshot \
-            || true  # Don't fail if tests skip due to unavailable test-env
+            --results-directory TestResults/snapshot
 
       - name: Upload snapshot test results
         if: always()
@@ -138,8 +137,7 @@ jobs:
           dotnet test --no-build -c Release \
             --filter "Category=Regression" \
             --logger "trx;LogFileName=regression-tests.trx" \
-            --results-directory TestResults/regression \
-            || true  # Don't fail if tests skip
+            --results-directory TestResults/regression
 
       - name: Upload regression test results
         if: always()

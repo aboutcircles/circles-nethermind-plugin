@@ -141,6 +141,7 @@ public class RegressionTests
     [Test]
     [TestCaseSource(nameof(LoadScenarios))]
     [Category("Integration")]
+    [Category("RequiresTestEnv")]
     public async Task RegressionScenario_EdgeOrderingIsCorrect(RegressionScenario scenario)
     {
         // Check if TEST_ENV_URL is set

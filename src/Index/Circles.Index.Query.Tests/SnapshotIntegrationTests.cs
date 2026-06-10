@@ -10,6 +10,8 @@ namespace Circles.Index.Query.Tests;
 /// These tests run by default but skip gracefully when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class SnapshotIntegrationTests
 {
     private const long TestBlock = 43193632;

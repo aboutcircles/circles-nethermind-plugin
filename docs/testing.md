@@ -136,13 +136,20 @@ excluded explicitly:
 | ---------------- | ------------------------------------------------ | ---------------------------------------- |
 | `RequiresTestEnv`| `TEST_ENV_URL` (circles-test-environment)        | `--filter "TestCategory=RequiresTestEnv"`|
 | `RequiresAnvil`  | Anvil fork (foundry) via the test environment    | `--filter "TestCategory=RequiresAnvil"`  |
-| `RequiresDb`     | `POSTGRES_CONNECTION_STRING` (real indexer DB)   | `--filter "TestCategory=RequiresDb"`     |
+| `RequiresDb`     | Test-env session with direct DB access (`IsDirectConnectionAvailable`) | `--filter "TestCategory=RequiresDb"`     |
+| `RequiresDocker` | Docker daemon for Testcontainers                 | `--filter "TestCategory=RequiresDocker"` |
 | `Snapshot`       | Test-env; pinned-block snapshot comparisons (CI `snapshot-tests` job) | `--filter "TestCategory=Snapshot"` |
 | `Regression`     | Test-env; known-bug regression scenarios (CI `regression-tests` job)  | `--filter "TestCategory=Regression"` |
 
-Cache Service integration tests (xunit + Testcontainers) are gated on Docker
-availability instead: they auto-run when a Docker socket is detected and can
-be forced on/off via `RUN_CACHE_INTEGRATION_TESTS=true|false`.
+(CI workflows use the `Category=` filter form — for NUnit3TestAdapter it is a
+synonym of `TestCategory=`; both select the same tests.)
+
+Cache Service Testcontainers integration tests (`IntegrationTests.cs`, xunit)
+are gated on Docker availability instead: they auto-run when a Docker socket
+is detected and can be forced on/off via `RUN_CACHE_INTEGRATION_TESTS=true|false`.
+The cache `SnapshotIntegrationTests.cs` is test-env-gated like the NUnit tiers:
+it carries `[Trait("Category", "RequiresTestEnv")]` and skips when
+`TEST_ENV_URL` is not set.
 
 ```bash
 # Pure-local tier only (skip everything that needs external services)
@@ -193,7 +200,7 @@ dotnet test --filter "Name~mint-path-bug-001"
 | --------------------- | ------------------------- | ----------------------- |
 | `TEST_ENV_URL`        | Test environment base URL | (none - tests skip)     |
 | `PATHFINDER_URL`      | Pathfinder service URL    | `http://localhost:8080` |
-| `BUILD_CONFIGURATION` | Build config for test.sh  | `Debug`                 |
+| `BUILD_CONFIGURATION` | Build config for test.sh  | `Release`               |
 | `TEST_VERBOSITY`      | Test output verbosity     | `normal`                |
 
 ---

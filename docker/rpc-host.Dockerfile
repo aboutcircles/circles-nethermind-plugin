@@ -7,6 +7,7 @@ RUN echo "Building for architecture: ${TARGETARCH}"
 
 # Copy shared build props (defines TFM)
 COPY Directory.Build.props ./
+COPY Directory.Packages.props ./
 
 # Copy Index, Common, and RPC sources (required for local project references)
 # RPC Host specifically depends on:

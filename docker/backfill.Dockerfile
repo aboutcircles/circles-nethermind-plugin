@@ -3,6 +3,7 @@ WORKDIR /src
 
 # Copy shared build props (defines TFM)
 COPY Directory.Build.props ./
+COPY Directory.Packages.props ./
 
 # Copy only the backfill project (it's self-contained, no internal dependencies)
 COPY src/Index/Circles.Index.Backfill/Circles.Index.Backfill.csproj ./

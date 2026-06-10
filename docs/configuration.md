@@ -2,7 +2,9 @@
 
 Every environment variable read by the five runtime services, in one place.
 Unless marked **required**, all variables are optional and fall back to the
-listed default. All variables are read once at process startup.
+listed default. Variables are read once at process startup (the Pathfinder
+Host re-reads its settings on each access, but since the process environment
+is static this is effectively equivalent).
 
 The Index plugin, RPC Host, Pathfinder, and Cache Service read plain
 environment variables (`Environment.GetEnvironmentVariable`). The Metrics
@@ -24,6 +26,7 @@ Sources of truth: `src/Common/Circles.Common/Settings.cs`,
 | `POSTGRES_CONNECTION_STRING` | string | — **required** | Primary PostgreSQL connection string (write access). Index plugin and Pathfinder Host throw at startup when missing. |
 | `POSTGRES_READONLY_CONNECTION_STRING` | string | falls back to `POSTGRES_CONNECTION_STRING` | Read-only connection string used for query paths. |
 | `CIRCLES_PG_NOTIFY_CHANNEL` | string | `circles_index_events` | PostgreSQL NOTIFY channel for new-block notifications. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | string | unset | Enables OTLP trace export when set (read by the RPC Host, Pathfinder Host, and Cache Service). |
 
 ## Index plugin (Nethermind)
 
@@ -38,8 +41,7 @@ Sources of truth: `src/Common/Circles.Common/Settings.cs`,
 | `REINDEX_ALL_TABLES` | bool | `false` | Reindex all tables from `REINDEX_FROM_BLOCK`. |
 | `REINDEX_TABLES` | string[] (comma-sep.) | `[]` | Specific tables to reindex from `REINDEX_FROM_BLOCK`. |
 | `REINDEX_ALLOW_PARTIAL_DEPENDENCIES` | bool | `false` | Allow a partial-table reindex even when dependent tables are not included. |
-| `EXTERNAL_PATHFINDER_URL` | string | unset | Delegate pathfinding RPC methods to an external pathfinder. |
-| `PATHFINDER_MAX_CONCURRENT_REQUESTS` | int | `cores` | Legacy concurrency limit for the in-plugin pathfinder delegation path. |
+| `PATHFINDER_MAX_CONCURRENT_REQUESTS` | int | `cores` | Parsed but currently unused — superseded by `MAX_CONCURRENT_REQUESTS` in the Pathfinder Host. |
 
 ### IPFS profile downloader (Index plugin)
 
@@ -69,6 +71,7 @@ Sources of truth: `src/Common/Circles.Common/Settings.cs`,
 | `USE_CACHE_SERVICE` | bool | `false` | Serve balance/avatar queries from the Cache Service (also needs `CACHE_SERVICE_URL`). |
 | `CACHE_SERVICE_URL` | string | unset | Cache Service base URL. |
 | `PROFILE_PINNING_SERVICE_URL` | string | unset | Fast profile-search proxy URL. |
+| `EXTERNAL_PATHFINDER_URL` | string | unset | Delegate pathfinding RPC methods to an external pathfinder (also used by the health check, and read by the in-plugin RPC of the Index plugin). |
 | `DATABASE_QUERY_TIMEOUT_SECONDS` | int | `30` | General DB query timeout. |
 | `PROFILE_SEARCH_TIMEOUT_SECONDS` | int | `30` | Profile search query timeout. |
 | `INDEXER_MAX_LAG_BLOCKS` | long | `100` | Max indexer lag before `/ready` reports unhealthy. |
@@ -102,7 +105,9 @@ Sources of truth: `src/Common/Circles.Common/Settings.cs`,
 | `HISTORICAL_MAX_CONCURRENT_LOADS` | int | `2` | Max concurrent historical graph loads. |
 | `CANARY_SIMULATION_ENABLED` | bool | `false` | Enable the on-chain simulation canary for solver results. |
 | `CANARY_SIMULATION_QUEUE_SIZE` | int | `10` | Canary background simulation queue size. |
-| `CANARY_BALANCE_PROBE_ENABLED` | bool | `false` | Enable the canary balance probe. |
+| `CANARY_BALANCE_PROBE_ENABLED` | bool | `true` | Kill switch for the canary balance probe — set to `false` to disable. |
+| `CORS_ALLOWED_ORIGINS` | string | `*` | Comma-separated allowed origins. |
+| `PATHFINDER_BASE_PATH` | string | `/pathfinder` | Public base path used for the generated OpenAPI server URL when behind a prefix-stripping reverse proxy. |
 
 ## Cache Service (port 5002)
 
@@ -125,11 +130,11 @@ ASP.NET configuration keys (override with `__` separator as env vars):
 
 | Key | Default | Effect |
 |---|---|---|
-| `ConnectionStrings:CirclesDb` | — **required** | Main Circles indexer database. |
+| `ConnectionStrings:CirclesDb` | required (`appsettings.json` ships a localhost default — override in production) | Main Circles indexer database. |
 | `ConnectionStrings:RepScoreDb` | unset | Reputation-score / blacklist database; rep_score metrics are disabled gracefully when missing. |
 | `Metrics:CollectionIntervalSeconds` | per `appsettings.json` | KPI collection cadence. |
 | `CoinGecko:ApiKey` | unset | Fiat pricing API key (falls back to Balancer GraphQL). |
-| `Balancer:ApiUrl` | per `appsettings.json` | Balancer V3 GraphQL endpoint for SCRC pricing. |
+| `Balancer:ApiUrl` | `https://api-v3.balancer.fi/graphql` (hardcoded in `BalancerPriceService.cs`) | Balancer V3 GraphQL endpoint for SCRC pricing. |
 
 See `src/Metrics/Circles.Metrics.Exporter/README.md` and its
 `appsettings.json` for the full key set (RepScore thresholds, deployment
@@ -141,14 +146,16 @@ prober environments).
 |---|---|
 | `--connection-string` / `-c` | Explicit connection string; takes precedence. |
 | `POSTGRES_CONNECTION_STRING` | Fallback when the option is omitted. |
-| `POSTGRES_USER` + `POSTGRES_PASSWORD` | Last-resort fallback for a localhost connection. |
+| `POSTGRES_USER` + `POSTGRES_PASSWORD` | Last-resort fallback for a constructed connection string. |
+| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` | Optional overrides for the constructed connection string (defaults: `localhost` / `5432` / `postgres`). |
 
 ## Contract addresses (shared)
 
 Defaults are the Gnosis Chain production deployments
 (`src/Common/Circles.Common/Settings.cs`); override only for other chains or
-test deployments. All values are lower-cased on read; list-valued variables
-are comma-separated.
+test deployments. Values are lower-cased on read (one Pathfinder Host read
+site — `RouterAddress` reading `V2_BASE_GROUP_ROUTER` — preserves case);
+list-valued variables are comma-separated.
 
 `V1_HUB_ADDRESS`, `V2_HUB_ADDRESS`, `V1_NAME_REGISTRY_ADDRESS`,
 `V2_NAME_REGISTRY_ADDRESS`, `V2_ERC20_LIFT_ADDRESS`,
@@ -163,7 +170,8 @@ are comma-separated.
 `V2_INVITATION_AT_SCALE_QUOTA_GRANT_MODULE_ADDRESSES`,
 `V2_SCORE_GROUP_MINT_POLICIES` (allowlist, default empty),
 `SCORE_TREASURY_SUBTREASURIES` (mapping, format `agg:sub1,sub2;agg2:sub3`),
-`V2_STANDARD_MINT_POLICY`.
+`V2_STANDARD_MINT_POLICY` (default lives in
+`src/Pathfinder/Circles.Pathfinder/Settings.cs`, not Common).
 
 ## Test-only variables
 
@@ -171,3 +179,6 @@ are comma-separated.
 |---|---|
 | `TEST_ENV_URL` | Base URL of the circles-test-environment; gates scenario/E2E test suites. |
 | `RUN_CACHE_INTEGRATION_TESTS` | Tri-state: `true` force-on, `false` force-off, unset = auto-detect Docker for Testcontainers-based cache tests. |
+| `CIRCLES_CONNECTION_STRING` | Real indexer DB connection string; gates the Index CirclesV2 E2E tests (e.g. `TransferDataE2ETests`). |
+| `PATHFINDER_URL` | Running pathfinder base URL for network-dependent tests (`MetricsEndpointTests` skips when unset; `NetworkPathfinderTests` defaults to `http://localhost:8080`). |
+| `RUN_PATHFINDER_NETWORK_TESTS` | Opt-in switch for `NetworkPathfinderTests` (network-dependent). |
