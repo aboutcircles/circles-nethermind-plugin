@@ -4,7 +4,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <Version>0.0.1</Version>
-        <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
+        <Authors>Daniel Janz (Gnosis Service GmbH);Tobias Leinss (Gnosis Service GmbH)</Authors>
         <Copyright>Gnosis Service GmbH</Copyright>
         <Product>Circles</Product>
         <PackageId>Gnosis.Circles.Pathfinder</PackageId>

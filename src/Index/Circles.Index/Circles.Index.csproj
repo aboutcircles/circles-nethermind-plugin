@@ -3,7 +3,7 @@
   <PropertyGroup>
     <!-- NuGet Package Metadata -->
     <Version>0.0.7</Version>
-    <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
+    <Authors>Daniel Janz (Gnosis Service GmbH);Tobias Leinss (Gnosis Service GmbH)</Authors>
     <Copyright>Gnosis Service GmbH</Copyright>
     <Product>Circles</Product>
     <PackageId>Gnosis.Circles.Nethermind.Plugin</PackageId>
