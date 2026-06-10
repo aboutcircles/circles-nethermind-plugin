@@ -138,7 +138,14 @@ public static class BuilderSetup
                     serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown"))
                 .WithTracing(tracing => tracing
                     .AddSource(Tracing.Name)
-                    .AddAspNetCoreInstrumentation()
+                    .AddAspNetCoreInstrumentation(opts =>
+                    {
+                        opts.EnrichWithHttpRequest = (activity, request) =>
+                        {
+                            if (request.Headers.ContainsKey(CirclesRpcModule.MaxBlockNumberHeader))
+                                activity.SetTag("session.historical", "true");
+                        };
+                    })
                     .AddHttpClientInstrumentation()
                     .AddNpgsql()
                     .AddOtlpExporter());
