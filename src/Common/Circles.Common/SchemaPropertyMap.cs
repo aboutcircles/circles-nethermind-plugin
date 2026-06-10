@@ -11,6 +11,22 @@ public class CompositeDatabaseSchema : IDatabaseSchema
 
     public CompositeDatabaseSchema(IDatabaseSchema[] components)
     {
+        // Fail fast with a clear message when two protocol schemas define the same
+        // (namespace, table) — the ToDictionary below would only throw a generic
+        // "key already added" without naming the colliding components.
+        var duplicateTables = components
+            .SelectMany(c => c.Tables.Keys.Select(key => (Key: key, Component: c.GetType().FullName)))
+            .GroupBy(x => x.Key)
+            .Where(g => g.Count() > 1)
+            .ToList();
+        if (duplicateTables.Count > 0)
+        {
+            var details = string.Join("; ", duplicateTables.Select(g =>
+                $"\"{g.Key.Namespace}_{g.Key.Table}\" defined by [{string.Join(", ", g.Select(x => x.Component))}]"));
+            throw new InvalidOperationException(
+                $"Duplicate table definitions across database schemas: {details}");
+        }
+
         Tables = components
             .SelectMany(c => c.Tables)
             .ToDictionary(
