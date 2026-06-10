@@ -66,6 +66,67 @@ public class TestEnvironmentClient : IAsyncDisposable
     /// </summary>
     public SessionResponse? Session => _session;
 
+    // Backoff schedule for transient saturation (429 rate limit, 503 session-cap).
+    // The server enforces a global concurrent-session cap and a per-IP rate limit;
+    // parallel test assemblies routinely trip both. Total wait ≈ 77s, comfortably
+    // under the 5-minute session TTL so a saturated cap can drain.
+    private static readonly TimeSpan[] TransientRetryDelays =
+    [
+        TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10),
+        TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(40)
+    ];
+
+    private static bool IsTransientStatus(System.Net.HttpStatusCode status) =>
+        status is System.Net.HttpStatusCode.TooManyRequests or System.Net.HttpStatusCode.ServiceUnavailable;
+
+    /// <summary>
+    /// GETs JSON, retrying on 429/503 with the backoff schedule above.
+    /// </summary>
+    private static async Task<T?> GetWithTransientRetryAsync<T>(HttpClient client, string uri)
+    {
+        var attempt = 0;
+        while (true)
+        {
+            try
+            {
+                return await client.GetFromJsonAsync<T>(uri);
+            }
+            catch (HttpRequestException ex) when (
+                ex.StatusCode is { } status && IsTransientStatus(status) && attempt < TransientRetryDelays.Length)
+            {
+                await Task.Delay(TransientRetryDelays[attempt]);
+                attempt++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// POSTs JSON, retrying on 429/503 with the backoff schedule above.
+    /// Throws HttpRequestException for any non-transient failure or once retries are exhausted.
+    /// </summary>
+    private async Task<HttpResponseMessage> PostWithTransientRetryAsync<T>(string uri, T request, string label)
+    {
+        var attempt = 0;
+        while (true)
+        {
+            var response = await _httpClient.PostAsJsonAsync(uri, request);
+            if (response.IsSuccessStatusCode)
+                return response;
+
+            var error = await response.Content.ReadAsStringAsync();
+            if (IsTransientStatus(response.StatusCode) && attempt < TransientRetryDelays.Length)
+            {
+                await Task.Delay(TransientRetryDelays[attempt]);
+                attempt++;
+                continue;
+            }
+
+            throw new HttpRequestException(
+                $"{label} failed: {response.StatusCode} - {error}" +
+                (attempt > 0 ? $" (after {attempt} retries)" : ""));
+        }
+    }
+
     private TestEnvironmentClient(string baseUrl)
     {
         _baseUrl = baseUrl.TrimEnd('/');
@@ -102,14 +163,8 @@ public class TestEnvironmentClient : IAsyncDisposable
             Ttl = ttl
         };
 
-        var response = await client._httpClient.PostAsJsonAsync("api/v1/session", request);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var error = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException(
-                $"Failed to create test session: {response.StatusCode} - {error}");
-        }
+        var response = await client.PostWithTransientRetryAsync(
+            "api/v1/session", request, "Session creation");
 
         client._session = await response.Content.ReadFromJsonAsync<SessionResponse>();
 
@@ -129,7 +184,7 @@ public class TestEnvironmentClient : IAsyncDisposable
         var baseUrl = (testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/') + "/";
         using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var response = await client.GetFromJsonAsync<BlockInfo>("api/v1/blocks/current");
+        var response = await GetWithTransientRetryAsync<BlockInfo>(client, "api/v1/blocks/current");
         return response?.BlockNumber ?? 0;
     }
 
@@ -141,8 +196,8 @@ public class TestEnvironmentClient : IAsyncDisposable
         var baseUrl = (testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/') + "/";
         using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var response = await client.GetFromJsonAsync<BlockExistsInfo>(
-            $"api/v1/blocks/{blockNumber}/exists");
+        var response = await GetWithTransientRetryAsync<BlockExistsInfo>(
+            client, $"api/v1/blocks/{blockNumber}/exists");
         return response?.Exists ?? false;
     }
 
@@ -154,7 +209,7 @@ public class TestEnvironmentClient : IAsyncDisposable
         var baseUrl = (testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/') + "/";
         using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        return await client.GetFromJsonAsync<HealthResponse>("health");
+        return await GetWithTransientRetryAsync<HealthResponse>(client, "health");
     }
 
     /// <summary>
@@ -251,14 +306,8 @@ public class TestEnvironmentClient : IAsyncDisposable
             MaxRows = maxRows
         };
 
-        var response = await _httpClient.PostAsJsonAsync(
-            $"api/v1/session/{_session.SessionId}/query", request);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var error = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"Query failed: {response.StatusCode} - {error}");
-        }
+        var response = await PostWithTransientRetryAsync(
+            $"api/v1/session/{_session.SessionId}/query", request, "Query");
 
         return await response.Content.ReadFromJsonAsync<QueryResponse>()
             ?? throw new InvalidOperationException("Query response was null");
@@ -285,14 +334,8 @@ public class TestEnvironmentClient : IAsyncDisposable
             Parameters = parameters
         };
 
-        var response = await _httpClient.PostAsJsonAsync(
-            $"api/v1/session/{_session.SessionId}/query/scalar", request);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var error = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"Scalar query failed: {response.StatusCode} - {error}");
-        }
+        var response = await PostWithTransientRetryAsync(
+            $"api/v1/session/{_session.SessionId}/query/scalar", request, "Scalar query");
 
         var result = await response.Content.ReadFromJsonAsync<ScalarResponse>();
         return result?.Value;

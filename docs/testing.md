@@ -144,6 +144,13 @@ excluded explicitly:
 (CI workflows use the `Category=` filter form — for NUnit3TestAdapter it is a
 synonym of `TestCategory=`; both select the same tests.)
 
+**Outage semantics**: skipping is only legitimate when `TEST_ENV_URL` is *not
+set*. Once it is set, an unreachable or unhealthy test environment is a test
+**failure** (`Assert.Fail`), not a skip — a green run must mean the env-gated
+suites actually executed. (Data-state gates — e.g. "block not indexed", "Anvil
+not available" — still skip, since they describe fixture availability, not an
+outage.)
+
 Cache Service Testcontainers integration tests (`IntegrationTests.cs`, xunit)
 are gated on Docker availability instead: they auto-run when a Docker socket
 is detected and can be forced on/off via `RUN_CACHE_INTEGRATION_TESTS=true|false`.

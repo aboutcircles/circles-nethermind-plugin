@@ -65,12 +65,12 @@ public class PaymentGatewayE2ETests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy. Check deployment status.");
+                Assert.Fail("Test environment not healthy. Check deployment status.");
             }
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not reachable at {testEnvUrl}: {ex.Message}");
+            Assert.Fail($"Test environment not reachable at {testEnvUrl}: {ex.Message}");
             return;
         }
 

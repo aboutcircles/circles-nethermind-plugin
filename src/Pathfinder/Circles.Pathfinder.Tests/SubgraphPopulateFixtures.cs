@@ -57,7 +57,7 @@ public class SubgraphPopulateFixtures
         var health = await TestEnvironmentClient.GetHealthAsync();
         if (health?.Status != "healthy")
         {
-            Assert.Ignore("Test environment not healthy");
+            Assert.Fail("Test environment not healthy");
             return;
         }
 
