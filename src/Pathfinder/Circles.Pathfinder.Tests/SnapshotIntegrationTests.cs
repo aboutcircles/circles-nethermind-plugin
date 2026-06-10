@@ -24,6 +24,8 @@ namespace Circles.Pathfinder.Tests;
 /// against remote test-env (staging), these tests will be skipped.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class SnapshotIntegrationTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -76,6 +78,9 @@ public class SnapshotIntegrationTests
 /// against remote test-env, they will skip unless direct connection is available.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
+[Category("RequiresDb")]
 public class MintAlongPathRegressionTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -304,6 +309,9 @@ public class MintAlongPathRegressionTests
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
+[Category("RequiresDb")]
 public class ConsentedFlowSnapshotTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -366,6 +374,8 @@ public class ConsentedFlowSnapshotTests
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class PathfinderQuerySnapshotTests
 {
     private const long TestBlock = 43193632;

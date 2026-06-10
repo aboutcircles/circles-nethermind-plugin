@@ -18,6 +18,7 @@ namespace Circles.Pathfinder.Tests;
 /// Requires TEST_ENV_URL with features: ["db", "rpc"] or ["db", "anvil"].
 /// </summary>
 [TestFixture]
+[Category("RequiresTestEnv")]
 public class CrossVerificationTests
 {
     /// <summary>

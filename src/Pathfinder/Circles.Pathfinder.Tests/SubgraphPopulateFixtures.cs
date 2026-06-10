@@ -21,6 +21,7 @@ namespace Circles.Pathfinder.Tests;
 /// </summary>
 [TestFixture]
 [Category("FixtureGeneration")]
+[Category("RequiresTestEnv")]
 public class SubgraphPopulateFixtures
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";

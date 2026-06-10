@@ -110,13 +110,55 @@ Each test session provides:
 
 ## Test Projects
 
-| Project                         | Location          | Coverage Focus                           |
-| ------------------------------- | ----------------- | ---------------------------------------- |
-| **Circles.Pathfinder.Tests**    | `src/Pathfinder/` | Path algorithm, edge ordering, scenarios |
-| **Circles.Common.Tests**  | `src/Common/`      | Demurrage math, numeric precision        |
-| **Circles.Index.Query.Tests**   | `src/Index/`      | Query building, SQL generation           |
-| **Circles.Cache.Service.Tests** | `src/Cache/`      | Cache invalidation, state management     |
-| **Circles.Rpc.Host.Tests**      | `src/Rpc/`        | RPC handlers, ABI encoding               |
+| Project                            | Location          | Coverage Focus                           |
+| ---------------------------------- | ----------------- | ---------------------------------------- |
+| **Circles.Pathfinder.Tests**       | `src/Pathfinder/` | Path algorithm, edge ordering, scenarios |
+| **Circles.Common.Tests**           | `src/Common/`     | Demurrage math, numeric precision        |
+| **Circles.Index.Query.Tests**      | `src/Index/`      | Query building, SQL generation           |
+| **Circles.Index.CirclesV2.Tests**  | `src/Index/`      | V2 log parsing, event extraction         |
+| **Circles.Index.CirclesViews.Tests** | `src/Index/`    | View DDL, schema projections             |
+| **Circles.Cache.Service.Tests**    | `src/Cache/`      | Cache invalidation, state management     |
+| **Circles.Rpc.Host.Tests**         | `src/Rpc/`        | RPC handlers, ABI encoding               |
+
+`scripts/test.sh` discovers this list from `Circles.sln` — adding a test
+project to the solution is sufficient for it to run locally and in CI.
+
+---
+
+## Test Tiers
+
+Tests are tagged with class-level categories describing their external
+dependencies. Untagged tests run anywhere; tagged tests self-skip
+(`Assert.Ignore`) when their dependency is absent, and can be selected or
+excluded explicitly:
+
+| Category         | Needs                                            | Select with                              |
+| ---------------- | ------------------------------------------------ | ---------------------------------------- |
+| `RequiresTestEnv`| `TEST_ENV_URL` (circles-test-environment)        | `--filter "TestCategory=RequiresTestEnv"`|
+| `RequiresAnvil`  | Anvil fork (foundry) via the test environment    | `--filter "TestCategory=RequiresAnvil"`  |
+| `RequiresDb`     | Test-env session with direct DB access (`IsDirectConnectionAvailable`) | `--filter "TestCategory=RequiresDb"`     |
+| `RequiresDocker` | Docker daemon for Testcontainers                 | `--filter "TestCategory=RequiresDocker"` |
+| `Snapshot`       | Test-env; pinned-block snapshot comparisons (CI `snapshot-tests` job) | `--filter "TestCategory=Snapshot"` |
+| `Regression`     | Test-env; known-bug regression scenarios (CI `regression-tests` job)  | `--filter "TestCategory=Regression"` |
+
+(CI workflows use the `Category=` filter form — for NUnit3TestAdapter it is a
+synonym of `TestCategory=`; both select the same tests.)
+
+Cache Service Testcontainers integration tests (`IntegrationTests.cs`, xunit)
+are gated on Docker availability instead: they auto-run when a Docker socket
+is detected and can be forced on/off via `RUN_CACHE_INTEGRATION_TESTS=true|false`.
+The cache `SnapshotIntegrationTests.cs` is test-env-gated like the NUnit tiers:
+it carries `[Trait("Category", "RequiresTestEnv")]` and skips when
+`TEST_ENV_URL` is not set.
+
+```bash
+# Pure-local tier only (skip everything that needs external services)
+dotnet test -c Release --filter "TestCategory!~Requires"
+
+# Everything that needs the test environment, against staging
+TEST_ENV_URL=https://staging.circlesubi.network/test-env \
+dotnet test -c Release --filter "TestCategory=RequiresTestEnv"
+```
 
 ---
 
@@ -158,7 +200,7 @@ dotnet test --filter "Name~mint-path-bug-001"
 | --------------------- | ------------------------- | ----------------------- |
 | `TEST_ENV_URL`        | Test environment base URL | (none - tests skip)     |
 | `PATHFINDER_URL`      | Pathfinder service URL    | `http://localhost:8080` |
-| `BUILD_CONFIGURATION` | Build config for test.sh  | `Debug`                 |
+| `BUILD_CONFIGURATION` | Build config for test.sh  | `Release`               |
 | `TEST_VERBOSITY`      | Test output verbosity     | `normal`                |
 
 ---

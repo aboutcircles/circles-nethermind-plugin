@@ -29,6 +29,8 @@ public record RpcScenario
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class RpcScenarioTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new()

@@ -21,6 +21,8 @@ namespace Circles.Rpc.Host.Tests;
 ///    TEST_ENV_URL=https://staging.circlesubi.network/test-env dotnet test
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class RpcSnapshotTests
 {
     [Test]
@@ -63,6 +65,8 @@ public class RpcSnapshotTests
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class RpcQuerySnapshotTests
 {
     // Block 43193632 = state at the time of the mint-along-path bug
@@ -201,6 +205,8 @@ public class RpcQuerySnapshotTests
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class SchemaValidationSnapshotTests
 {
     private const long TestBlock = 43193632;
@@ -356,6 +362,8 @@ public class SchemaValidationSnapshotTests
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class AvatarQuerySnapshotTests
 {
     private const long BugReproBlock = 43193632;
@@ -518,6 +526,8 @@ public class AvatarQuerySnapshotTests
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class TransactionHistorySnapshotTests
 {
     private const long TestBlock = 43193632;

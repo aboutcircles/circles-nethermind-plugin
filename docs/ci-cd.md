@@ -51,6 +51,18 @@ feature/* (development)
 3. Uploads test results
 4. Comments results on PRs
 
+The workflow also contains two follow-up jobs that run against the staging
+test environment (`TEST_ENV_URL=https://staging.circlesubi.network/test-env`):
+
+- **snapshot-tests** — runs `dotnet test --filter "Category=Snapshot"`:
+  pinned-block snapshot comparisons (scenario batteries, query/RPC/cache
+  snapshot integration tests).
+- **regression-tests** — runs `dotnet test --filter "Category=Regression"`:
+  known-bug regression scenarios.
+
+Both jobs fail on real assertion failures; tests self-skip via
+`Assert.Ignore` when the test environment is unavailable.
+
 **Run locally**:
 ```bash
 make build

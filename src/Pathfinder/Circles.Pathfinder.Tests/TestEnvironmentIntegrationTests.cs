@@ -10,6 +10,7 @@ namespace Circles.Pathfinder.Tests;
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("RequiresTestEnv")]
 public class TestEnvironmentIntegrationTests
 {
     private HttpClient _client = null!;

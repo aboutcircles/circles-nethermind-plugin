@@ -21,6 +21,8 @@ namespace Circles.Pathfinder.Tests;
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class ScenarioTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -264,6 +266,7 @@ public class ScenarioTests
 /// Multiple pathfinder requests on the same session should not interfere.
 /// </summary>
 [TestFixture]
+[Category("RequiresTestEnv")]
 public class ConcurrentSessionTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -400,9 +403,13 @@ public class ConcurrentSessionTests
 /// afterwards, so state mutations don't leak between tests.
 ///
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
-/// CI triggers these tests automatically on merges to main/dev branches.
+/// Selected by the CI snapshot-tests job (--filter "Category=Snapshot"), which
+/// runs on PRs and pushes to dev/main against the staging test environment.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
+[Category("RequiresAnvil")]
 public class ScenarioE2ETests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";

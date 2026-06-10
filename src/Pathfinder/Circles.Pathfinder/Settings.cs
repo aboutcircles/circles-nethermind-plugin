@@ -52,7 +52,7 @@ public class Settings
         : 0.999999;
 
     /// <summary>
-    /// Timeout in seconds for the MaxFlow solver. Default 30s.
+    /// Timeout in seconds for the MaxFlow solver. Default 10s.
     /// Prevents a stuck solver from blocking a semaphore slot indefinitely.
     /// </summary>
     public int SolverTimeoutSeconds { get; set; } =

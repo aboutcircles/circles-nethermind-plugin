@@ -23,6 +23,7 @@ namespace Circles.Pathfinder.Tests;
 /// Requires TEST_ENV_URL for the full-graph comparison.
 /// </summary>
 [TestFixture]
+[Category("RequiresTestEnv")]
 public class SubgraphEquivalenceTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";

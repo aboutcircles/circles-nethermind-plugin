@@ -13,6 +13,8 @@ namespace Circles.Rpc.Host.Tests;
 /// </summary>
 [TestFixture]
 [Category("RpcRegression")]
+[Category("Regression")]
+[Category("RequiresTestEnv")]
 public class RpcMethodSnapshotTests
 {
     private static readonly string? TestEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");

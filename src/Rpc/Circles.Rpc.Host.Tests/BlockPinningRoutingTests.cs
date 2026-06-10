@@ -44,6 +44,7 @@ public class BlockPinHeaderParsingTests
 /// without the Nethermind runtime — it touches only <see cref="ConnectionPinning"/> and Npgsql.
 /// </summary>
 [TestFixture]
+[Category("RequiresDocker")]
 public class BlockPinningRoutingTests
 {
     private PostgreSqlContainer? _postgres;

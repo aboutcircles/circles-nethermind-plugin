@@ -3,6 +3,7 @@ WORKDIR /src
 
 # Copy shared build props (defines TFM)
 COPY Directory.Build.props ./
+COPY Directory.Packages.props ./
 
 # Copy .csproj files first for better caching (preserving original directory structure)
 COPY src/Index/Circles.Index/Circles.Index.csproj ./Index/Circles.Index/
