@@ -31,6 +31,7 @@ app.MapMetrics();
 app.MapCirclesHealthChecks();
 app.MapDocsAndOpenRpc();
 app.MapCirclesWebSockets();
+app.UseHistoricalSessionTagging();
 app.UseBatchJsonRpc();
 app.MapSingleJsonRpcRoute();
 
