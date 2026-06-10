@@ -463,23 +463,23 @@ public class AnvilExecutionHelper : IDisposable
                 break;
 
             case "increment":
-            {
-                var word = NormalizeWord(m.Locator
-                    ?? throw new InvalidOperationException("increment mutation requires a locator (the amount word)"));
-                var cur = BigInteger.Parse("0" + word, System.Globalization.NumberStyles.HexNumber);
-                var delta = BigInteger.Parse(string.IsNullOrEmpty(m.Value) ? "1" : m.Value);
-                var updated = (cur + delta).ToString("x").PadLeft(64, '0');
-                hex = ReplaceOnce(hex, word, updated, m);
-                break;
-            }
+                {
+                    var word = NormalizeWord(m.Locator
+                        ?? throw new InvalidOperationException("increment mutation requires a locator (the amount word)"));
+                    var cur = BigInteger.Parse("0" + word, System.Globalization.NumberStyles.HexNumber);
+                    var delta = BigInteger.Parse(string.IsNullOrEmpty(m.Value) ? "1" : m.Value);
+                    var updated = (cur + delta).ToString("x").PadLeft(64, '0');
+                    hex = ReplaceOnce(hex, word, updated, m);
+                    break;
+                }
 
             case "zero":
-            {
-                var word = NormalizeWord(m.Locator
-                    ?? throw new InvalidOperationException("zero mutation requires a locator"));
-                hex = ReplaceOnce(hex, word, new string('0', 64), m);
-                break;
-            }
+                {
+                    var word = NormalizeWord(m.Locator
+                        ?? throw new InvalidOperationException("zero mutation requires a locator"));
+                    hex = ReplaceOnce(hex, word, new string('0', 64), m);
+                    break;
+                }
 
             default:
                 throw new InvalidOperationException($"Unknown mutation op '{m.Op}'");

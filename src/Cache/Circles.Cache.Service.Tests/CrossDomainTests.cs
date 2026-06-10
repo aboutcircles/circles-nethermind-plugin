@@ -1,7 +1,7 @@
-using Circles.Common;
 using Circles.Cache.Service.Caches;
-using Xunit;
+using Circles.Common;
 using FluentAssertions;
+using Xunit;
 
 namespace Circles.Cache.Service.Tests;
 

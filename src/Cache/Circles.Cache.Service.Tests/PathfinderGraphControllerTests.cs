@@ -3,13 +3,13 @@ using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Controllers;
 using Circles.Cache.Service.Models;
 using Circles.Common;
+using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using Moq;
 using Xunit;
-using FluentAssertions;
 
 namespace Circles.Cache.Service.Tests;
 

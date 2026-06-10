@@ -1,16 +1,16 @@
-using Circles.Common;
+using System.Globalization;
+using System.Net;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Controllers;
 using Circles.Cache.Service.Models;
+using Circles.Common;
+using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Xunit;
-using FluentAssertions;
-using System.Globalization;
-using System.Net;
 using Npgsql;
+using Xunit;
 
 namespace Circles.Cache.Service.Tests;
 
