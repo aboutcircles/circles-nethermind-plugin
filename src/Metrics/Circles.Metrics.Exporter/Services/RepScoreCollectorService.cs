@@ -61,12 +61,15 @@ public class RepScoreCollectorService : BackgroundService
 
             RepScoreMetrics.BlacklistTotal.Set(stats.Total);
             RepScoreMetrics.BlacklistMembersTotal.Set(stats.MembersTotal);
+            RepScoreMetrics.BlacklistMembersNonzeroScore.Set(stats.MembersNonzeroScore);
             RepScoreMetrics.BlacklistAdditions24h.Set(stats.Additions24h);
             RepScoreMetrics.BlacklistRemovals24h.Set(stats.Removals24h);
             RepScoreMetrics.BlacklistLastRefreshAgeSeconds.Set(stats.LastRefreshAgeSeconds);
 
-            if (stats.MembersTotal > 0)
-                _logger.LogWarning("Blacklisted ScoreGroup members detected: {Count}", stats.MembersTotal);
+            if (stats.MembersNonzeroScore > 0)
+                _logger.LogWarning("Blacklisted ScoreGroup members with nonzero score: {Count}", stats.MembersNonzeroScore);
+            else if (stats.MembersTotal > 0)
+                _logger.LogInformation("Blacklisted ScoreGroup members present but all scored 0 (grace period ok): {Count}", stats.MembersTotal);
 
             _logger.LogDebug("Blacklist: total={Total}, members={Members}, age={Age}s",
                 stats.Total, stats.MembersTotal, (int)stats.LastRefreshAgeSeconds);

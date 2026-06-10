@@ -270,7 +270,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - BACKUP_DIR=/backups
       - SCHEDULE=0 3 * * *
-      - KEEP_DAYS=7
+      - KEEP_DAYS=${POSTGRES_BACKUP_KEEP_DAYS:-7}
     depends_on:
       - postgres-gnosis
     volumes:

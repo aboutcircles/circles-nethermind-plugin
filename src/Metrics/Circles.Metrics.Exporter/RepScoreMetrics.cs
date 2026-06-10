@@ -14,7 +14,11 @@ public static class RepScoreMetrics
 
     public static readonly Gauge BlacklistMembersTotal = Prometheus.Metrics
         .CreateGauge("circles_blacklist_members_total",
-            "Blacklisted addresses that are currently ScoreGroup members — alert if > 0");
+            "Blacklisted addresses that are currently ScoreGroup members");
+
+    public static readonly Gauge BlacklistMembersNonzeroScore = Prometheus.Metrics
+        .CreateGauge("circles_blacklist_members_nonzero_score",
+            "Blacklisted ScoreGroup members whose rep score is still > 0 — alert if > 0");
 
     public static readonly Gauge BlacklistAdditions24h = Prometheus.Metrics
         .CreateGauge("circles_blacklist_additions_24h",

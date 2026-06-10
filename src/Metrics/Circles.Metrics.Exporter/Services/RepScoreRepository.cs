@@ -36,6 +36,7 @@ public class RepScoreRepository
     public record BlacklistStats(
         long Total,
         long MembersTotal,
+        long MembersNonzeroScore,
         long Additions24h,
         long Removals24h,
         double LastRefreshAgeSeconds);
@@ -44,7 +45,9 @@ public class RepScoreRepository
     {
         const string sql = """
             WITH member_blacklist AS (
-                SELECT COUNT(DISTINCT s.avatar) AS members_total
+                SELECT
+                    COUNT(DISTINCT s.avatar)                             AS members_total,
+                    COUNT(DISTINCT s.avatar) FILTER (WHERE s.score > 0) AS members_nonzero_score
                 FROM rep_score_state s
                 JOIN blacklist b ON b.address = s.avatar
                 WHERE s.group_id = @groupId
@@ -59,6 +62,7 @@ public class RepScoreRepository
             SELECT
                 (SELECT COUNT(*) FROM blacklist) AS total,
                 mb.members_total,
+                mb.members_nonzero_score,
                 rs.additions_24h,
                 rs.removals_24h,
                 rs.last_refresh_age
@@ -78,10 +82,11 @@ public class RepScoreRepository
                 reader.GetInt64(1),
                 reader.GetInt64(2),
                 reader.GetInt64(3),
-                reader.GetDouble(4));
+                reader.GetInt64(4),
+                reader.GetDouble(5));
         }
 
-        return new BlacklistStats(0, 0, 0, 0, 999999);
+        return new BlacklistStats(0, 0, 0, 0, 0, 999999);
     }
 
     // ===========================================
