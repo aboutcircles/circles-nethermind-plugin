@@ -125,7 +125,7 @@ public class RpcScenarioTests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy");
+                Assert.Fail("Test environment not healthy");
             }
 
             var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
@@ -141,7 +141,7 @@ public class RpcScenarioTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 

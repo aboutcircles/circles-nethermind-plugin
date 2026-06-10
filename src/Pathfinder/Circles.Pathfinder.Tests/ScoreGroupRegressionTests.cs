@@ -145,7 +145,7 @@ public class ScoreGroupRegressionTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -249,7 +249,7 @@ public class ScoreGroupRegressionTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -306,7 +306,7 @@ public class ScoreGroupRegressionTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -467,7 +467,7 @@ public class ScoreGroupRegressionTests
                 await Task.Delay(1500 * attempt);
         }
 
-        Assert.Ignore($"Test environment not available after {attempts} attempts: {lastError?.Message}");
+        Assert.Fail($"Test environment not available after {attempts} attempts: {lastError?.Message}");
         return false;
     }
 }

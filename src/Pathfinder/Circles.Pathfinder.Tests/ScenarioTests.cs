@@ -49,7 +49,7 @@ public class ScenarioTests
                 var health = await TestEnvironmentClient.GetHealthAsync();
                 if (health?.Status != "healthy")
                 {
-                    Assert.Ignore("Test environment not healthy");
+                    Assert.Fail("Test environment not healthy");
                 }
 
                 var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
@@ -61,7 +61,7 @@ public class ScenarioTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -306,7 +306,7 @@ public class ConcurrentSessionTests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy");
+                Assert.Fail("Test environment not healthy");
             }
 
             // Use a common block that should work for all scenarios
@@ -325,7 +325,7 @@ public class ConcurrentSessionTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -446,7 +446,7 @@ public class ScenarioE2ETests
             {
                 var health = await TestEnvironmentClient.GetHealthAsync();
                 if (health?.Status != "healthy")
-                    Assert.Ignore("Test environment not healthy");
+                    Assert.Fail("Test environment not healthy");
 
                 var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
                 if (!exists)
@@ -457,7 +457,7 @@ public class ScenarioE2ETests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
