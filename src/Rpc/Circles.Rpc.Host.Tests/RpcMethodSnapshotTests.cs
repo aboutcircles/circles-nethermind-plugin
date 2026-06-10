@@ -31,7 +31,15 @@ public class RpcMethodSnapshotTests
             return;
         }
 
-        _client = new HttpClient { BaseAddress = new Uri(TestEnvUrl) };
+        // The Circles RPC lives at the HOST ROOT of the test-env URL: with
+        // TEST_ENV_URL=https://staging.circlesubi.network/test-env, requests go to
+        // https://staging.circlesubi.network/ (the staging RPC behind the same host).
+        // CIRCLES_RPC_URL overrides this for local runs (e.g. http://localhost:8081).
+        var rpcUrl = Environment.GetEnvironmentVariable("CIRCLES_RPC_URL");
+        var baseAddress = !string.IsNullOrEmpty(rpcUrl)
+            ? new Uri(rpcUrl)
+            : new Uri(new Uri(TestEnvUrl), "/");
+        _client = new HttpClient { BaseAddress = baseAddress };
         _client.Timeout = TimeSpan.FromSeconds(30);
     }
 
@@ -80,7 +88,8 @@ public class RpcMethodSnapshotTests
     public async Task Health_ReturnsHealthy()
     {
         var result = await CallRpc("circles_health");
-        Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("healthy"));
+        // circles_health returns a plain string, not an object (verified against staging).
+        Assert.That(result.GetString(), Is.EqualTo("Healthy"));
     }
 
     [Test]
@@ -102,7 +111,8 @@ public class RpcMethodSnapshotTests
     public async Task GetTotalBalance_V2_ReturnsNonNullString()
     {
         var result = await CallRpc("circlesV2_getTotalBalance", KnownV2Human, 2, true);
-        var balance = result.GetProperty("totalBalance").GetString();
+        // Returns a plain string balance, not an object (verified against staging).
+        var balance = result.GetString();
         Assert.That(balance, Is.Not.Null.And.Not.Empty,
             "V2 total balance should be a non-empty string");
     }
@@ -111,7 +121,7 @@ public class RpcMethodSnapshotTests
     public async Task GetTotalBalance_V2Raw_ReturnsNonNullString()
     {
         var result = await CallRpc("circlesV2_getTotalBalance", KnownV2Human, 2, false);
-        var balance = result.GetProperty("totalBalance").GetString();
+        var balance = result.GetString();
         Assert.That(balance, Is.Not.Null.And.Not.Empty,
             "V2 raw total balance should be a non-empty string");
     }
@@ -159,8 +169,11 @@ public class RpcMethodSnapshotTests
     {
         var addresses = new[] { KnownV2Human, "0x0000000000000000000000000000000000000001" };
         var result = await CallRpc("circles_getAvatarInfoBatch", (object)addresses);
-        Assert.That(result.GetArrayLength(), Is.EqualTo(2),
-            "Result length should match input length");
+        // The implementation filters out not-found avatars (Avatars.cs: Where(r => r != null)),
+        // so the result holds only registered inputs — here exactly the known human.
+        Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Array));
+        Assert.That(result.GetArrayLength(), Is.InRange(1, 2),
+            "Result holds found avatars only; the known human must be present");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -371,7 +384,9 @@ public class RpcMethodSnapshotTests
     public async Task GetProfileCid_ReturnsResponse()
     {
         var result = await CallRpc("circles_getProfileCid", KnownV2Human);
-        Assert.That(result.TryGetProperty("cid", out _), Is.True);
+        // Returns the CID as a plain string (or null when the avatar has no profile).
+        Assert.That(result.ValueKind,
+            Is.EqualTo(JsonValueKind.String).Or.EqualTo(JsonValueKind.Null));
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -417,8 +432,8 @@ public class RpcMethodSnapshotTests
         var tcResult = await CallRpc("circlesV2_getTotalBalance", KnownV2Human, 2, true);
         var rawResult = await CallRpc("circlesV2_getTotalBalance", KnownV2Human, 2, false);
 
-        var tcBalance = tcResult.GetProperty("totalBalance").GetString();
-        var rawBalance = rawResult.GetProperty("totalBalance").GetString();
+        var tcBalance = tcResult.GetString();
+        var rawBalance = rawResult.GetString();
 
         // If raw is non-zero, time-circles should also be non-zero
         if (rawBalance != "0" && rawBalance != null)

@@ -482,7 +482,7 @@ public class AvatarQuerySnapshotTests
         Assert.That(_session, Is.Not.Null);
 
         var sql = @"
-            SELECT ""tokenId"", ""balance""
+            SELECT ""tokenId"", ""demurragedTotalBalance""
             FROM ""V_CrcV2_BalancesByAccountAndToken""
             WHERE ""account"" = @address
             LIMIT 50";
