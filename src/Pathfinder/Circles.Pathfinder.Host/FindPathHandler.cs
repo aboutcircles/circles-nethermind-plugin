@@ -47,7 +47,8 @@ internal sealed class FindPathHandler(
     /// Parse simulatedBalances from a JSON query string parameter.
     /// Returns null list on empty input, or an error result on parse failure / size overflow.
     /// </summary>
-    internal static (List<SimulatedBalance>? sim, IResult? error) ParseSimulatedBalances(string? json)
+    internal static (List<SimulatedBalance>? sim, IResult? error) ParseSimulatedBalances(string? json,
+        ILogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(json))
             return (null, null);
@@ -61,6 +62,7 @@ internal sealed class FindPathHandler(
         }
         catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Failed to parse simulatedBalances query parameter ({Length} chars)", json.Length);
             return (null, Results.BadRequest("simulatedBalances must be a JSON array of objects."));
         }
     }

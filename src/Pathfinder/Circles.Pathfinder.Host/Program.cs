@@ -258,7 +258,8 @@ app.MapGet("/findMaxFlow", async (
     NetworkState state,
     CapacityGraphPool pool,
     V2Pathfinder pathfinder,
-    FindPathHandler handler) =>
+    FindPathHandler handler,
+    ILogger<Program> log) =>
 {
     using var act = Source.StartActivity("findMaxFlow", ActivityKind.Server);
     act?.SetTag("http.route", "/findMaxFlow");
@@ -272,7 +273,7 @@ app.MapGet("/findMaxFlow", async (
     if (!UInt256.TryParse(amount, out var targetFlow))
         return Results.BadRequest("amount must be a valid integer.");
 
-    var (sim, simErr) = FindPathHandler.ParseSimulatedBalances(simulatedBalances);
+    var (sim, simErr) = FindPathHandler.ParseSimulatedBalances(simulatedBalances, log);
     if (simErr != null) return simErr;
 
     var request = handler.BuildRequest(from, to, amount, fromTokens, toTokens,
@@ -336,7 +337,7 @@ app.MapGet("/findPath", async (
     if (!UInt256.TryParse(amount, out var targetFlow))
         return Results.BadRequest("amount must be a valid integer.");
 
-    var (sim, simErr) = FindPathHandler.ParseSimulatedBalances(simulatedBalances);
+    var (sim, simErr) = FindPathHandler.ParseSimulatedBalances(simulatedBalances, log);
     if (simErr != null) return simErr;
 
     var request = handler.BuildRequest(from, to, amount, fromTokens, toTokens,

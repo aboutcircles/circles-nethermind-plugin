@@ -41,6 +41,11 @@ public sealed class HistoricalGraphCache
     /// </summary>
     private readonly SemaphoreSlim _globalLoadSemaphore;
 
+    // Test hooks (InternalsVisibleTo: Circles.Pathfinder.Tests): override the DB-backed
+    // load and observe cache contents without a database.
+    internal Func<long, GraphFactory>? LoadGraphOverride { get; init; }
+    internal IReadOnlyCollection<long> CachedBlockNumbers => _cache.Keys.ToArray();
+
     public HistoricalGraphCache(
         NpgsqlDataSource dataSource,
         Settings settings,
@@ -94,7 +99,8 @@ public sealed class HistoricalGraphCache
             GraphFactory factory;
             try
             {
-                factory = await Task.Run(() => LoadGraph(blockNumber));
+                factory = await Task.Run(() =>
+                    LoadGraphOverride != null ? LoadGraphOverride(blockNumber) : LoadGraph(blockNumber));
             }
             finally
             {

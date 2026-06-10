@@ -1,12 +1,12 @@
-using Xunit;
-using FluentAssertions;
-using Testcontainers.PostgreSql;
-using Npgsql;
 using System.Numerics;
 using Circles.Cache.Service;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Services;
+using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
+using Testcontainers.PostgreSql;
+using Xunit;
 
 namespace Circles.Cache.Service.Tests;
 
@@ -16,9 +16,25 @@ namespace Circles.Cache.Service.Tests;
 /// </summary>
 public class IntegrationTests : IAsyncLifetime
 {
-    internal static readonly bool DockerTestsEnabled =
-        string.Equals(Environment.GetEnvironmentVariable("RUN_CACHE_INTEGRATION_TESTS"), "true",
-            StringComparison.OrdinalIgnoreCase);
+    internal static readonly bool DockerTestsEnabled = ComputeDockerTestsEnabled();
+
+    /// <summary>
+    /// RUN_CACHE_INTEGRATION_TESTS=true/false forces the gate; when unset (or set to any
+    /// other value), the tests run whenever a Docker endpoint is detectable (these tests
+    /// need only Docker, not staging).
+    /// </summary>
+    private static bool ComputeDockerTestsEnabled()
+    {
+        var env = Environment.GetEnvironmentVariable("RUN_CACHE_INTEGRATION_TESTS");
+        if (string.Equals(env, "true", StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(env, "false", StringComparison.OrdinalIgnoreCase)) return false;
+
+        return File.Exists("/var/run/docker.sock")
+               || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOCKER_HOST"))
+               || File.Exists(Path.Combine(
+                   Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                   ".docker", "run", "docker.sock"));
+    }
 
     private PostgreSqlContainer? _postgres;
     private string? _connectionString;
@@ -30,8 +46,7 @@ public class IntegrationTests : IAsyncLifetime
             return;
         }
 
-        _postgres = new PostgreSqlBuilder()
-            .WithImage("postgres:15-alpine")
+        _postgres = new PostgreSqlBuilder("postgres:15-alpine")
             .WithDatabase("circles_test")
             .WithUsername("test")
             .WithPassword("test")
@@ -835,7 +850,8 @@ internal sealed class RequiresDockerFactAttribute : FactAttribute
     {
         if (!IntegrationTests.DockerTestsEnabled)
         {
-            Skip = "Set RUN_CACHE_INTEGRATION_TESTS=true to run cache integration tests";
+            Skip = "Docker endpoint not detected or RUN_CACHE_INTEGRATION_TESTS=false — " +
+                   "set RUN_CACHE_INTEGRATION_TESTS=true to force these tests";
         }
     }
 }

@@ -132,11 +132,10 @@ public partial class NotificationListenerService
                 {
                     if (currentBlock != -1)
                     {
-                        // Flush balances for the previous block (index-before-balance ordering)
+                        // Flush balances for the previous block (atomic index+balance write)
                         foreach (var kvp in currentBalances)
                         {
-                            _caches.UpdateBalanceIndex(kvp.Key, isV1: true, kvp.Value);
-                            _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                            _caches.UpsertBalance(currentBlock, kvp.Key, isV1: true, kvp.Value);
                         }
                     }
                     currentBlock = blockNumber;
@@ -172,13 +171,12 @@ public partial class NotificationListenerService
             }
         }
 
-        // Flush balances for the last block (index-before-balance ordering)
+        // Flush balances for the last block (atomic index+balance write)
         if (currentBlock != -1)
         {
             foreach (var kvp in currentBalances)
             {
-                _caches.UpdateBalanceIndex(kvp.Key, isV1: true, kvp.Value);
-                _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                _caches.UpsertBalance(currentBlock, kvp.Key, isV1: true, kvp.Value);
             }
         }
 
