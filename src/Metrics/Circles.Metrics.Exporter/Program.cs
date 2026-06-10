@@ -10,6 +10,9 @@ builder.Configuration.AddEnvironmentVariables();
 var connectionString = builder.Configuration.GetConnectionString("CirclesDb")
     ?? throw new InvalidOperationException("ConnectionStrings:CirclesDb is required");
 
+// RepScoreDb is optional — exporter degrades gracefully without AA
+var repScoreConnectionString = builder.Configuration.GetConnectionString("RepScoreDb");
+
 // Register services
 builder.Services.AddSingleton(sp =>
     new KpiRepository(connectionString, sp.GetRequiredService<ILogger<KpiRepository>>()));
@@ -46,6 +49,27 @@ builder.Services.AddHostedService<TrustCollectorService>();
 
 // Trust score history snapshot service (runs daily for anomaly detection)
 builder.Services.AddHostedService<TrustHistorySnapshotService>();
+
+// Rep score monitoring (AA circles_rep_score DB — bad actor radar + ScoreGroup distribution)
+// Optional: skip if RepScoreDb is not configured (AA may not be deployed in all environments)
+if (repScoreConnectionString is not null)
+{
+    builder.Services.AddSingleton(sp =>
+        new RepScoreRepository(
+            repScoreConnectionString,
+            connectionString,
+            builder.Configuration.GetValue<string>("RepScore:GroupId", "score_group")!,
+            builder.Configuration.GetValue<int>("RepScore:HighScoreThreshold", 70),
+            builder.Configuration.GetValue<int>("RepScore:ScoreDropThreshold", 20),
+            sp.GetRequiredService<ILogger<RepScoreRepository>>()));
+
+    builder.Services.AddHostedService<RepScoreCollectorService>();
+}
+else
+{
+    var startupLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("Program");
+    startupLogger.LogWarning("ConnectionStrings:RepScoreDb not configured — rep score metrics disabled");
+}
 
 // Deployment status monitoring (probes RPC endpoints, no DB access needed)
 builder.Services.AddHttpClient<DeploymentProber>();
