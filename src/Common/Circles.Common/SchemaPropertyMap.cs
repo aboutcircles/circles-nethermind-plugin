@@ -27,6 +27,21 @@ public class CompositeDatabaseSchema : IDatabaseSchema
                 $"Duplicate table definitions across database schemas: {details}");
         }
 
+        // Same fail-fast validation for index names, which must also be unique
+        // across all composed schemas.
+        var duplicateIndexes = components
+            .SelectMany(c => c.Indexes.Keys.Select(key => (Key: key, Component: c.GetType().FullName)))
+            .GroupBy(x => x.Key)
+            .Where(g => g.Count() > 1)
+            .ToList();
+        if (duplicateIndexes.Count > 0)
+        {
+            var details = string.Join("; ", duplicateIndexes.Select(g =>
+                $"\"{g.Key}\" defined by [{string.Join(", ", g.Select(x => x.Component))}]"));
+            throw new InvalidOperationException(
+                $"Duplicate index definitions across database schemas: {details}");
+        }
+
         Tables = components
             .SelectMany(c => c.Tables)
             .ToDictionary(
@@ -41,7 +56,7 @@ public class CompositeDatabaseSchema : IDatabaseSchema
         {
             foreach (var kvp in component.Indexes)
             {
-                Indexes.Add(kvp.Key, kvp.Value);
+                Indexes[kvp.Key] = kvp.Value;
             }
         }
 

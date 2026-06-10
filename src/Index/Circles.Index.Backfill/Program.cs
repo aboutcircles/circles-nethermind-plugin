@@ -5,8 +5,9 @@ using Circles.Index.Backfill;
 var rootCommand = new RootCommand("Circles Index Backfill Tool - Populate specific tables without full reindex");
 
 /// <summary>
-/// Gets the PostgreSQL connection string from environment variables.
-/// Tries POSTGRES_CONNECTION_STRING first, then constructs from individual components.
+/// Resolves the PostgreSQL connection string. An explicit value (from --connection-string)
+/// takes precedence; otherwise tries the POSTGRES_CONNECTION_STRING env var, then
+/// constructs one from individual POSTGRES_* component env vars.
 /// </summary>
 string? GetConnectionString(string? explicitValue)
 {
@@ -33,8 +34,13 @@ string? GetConnectionString(string? explicitValue)
     return $"Server={host};Port={port};Database={db};User Id={user};Password={password};";
 }
 
-const string connectionStringHelp =
-    "PostgreSQL connection string (or set POSTGRES_CONNECTION_STRING, or POSTGRES_USER+POSTGRES_PASSWORD env vars)";
+// Shared across all subcommands (safe in System.CommandLine 2.0.3: options are
+// immutable descriptors and may be added to multiple commands).
+var connectionStringOption = new Option<string?>("--connection-string", "-c")
+{
+    Description =
+        "PostgreSQL connection string (or set POSTGRES_CONNECTION_STRING, or POSTGRES_USER+POSTGRES_PASSWORD env vars)"
+};
 
 void PrintConnectionStringError()
 {
@@ -62,11 +68,6 @@ var fromBlockOption = new Option<long>("--from-block", "-f")
 var toBlockOption = new Option<long?>("--to-block", "-e")
 {
     Description = "Block number to end backfill at (default: current System_Block max)"
-};
-
-var connectionStringOption = new Option<string?>("--connection-string", "-c")
-{
-    Description = connectionStringHelp
 };
 
 var rpcUrlOption = new Option<string>("--rpc-url", "-r")
@@ -144,16 +145,11 @@ backfillCommand.SetAction(async (parseResult, cancellationToken) =>
 // List-tables command
 var listTablesCommand = new Command("list-tables", "List all available tables and their LogParser mappings");
 
-var listConnectionStringOption = new Option<string?>("--connection-string", "-c")
-{
-    Description = connectionStringHelp
-};
-
-listTablesCommand.Options.Add(listConnectionStringOption);
+listTablesCommand.Options.Add(connectionStringOption);
 
 listTablesCommand.SetAction(async (parseResult, _) =>
 {
-    var connectionString = GetConnectionString(parseResult.GetValue(listConnectionStringOption));
+    var connectionString = GetConnectionString(parseResult.GetValue(connectionStringOption));
 
     if (string.IsNullOrEmpty(connectionString))
     {
@@ -168,16 +164,11 @@ listTablesCommand.SetAction(async (parseResult, _) =>
 // Status command
 var statusCommand = new Command("status", "Show backfill progress for all tables");
 
-var statusConnectionStringOption = new Option<string?>("--connection-string", "-c")
-{
-    Description = connectionStringHelp
-};
-
-statusCommand.Options.Add(statusConnectionStringOption);
+statusCommand.Options.Add(connectionStringOption);
 
 statusCommand.SetAction(async (parseResult, _) =>
 {
-    var connectionString = GetConnectionString(parseResult.GetValue(statusConnectionStringOption));
+    var connectionString = GetConnectionString(parseResult.GetValue(connectionStringOption));
 
     if (string.IsNullOrEmpty(connectionString))
     {

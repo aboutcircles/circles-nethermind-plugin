@@ -4,8 +4,8 @@ namespace Circles.Common.Tests;
 
 /// <summary>
 /// Tests for CompositeDatabaseSchema startup validation: duplicate (namespace, table)
-/// definitions across protocol schemas must fail fast with a message naming the
-/// colliding components.
+/// or index definitions across protocol schemas must fail fast with a message naming
+/// the colliding components.
 /// </summary>
 [TestFixture]
 public class CompositeDatabaseSchemaTests
@@ -35,6 +35,26 @@ public class CompositeDatabaseSchemaTests
         }
     }
 
+    private sealed class SchemaWithIndex : BaseDatabaseSchema
+    {
+        public SchemaWithIndex()
+        {
+            Tables[("CrcTest", "Mint")] = new EventSchema("CrcTest", "Mint", new byte[32], []);
+            Indexes["idx_crctest_transfer_from"] =
+                "CREATE INDEX IF NOT EXISTS idx_crctest_transfer_from ON \"CrcTest_Transfer\" (\"from\");";
+        }
+    }
+
+    private sealed class SchemaCollidingIndex : BaseDatabaseSchema
+    {
+        public SchemaCollidingIndex()
+        {
+            Tables[("CrcTest", "Burn")] = new EventSchema("CrcTest", "Burn", new byte[32], []);
+            Indexes["idx_crctest_transfer_from"] =
+                "CREATE INDEX IF NOT EXISTS idx_crctest_transfer_from ON \"CrcTest_Transfer\" (\"to\");";
+        }
+    }
+
     [Test]
     public void DistinctSchemas_ComposeSuccessfully()
     {
@@ -55,5 +75,17 @@ public class CompositeDatabaseSchemaTests
         Assert.That(ex.Message, Does.Contain(nameof(SchemaA)));
         Assert.That(ex.Message, Does.Contain(nameof(SchemaCollidingWithA)));
         Assert.That(ex.Message, Does.Not.Contain(nameof(SchemaB)));
+    }
+
+    [Test]
+    public void DuplicateIndexNameAcrossSchemas_ThrowsWithComponentNames()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            _ = new CompositeDatabaseSchema([new SchemaA(), new SchemaWithIndex(), new SchemaCollidingIndex()]));
+
+        Assert.That(ex!.Message, Does.Contain("idx_crctest_transfer_from"));
+        Assert.That(ex.Message, Does.Contain(nameof(SchemaWithIndex)));
+        Assert.That(ex.Message, Does.Contain(nameof(SchemaCollidingIndex)));
+        Assert.That(ex.Message, Does.Not.Contain(nameof(SchemaA)));
     }
 }

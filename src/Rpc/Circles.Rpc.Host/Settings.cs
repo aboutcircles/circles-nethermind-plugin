@@ -21,10 +21,10 @@ public class Settings : Circles.Common.Settings
 
     /// <summary>
     /// Maximum number of concurrent WebSocket sessions across the host (default: 1000).
-    /// Connections beyond the cap are rejected with HTTP 503. Set to 0 to disable the cap.
+    /// Connections beyond the cap are rejected with HTTP 503. Values ≤ 0 disable the cap.
     /// </summary>
     public readonly int MaxConcurrentWsSessions =
-        int.TryParse(Environment.GetEnvironmentVariable("RPC_MAX_WS_SESSIONS"), out var maxWsSessions)
+        int.TryParse(Environment.GetEnvironmentVariable("RPC_MAX_CONCURRENT_WS_SESSIONS"), out var maxWsSessions)
             ? maxWsSessions
             : 1000;
 

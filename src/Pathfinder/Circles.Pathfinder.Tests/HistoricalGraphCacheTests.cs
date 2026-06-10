@@ -11,7 +11,7 @@ namespace Circles.Pathfinder.Tests;
 /// uses the LoadGraphOverride test hook to substitute in-memory graph factories).
 /// </summary>
 [TestFixture]
-[NonParallelizable] // mutates HISTORICAL_GRAPH_CACHE_MAX_ENTRIES
+[NonParallelizable] // mutates both HISTORICAL_GRAPH_CACHE_MAX_ENTRIES and POSTGRES_CONNECTION_STRING
 public class HistoricalGraphCacheTests
 {
     private const string MaxEntriesVar = "HISTORICAL_GRAPH_CACHE_MAX_ENTRIES";

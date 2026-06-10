@@ -19,8 +19,9 @@ public class IntegrationTests : IAsyncLifetime
     internal static readonly bool DockerTestsEnabled = ComputeDockerTestsEnabled();
 
     /// <summary>
-    /// RUN_CACHE_INTEGRATION_TESTS=true/false forces the gate; when unset, the tests run
-    /// whenever a Docker endpoint is detectable (these tests need only Docker, not staging).
+    /// RUN_CACHE_INTEGRATION_TESTS=true/false forces the gate; when unset (or set to any
+    /// other value), the tests run whenever a Docker endpoint is detectable (these tests
+    /// need only Docker, not staging).
     /// </summary>
     private static bool ComputeDockerTestsEnabled()
     {
@@ -849,7 +850,8 @@ internal sealed class RequiresDockerFactAttribute : FactAttribute
     {
         if (!IntegrationTests.DockerTestsEnabled)
         {
-            Skip = "No Docker endpoint detected — set RUN_CACHE_INTEGRATION_TESTS=true to force these tests";
+            Skip = "Docker endpoint not detected or RUN_CACHE_INTEGRATION_TESTS=false — " +
+                   "set RUN_CACHE_INTEGRATION_TESTS=true to force these tests";
         }
     }
 }

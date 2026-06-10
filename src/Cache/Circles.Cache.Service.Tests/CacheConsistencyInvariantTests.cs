@@ -7,9 +7,11 @@ namespace Circles.Cache.Service.Tests;
 
 /// <summary>
 /// Invariant tests for CacheContainer's atomicity guarantees: indexed readers must never
-/// observe a secondary-index entry pointing at a missing/torn value while writers, removers,
-/// or rollbacks run concurrently. These tests pin the single-lock-scope contract of the
-/// Upsert*/Remove*/UpsertBalance methods.
+/// observe a secondary-index entry pointing at a missing/torn value while writers or
+/// removers run concurrently. These tests pin the single-lock-scope contract of the
+/// Upsert*/Remove*/UpsertBalance methods. (RollbackAll mutates the value stores without
+/// domain locks; readers only need to tolerate index misses until RebuildSecondaryIndexes
+/// runs — see the rollback tests below.)
 /// </summary>
 public class CacheConsistencyInvariantTests
 {
@@ -18,7 +20,7 @@ public class CacheConsistencyInvariantTests
     private const string Account = "0x3333333333333333333333333333333333333333";
     private const string Token = "0x4444444444444444444444444444444444444444";
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task ConcurrentTrustUpsertRemove_ReadersNeverSeeTornState()
     {
         using var container = new CacheContainer(rollbackCapacity: 12);
@@ -63,11 +65,10 @@ public class CacheConsistencyInvariantTests
         violations.Should().BeEmpty();
     }
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task ConcurrentBalanceUpserts_IndexAndValueStayConsistent()
     {
         using var container = new CacheContainer(rollbackCapacity: 12);
-        var key = $"{Account}:{Token}";
         var stop = false;
         var violations = new List<string>();
 
@@ -78,21 +79,15 @@ public class CacheConsistencyInvariantTests
                 var tokens = container.GetTokenIdsForAddress(Account, isV1: false).ToList();
                 lock (violations)
                 {
-                    if (tokens.Count > 1)
-                        violations.Add($"duplicate index entries: {tokens.Count}");
                     foreach (var tokenId in tokens)
                     {
-                        if (tokenId != Token)
-                        {
-                            violations.Add($"unexpected token in index: {tokenId}");
-                            continue;
-                        }
-
-                        // Once a key has been written, the value store always has it
-                        // (zero balances stay in the store; only the index drops them).
-                        if (!container.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
-                            violations.Add("index entry without value");
-                        else if (balance != 0m && balance != 100m)
+                        // Every key is written exactly once with a positive balance,
+                        // value-store-first. An index entry whose value is missing means
+                        // the reader observed the window between the two mutations —
+                        // exactly the torn state UpsertBalance must prevent.
+                        if (!container.V2BalancesByAccountAndToken.TryGetValue($"{Account}:{tokenId}", out var balance))
+                            violations.Add($"index entry without value: {tokenId}");
+                        else if (balance != 100m)
                             violations.Add($"torn balance: {balance}");
                     }
                 }
@@ -101,10 +96,12 @@ public class CacheConsistencyInvariantTests
 
         var writer = Task.Run(() =>
         {
+            // A fresh key per block recreates the first-insert detection window
+            // (index entry created alongside the very first value write) 600 times,
+            // instead of only once when a single key is reused.
             for (long block = 1; block <= 600; block++)
             {
-                var balance = block % 2 == 0 ? 100m : 0m;
-                container.UpsertBalance(block, key, isV1: false, balance);
+                container.UpsertBalance(block, $"{Account}:0x{block:d40}", isV1: false, balance: 100m);
             }
         });
 
@@ -149,7 +146,7 @@ public class CacheConsistencyInvariantTests
         trustees.Should().NotContain($"0x{7:d40}");
     }
 
-    [Fact]
+    [Fact(Timeout = 60000)]
     public async Task ConcurrentReads_DuringRollbackAndRebuild_NeverThrow()
     {
         using var container = new CacheContainer(rollbackCapacity: 12);

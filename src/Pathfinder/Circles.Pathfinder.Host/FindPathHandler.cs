@@ -62,7 +62,7 @@ internal sealed class FindPathHandler(
         }
         catch (Exception ex)
         {
-            logger?.LogDebug(ex, "Failed to parse simulatedBalances query parameter ({Length} chars)", json.Length);
+            logger?.LogWarning(ex, "Failed to parse simulatedBalances query parameter ({Length} chars)", json.Length);
             return (null, Results.BadRequest("simulatedBalances must be a JSON array of objects."));
         }
     }
