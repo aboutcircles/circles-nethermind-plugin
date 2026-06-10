@@ -16,9 +16,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Google.OrTools" Version="9.15.6755" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
-        <PackageReference Include="Npgsql" Version="10.0.1" />
+        <PackageReference Include="Google.OrTools" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+        <PackageReference Include="Npgsql" />
     </ItemGroup>
 
     <ItemGroup>
@@ -70,7 +70,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
-        <PackageReference Include="Nethermind.Numerics.Int256" Version="1.5.0" />
+        <PackageReference Include="Nethermind.Numerics.Int256" />
     </ItemGroup>
 
 </Project>

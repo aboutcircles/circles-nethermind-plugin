@@ -22,11 +22,11 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Npgsql" Version="10.0.1" />
+      <PackageReference Include="Npgsql" />
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.5.0" />
+      <PackageReference Include="Nethermind.Numerics.Int256" />
     </ItemGroup>
 
 </Project>
