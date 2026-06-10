@@ -1,7 +1,7 @@
-using Circles.Common;
 using Circles.Cache.Service;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Services;
+using Circles.Common;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;

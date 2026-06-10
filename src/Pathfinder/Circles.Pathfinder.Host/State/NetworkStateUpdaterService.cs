@@ -893,9 +893,9 @@ public class NetworkStateUpdaterService : BackgroundService
             return;
 
         ScorePolicyDiagnosticState newState =
-            !routersIndexed                            ? ScorePolicyDiagnosticState.FailOpenNoRouters
-            : baseGraph.OperatorApprovals.Count == 0   ? ScorePolicyDiagnosticState.FailClosedNoApprovals
-            :                                            ScorePolicyDiagnosticState.Healthy;
+            !routersIndexed ? ScorePolicyDiagnosticState.FailOpenNoRouters
+            : baseGraph.OperatorApprovals.Count == 0 ? ScorePolicyDiagnosticState.FailClosedNoApprovals
+            : ScorePolicyDiagnosticState.Healthy;
 
         if (newState == _scorePolicyState) return;
         var previousState = _scorePolicyState;

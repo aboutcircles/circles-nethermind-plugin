@@ -1,6 +1,6 @@
 using Circles.Cache.Service.Caches;
-using Xunit;
 using FluentAssertions;
+using Xunit;
 
 namespace Circles.Cache.Service.Tests;
 
