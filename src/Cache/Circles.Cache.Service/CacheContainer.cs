@@ -8,6 +8,12 @@ namespace Circles.Cache.Service.Caches;
 ///
 /// Uses per-domain ReaderWriterLockSlim to allow concurrent reads (the common case)
 /// while serializing writes (once per block event).
+///
+/// Lock ordering: domain lock (outer) → RollbackCache internal lock (inner).
+/// The Upsert*/Remove* methods mutate the value store and its secondary index under
+/// one domain write-lock scope, so indexed readers (which take the domain read lock)
+/// never observe an index entry without its value or vice versa. Never invoke a
+/// domain-locked CacheContainer method while holding a RollbackCache lock.
 /// </summary>
 public class CacheContainer : IDisposable
 {
@@ -133,11 +139,10 @@ public class CacheContainer : IDisposable
         var trusteeLower = trustee.ToLowerInvariant();
         var key = $"{trusterLower}:{trusteeLower}";
 
-        V1TrustRelations.Add(blockNo, key, limit);
-
         _trustLock.EnterWriteLock();
         try
         {
+            V1TrustRelations.Add(blockNo, key, limit);
             AddTrustIndexEntry(_v1TrustsByTruster, trusterLower, key);
             AddTrustIndexEntry(_v1TrustsByTrustee, trusteeLower, key);
         }
@@ -153,11 +158,10 @@ public class CacheContainer : IDisposable
         var trusteeLower = trustee.ToLowerInvariant();
         var key = $"{trusterLower}:{trusteeLower}";
 
-        V1TrustRelations.Remove(blockNo, key);
-
         _trustLock.EnterWriteLock();
         try
         {
+            V1TrustRelations.Remove(blockNo, key);
             RemoveTrustIndexEntry(_v1TrustsByTruster, trusterLower, key);
             RemoveTrustIndexEntry(_v1TrustsByTrustee, trusteeLower, key);
         }
@@ -173,11 +177,10 @@ public class CacheContainer : IDisposable
         var trusteeLower = trustee.ToLowerInvariant();
         var key = $"{trusterLower}:{trusteeLower}";
 
-        V2TrustRelations.Add(blockNo, key, expiryTime);
-
         _trustLock.EnterWriteLock();
         try
         {
+            V2TrustRelations.Add(blockNo, key, expiryTime);
             AddTrustIndexEntry(_v2TrustsByTruster, trusterLower, key);
             AddTrustIndexEntry(_v2TrustsByTrustee, trusteeLower, key);
         }
@@ -193,11 +196,10 @@ public class CacheContainer : IDisposable
         var trusteeLower = trustee.ToLowerInvariant();
         var key = $"{trusterLower}:{trusteeLower}";
 
-        V2TrustRelations.Remove(blockNo, key);
-
         _trustLock.EnterWriteLock();
         try
         {
+            V2TrustRelations.Remove(blockNo, key);
             RemoveTrustIndexEntry(_v2TrustsByTruster, trusterLower, key);
             RemoveTrustIndexEntry(_v2TrustsByTrustee, trusteeLower, key);
         }
@@ -213,11 +215,10 @@ public class CacheContainer : IDisposable
         var memberLower = member.ToLowerInvariant();
         var key = $"{groupLower}:{memberLower}";
 
-        GroupMemberships.Add(blockNo, key, (memberLower, expiryTime));
-
         _trustLock.EnterWriteLock();
         try
         {
+            GroupMemberships.Add(blockNo, key, (memberLower, expiryTime));
             AddTrustIndexEntry(_membershipsByGroup, groupLower, key);
             AddTrustIndexEntry(_membershipsByMember, memberLower, key);
         }
@@ -233,11 +234,10 @@ public class CacheContainer : IDisposable
         var memberLower = member.ToLowerInvariant();
         var key = $"{groupLower}:{memberLower}";
 
-        GroupMemberships.Remove(blockNo, key);
-
         _trustLock.EnterWriteLock();
         try
         {
+            GroupMemberships.Remove(blockNo, key);
             RemoveTrustIndexEntry(_membershipsByGroup, groupLower, key);
             RemoveTrustIndexEntry(_membershipsByMember, memberLower, key);
         }
@@ -252,11 +252,10 @@ public class CacheContainer : IDisposable
         var wrapperLower = wrapperAddress.ToLowerInvariant();
         var avatarLower = avatar.ToLowerInvariant();
 
-        Erc20WrapperAddresses.Add(blockNo, wrapperLower, (avatarLower, circlesType));
-
         _wrapperLock.EnterWriteLock();
         try
         {
+            Erc20WrapperAddresses.Add(blockNo, wrapperLower, (avatarLower, circlesType));
             _erc20WrapperToAvatar[wrapperLower] = (avatarLower, circlesType);
         }
         finally
@@ -289,10 +288,43 @@ public class CacheContainer : IDisposable
     }
 
     /// <summary>
+    /// Atomically writes a balance to the rollback cache and updates the secondary index
+    /// under a single write-lock scope, so indexed readers never see one without the other.
+    /// </summary>
+    public void UpsertBalance(long blockNo, string accountTokenKey, bool isV1, decimal balance)
+    {
+        _balanceLock.EnterWriteLock();
+        try
+        {
+            UpdateBalanceIndexCore(accountTokenKey, isV1, balance);
+            var cache = isV1 ? V1BalancesByAccountAndToken : V2BalancesByAccountAndToken;
+            cache.Add(blockNo, accountTokenKey, balance);
+        }
+        finally
+        {
+            _balanceLock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
     /// Updates the secondary indexes when a balance is added or modified.
-    /// Call this after updating V1BalancesByAccountAndToken or V2BalancesByAccountAndToken.
+    /// Prefer <see cref="UpsertBalance"/> which also writes the balance itself atomically.
     /// </summary>
     public void UpdateBalanceIndex(string accountTokenKey, bool isV1, decimal balance)
+    {
+        _balanceLock.EnterWriteLock();
+        try
+        {
+            UpdateBalanceIndexCore(accountTokenKey, isV1, balance);
+        }
+        finally
+        {
+            _balanceLock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>Index mutation body — caller must hold the balance write lock.</summary>
+    private void UpdateBalanceIndexCore(string accountTokenKey, bool isV1, decimal balance)
     {
         var separatorIndex = accountTokenKey.IndexOf(':');
         if (separatorIndex < 0) return;
@@ -300,37 +332,29 @@ public class CacheContainer : IDisposable
         var address = accountTokenKey[..separatorIndex];
         var tokenId = accountTokenKey[(separatorIndex + 1)..];
 
-        _balanceLock.EnterWriteLock();
-        try
-        {
-            var index = isV1 ? _v1BalancesByAddress : _v2BalancesByAddress;
+        var index = isV1 ? _v1BalancesByAddress : _v2BalancesByAddress;
 
-            if (balance > 0)
-            {
-                // Add to index
-                if (!index.TryGetValue(address, out var tokens))
-                {
-                    tokens = new HashSet<string>();
-                    index[address] = tokens;
-                }
-                tokens.Add(tokenId);
-            }
-            else
-            {
-                // Remove from index if balance is zero
-                if (index.TryGetValue(address, out var tokens))
-                {
-                    tokens.Remove(tokenId);
-                    if (tokens.Count == 0)
-                    {
-                        index.Remove(address);
-                    }
-                }
-            }
-        }
-        finally
+        if (balance > 0)
         {
-            _balanceLock.ExitWriteLock();
+            // Add to index
+            if (!index.TryGetValue(address, out var tokens))
+            {
+                tokens = new HashSet<string>();
+                index[address] = tokens;
+            }
+            tokens.Add(tokenId);
+        }
+        else
+        {
+            // Remove from index if balance is zero
+            if (index.TryGetValue(address, out var tokens))
+            {
+                tokens.Remove(tokenId);
+                if (tokens.Count == 0)
+                {
+                    index.Remove(address);
+                }
+            }
         }
     }
 
