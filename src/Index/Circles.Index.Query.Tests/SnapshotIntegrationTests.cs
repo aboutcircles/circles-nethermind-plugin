@@ -17,6 +17,12 @@ public class SnapshotIntegrationTests
     private const long TestBlock = 43193632;
     private TestEnvironmentClient? _session;
 
+    // Cells arrive as native types over a direct DB connection but as boxed JsonElement
+    // through the HTTP query proxy — Convert.ToInt64 throws on JsonElement, so normalize
+    // through the string form.
+    private static long CellToInt64(object? cell) =>
+        long.Parse(cell?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
+
     [OneTimeSetUp]
     public async Task Setup()
     {
@@ -94,7 +100,7 @@ public class SnapshotIntegrationTests
             });
 
         Assert.That(result, Is.Not.Null);
-        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var count = CellToInt64(result.Rows.FirstOrDefault()?[0]);
         Assert.That(count, Is.GreaterThan(0));
         TestContext.Out.WriteLine($"Trust events after block {TestBlock - 10000}: {count}");
     }
@@ -139,7 +145,7 @@ public class SnapshotIntegrationTests
         long prevBlock = long.MaxValue;
         foreach (var row in result.Rows)
         {
-            var blockNum = Convert.ToInt64(row[0]);
+            var blockNum = CellToInt64(row[0]);
             Assert.That(blockNum, Is.LessThanOrEqualTo(prevBlock), "Should be in descending order");
             prevBlock = blockNum;
         }
@@ -205,7 +211,7 @@ public class SnapshotIntegrationTests
             SELECT COUNT(*) FROM ""CrcV1_Signup"" WHERE ""blockNumber"" <= @block",
             new Dictionary<string, object?> { ["block"] = TestBlock });
 
-        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var count = CellToInt64(result.Rows.FirstOrDefault()?[0]);
         Assert.That(count, Is.GreaterThan(0), "Should have V1 signups");
         TestContext.Out.WriteLine($"V1 signups: {count}");
     }
@@ -219,7 +225,7 @@ public class SnapshotIntegrationTests
             SELECT COUNT(*) FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @block",
             new Dictionary<string, object?> { ["block"] = TestBlock });
 
-        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var count = CellToInt64(result.Rows.FirstOrDefault()?[0]);
         Assert.That(count, Is.GreaterThan(0), "Should have V2 registrations");
         TestContext.Out.WriteLine($"V2 RegisterHuman events: {count}");
     }
@@ -232,7 +238,7 @@ public class SnapshotIntegrationTests
         var result = await _session!.ExecuteQueryAsync(@"
             SELECT MAX(""blockNumber"") FROM ""System_Block""");
 
-        var maxBlock = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var maxBlock = CellToInt64(result.Rows.FirstOrDefault()?[0]);
         Assert.That(maxBlock, Is.GreaterThanOrEqualTo(TestBlock), "Should have blocks indexed up to test block");
         TestContext.Out.WriteLine($"Max indexed block: {maxBlock}");
     }
@@ -253,7 +259,7 @@ public class SnapshotIntegrationTests
         foreach (var view in views)
         {
             var result = await _session!.ExecuteQueryAsync($"SELECT COUNT(*) FROM \"{view}\"");
-            var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+            var count = CellToInt64(result.Rows.FirstOrDefault()?[0]);
             TestContext.Out.WriteLine($"{view}: {count} rows");
             Assert.That(count, Is.GreaterThanOrEqualTo(0), $"View {view} should be queryable");
         }
@@ -268,7 +274,7 @@ public class SnapshotIntegrationTests
         var result = await _session!.ExecuteQueryAsync(@"
             SELECT MAX(""blockNumber"") FROM ""CrcV2_Trust""");
 
-        var maxBlock = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var maxBlock = CellToInt64(result.Rows.FirstOrDefault()?[0]);
 
         // Should not exceed session block due to circles.max_block_number
         Assert.That(maxBlock, Is.LessThanOrEqualTo(TestBlock),
