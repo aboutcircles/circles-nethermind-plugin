@@ -8,17 +8,17 @@ public class RepScoreRepository
     private readonly string _repScoreConn;
     private readonly string _circlesDbConn;
     private readonly string _groupId;
-    private readonly int _highScoreThreshold;
-    private readonly int _scoreDropThreshold;
-    public int ScoreDropThreshold => _scoreDropThreshold;
+    private readonly double _highScoreThreshold;
+    private readonly double _scoreDropThreshold;
+    public double ScoreDropThreshold => _scoreDropThreshold;
     private readonly ILogger<RepScoreRepository> _logger;
 
     public RepScoreRepository(
         string repScoreConn,
         string circlesDbConn,
         string groupId,
-        int highScoreThreshold,
-        int scoreDropThreshold,
+        double highScoreThreshold,
+        double scoreDropThreshold,
         ILogger<RepScoreRepository> logger)
     {
         _repScoreConn = repScoreConn;
@@ -125,16 +125,16 @@ public class RepScoreRepository
                 COALESCE(COUNT(*) FILTER (WHERE score >= @high)::double precision
                     / NULLIF(COUNT(*), 0), 0)                                      AS high_share,
                 COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(computed_at))), 999999)   AS refresh_age,
-                COUNT(*) FILTER (WHERE score >= 0   AND score < 10)   AS b0,
-                COUNT(*) FILTER (WHERE score >= 10  AND score < 20)   AS b10,
-                COUNT(*) FILTER (WHERE score >= 20  AND score < 30)   AS b20,
-                COUNT(*) FILTER (WHERE score >= 30  AND score < 40)   AS b30,
-                COUNT(*) FILTER (WHERE score >= 40  AND score < 50)   AS b40,
-                COUNT(*) FILTER (WHERE score >= 50  AND score < 60)   AS b50,
-                COUNT(*) FILTER (WHERE score >= 60  AND score < 70)   AS b60,
-                COUNT(*) FILTER (WHERE score >= 70  AND score < 80)   AS b70,
-                COUNT(*) FILTER (WHERE score >= 80  AND score < 90)   AS b80,
-                COUNT(*) FILTER (WHERE score >= 90  AND score <= 100) AS b90
+                COUNT(*) FILTER (WHERE score >= 0.0  AND score < 0.1)  AS b0,
+                COUNT(*) FILTER (WHERE score >= 0.1  AND score < 0.2)  AS b10,
+                COUNT(*) FILTER (WHERE score >= 0.2  AND score < 0.3)  AS b20,
+                COUNT(*) FILTER (WHERE score >= 0.3  AND score < 0.4)  AS b30,
+                COUNT(*) FILTER (WHERE score >= 0.4  AND score < 0.5)  AS b40,
+                COUNT(*) FILTER (WHERE score >= 0.5  AND score < 0.6)  AS b50,
+                COUNT(*) FILTER (WHERE score >= 0.6  AND score < 0.7)  AS b60,
+                COUNT(*) FILTER (WHERE score >= 0.7  AND score < 0.8)  AS b70,
+                COUNT(*) FILTER (WHERE score >= 0.8  AND score < 0.9)  AS b80,
+                COUNT(*) FILTER (WHERE score >= 0.9  AND score <= 1.0) AS b90
             FROM rep_score_state
             WHERE group_id = @groupId
             """;
@@ -143,7 +143,7 @@ public class RepScoreRepository
         await conn.OpenAsync(ct);
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("groupId", _groupId);
-        cmd.Parameters.AddWithValue("high", (double)_highScoreThreshold);
+        cmd.Parameters.AddWithValue("high", _highScoreThreshold);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
         if (await reader.ReadAsync(ct))
@@ -214,7 +214,7 @@ public class RepScoreRepository
         await conn.OpenAsync(ct);
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("groupId", _groupId);
-        cmd.Parameters.AddWithValue("drop", (double)_scoreDropThreshold);
+        cmd.Parameters.AddWithValue("drop", _scoreDropThreshold);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
         if (await reader.ReadAsync(ct))

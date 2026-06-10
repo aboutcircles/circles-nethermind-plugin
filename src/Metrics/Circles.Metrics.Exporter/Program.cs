@@ -59,8 +59,8 @@ if (!string.IsNullOrWhiteSpace(repScoreConnectionString))
             repScoreConnectionString,
             connectionString,
             builder.Configuration.GetValue<string>("RepScore:GroupId", "score_group")!,
-            builder.Configuration.GetValue<int>("RepScore:HighScoreThreshold", 70),
-            builder.Configuration.GetValue<int>("RepScore:ScoreDropThreshold", 20),
+            builder.Configuration.GetValue<double>("RepScore:HighScoreThreshold", 0.70),
+            builder.Configuration.GetValue<double>("RepScore:ScoreDropThreshold", 0.20),
             sp.GetRequiredService<ILogger<RepScoreRepository>>()));
 
     builder.Services.AddHostedService<RepScoreCollectorService>();
