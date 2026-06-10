@@ -2,7 +2,11 @@
 **/obj
 **/bin
 **/._*
+**/*.lscache
+*.csproj.user
+.vs/
 .idea/
+.codex/
 .state
 nupkgs
 TestResults
