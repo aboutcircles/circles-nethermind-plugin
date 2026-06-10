@@ -442,4 +442,84 @@ public class RpcMethodSnapshotTests
                 "If raw balance is non-zero, time-circles balance should also be non-zero");
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // circles_query column validation
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private async Task<JsonElement> CallRpcRaw(string method, params object[] parameters)
+    {
+        var request = new
+        {
+            jsonrpc = "2.0",
+            method,
+            @params = parameters,
+            id = 1
+        };
+
+        var response = await _client!.PostAsJsonAsync("/", request, new JsonSerializerOptions
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        });
+
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonDocument.Parse(json).RootElement.Clone();
+    }
+
+    [Test]
+    public async Task Query_UnknownFilterColumn_ReturnsErrorNotRows()
+    {
+        // A filter on a non-existent column must yield a JSON-RPC error, never rows.
+        // (With the schema column allowlist this is a clean validation error; without
+        // it the database rejects the column — either way the contract is "error".)
+        var envelope = await CallRpcRaw("circles_query", new
+        {
+            Namespace = "CrcV2",
+            Table = "RegisterHuman",
+            Columns = Array.Empty<string>(),
+            Limit = 1,
+            Filter = new object[]
+            {
+                new
+                {
+                    Type = "FilterPredicate",
+                    FilterType = "Equals",
+                    Column = "definitely_not_a_column",
+                    Value = "0x0000000000000000000000000000000000000000"
+                }
+            }
+        });
+
+        Assert.That(envelope.TryGetProperty("error", out _), Is.True,
+            "Unknown filter column must produce a JSON-RPC error");
+    }
+
+    [Test]
+    public async Task Query_ValidFilterColumn_StillReturnsResult()
+    {
+        // Positive control for the column allowlist: a legitimate schema column
+        // must not be rejected by the validation pre-pass.
+        var envelope = await CallRpcRaw("circles_query", new
+        {
+            Namespace = "CrcV2",
+            Table = "RegisterHuman",
+            Columns = Array.Empty<string>(),
+            Limit = 1,
+            Filter = new object[]
+            {
+                new
+                {
+                    Type = "FilterPredicate",
+                    FilterType = "Equals",
+                    Column = "avatar",
+                    Value = KnownV2Human
+                }
+            }
+        });
+
+        Assert.That(envelope.TryGetProperty("error", out var error), Is.False,
+            $"Valid filter column must not be rejected: {(envelope.TryGetProperty("error", out error) ? error.ToString() : "")}");
+        Assert.That(envelope.TryGetProperty("result", out _), Is.True);
+    }
 }

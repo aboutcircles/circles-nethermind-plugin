@@ -79,6 +79,17 @@ public partial class CirclesRpcModule
         return normalized;
     }
 
+    private static IEnumerable<FilterPredicateDto> FlattenFilterPredicates(IEnumerable<IFilterPredicateDto> predicates)
+    {
+        foreach (var p in predicates)
+        {
+            if (p is FilterPredicateDto fp) yield return fp;
+            else if (p is ConjunctionDto cj && cj.Predicates != null)
+                foreach (var nested in FlattenFilterPredicates(cj.Predicates))
+                    yield return nested;
+        }
+    }
+
     private static string BuildInClause(
         string column,
         string parameterPrefix,
@@ -335,10 +346,35 @@ public partial class CirclesRpcModule
         {
             throw new ArgumentException($"Table '{fullTableName}' is not a known Circles table.");
         }
-        var hasEventColumns = tableColumns != null &&
-            tableColumns.ContainsKey("blockNumber") &&
+        var hasEventColumns = tableColumns.ContainsKey("blockNumber") &&
             tableColumns.ContainsKey("transactionIndex") &&
             tableColumns.ContainsKey("logIndex");
+
+        // Validate filter and order columns against the known schema to prevent
+        // column-name injection through the double-quoted identifier interpolation.
+        void AssertColumnExists(string col, string role)
+        {
+            if (!tableColumns.ContainsKey(col))
+                throw new ArgumentException($"{role} column '{col}' does not exist in table '{fullTableName}'.");
+        }
+
+        if (query.Filter != null)
+        {
+            foreach (var f in FlattenFilterPredicates(query.Filter))
+                if (f.Column != null) AssertColumnExists(f.Column, "Filter");
+        }
+
+        if (query.Order != null)
+        {
+            foreach (var o in query.Order)
+                if (o.Column != null) AssertColumnExists(o.Column, "Order");
+        }
+
+        if (query.Columns != null)
+        {
+            foreach (var c in query.Columns)
+                if (c != "*") AssertColumnExists(c, "Column");
+        }
 
         // Decode cursor if provided and table supports cursor-based pagination
         var (cursorBlockNumber, cursorTransactionIndex, cursorLogIndex) = hasEventColumns
