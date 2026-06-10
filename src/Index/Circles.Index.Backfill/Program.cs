@@ -33,89 +33,95 @@ string? GetConnectionString(string? explicitValue)
     return $"Server={host};Port={port};Database={db};User Id={user};Password={password};";
 }
 
+const string connectionStringHelp =
+    "PostgreSQL connection string (or set POSTGRES_CONNECTION_STRING, or POSTGRES_USER+POSTGRES_PASSWORD env vars)";
+
+void PrintConnectionStringError()
+{
+    Console.Error.WriteLine("Error: Connection string required.");
+    Console.Error.WriteLine("  Use --connection-string, or set POSTGRES_CONNECTION_STRING,");
+    Console.Error.WriteLine("  or set POSTGRES_USER + POSTGRES_PASSWORD (+ optional POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB)");
+}
+
 // Backfill command
 var backfillCommand = new Command("backfill", "Backfill specific tables from historical blocks");
 
-var tablesOption = new Option<string[]>(
-    name: "--tables",
-    description: "Tables to backfill (e.g., CrcV2_FlowEdgesScopeSingleStarted)")
+var tablesOption = new Option<string[]>("--tables", "-t")
 {
-    IsRequired = true,
+    Description = "Tables to backfill (e.g., CrcV2_FlowEdgesScopeSingleStarted)",
+    Required = true,
     AllowMultipleArgumentsPerToken = true
 };
-tablesOption.AddAlias("-t");
 
-var fromBlockOption = new Option<long>(
-    name: "--from-block",
-    description: "Block number to start backfill from (default: 37534026 for V2)",
-    getDefaultValue: () => 37534026);
-fromBlockOption.AddAlias("-f");
-
-var toBlockOption = new Option<long?>(
-    name: "--to-block",
-    description: "Block number to end backfill at (default: current System_Block max)");
-toBlockOption.AddAlias("-e");
-
-var connectionStringOption = new Option<string?>(
-    name: "--connection-string",
-    description: "PostgreSQL connection string (or set POSTGRES_CONNECTION_STRING, or POSTGRES_USER+POSTGRES_PASSWORD env vars)");
-connectionStringOption.AddAlias("-c");
-
-var rpcUrlOption = new Option<string>(
-    name: "--rpc-url",
-    description: "Nethermind JSON-RPC URL",
-    getDefaultValue: () => "http://localhost:8545");
-rpcUrlOption.AddAlias("-r");
-
-var batchSizeOption = new Option<int>(
-    name: "--batch-size",
-    description: "Number of blocks to process per batch",
-    getDefaultValue: () => 1000);
-batchSizeOption.AddAlias("-b");
-
-var dryRunOption = new Option<bool>(
-    name: "--dry-run",
-    description: "Parse blocks but don't write to database",
-    getDefaultValue: () => false);
-
-var hubAddressOption = new Option<string?>(
-    name: "--hub-address",
-    description: "V2 Hub contract address (default: 0xc12c1e50abb450d6205ea2c3fa861b3b834d13e8 for Gnosis)");
-
-var forceOption = new Option<bool>(
-    name: "--force",
-    description: "Bypass safety check that verifies the indexer is not running",
-    getDefaultValue: () => false);
-
-backfillCommand.AddOption(tablesOption);
-backfillCommand.AddOption(fromBlockOption);
-backfillCommand.AddOption(toBlockOption);
-backfillCommand.AddOption(connectionStringOption);
-backfillCommand.AddOption(rpcUrlOption);
-backfillCommand.AddOption(batchSizeOption);
-backfillCommand.AddOption(dryRunOption);
-backfillCommand.AddOption(hubAddressOption);
-backfillCommand.AddOption(forceOption);
-
-backfillCommand.SetHandler(async (context) =>
+var fromBlockOption = new Option<long>("--from-block", "-f")
 {
-    var tables = context.ParseResult.GetValueForOption(tablesOption)!;
-    var fromBlock = context.ParseResult.GetValueForOption(fromBlockOption);
-    var toBlock = context.ParseResult.GetValueForOption(toBlockOption);
-    var connectionString = GetConnectionString(context.ParseResult.GetValueForOption(connectionStringOption));
-    var rpcUrl = context.ParseResult.GetValueForOption(rpcUrlOption)!;
-    var batchSize = context.ParseResult.GetValueForOption(batchSizeOption);
-    var dryRun = context.ParseResult.GetValueForOption(dryRunOption);
-    var hubAddress = context.ParseResult.GetValueForOption(hubAddressOption);
-    var force = context.ParseResult.GetValueForOption(forceOption);
+    Description = "Block number to start backfill from (default: 37534026 for V2)",
+    DefaultValueFactory = _ => 37534026
+};
+
+var toBlockOption = new Option<long?>("--to-block", "-e")
+{
+    Description = "Block number to end backfill at (default: current System_Block max)"
+};
+
+var connectionStringOption = new Option<string?>("--connection-string", "-c")
+{
+    Description = connectionStringHelp
+};
+
+var rpcUrlOption = new Option<string>("--rpc-url", "-r")
+{
+    Description = "Nethermind JSON-RPC URL",
+    DefaultValueFactory = _ => "http://localhost:8545"
+};
+
+var batchSizeOption = new Option<int>("--batch-size", "-b")
+{
+    Description = "Number of blocks to process per batch",
+    DefaultValueFactory = _ => 1000
+};
+
+var dryRunOption = new Option<bool>("--dry-run")
+{
+    Description = "Parse blocks but don't write to database"
+};
+
+var hubAddressOption = new Option<string?>("--hub-address")
+{
+    Description = "V2 Hub contract address (default: 0xc12c1e50abb450d6205ea2c3fa861b3b834d13e8 for Gnosis)"
+};
+
+var forceOption = new Option<bool>("--force")
+{
+    Description = "Bypass safety check that verifies the indexer is not running"
+};
+
+backfillCommand.Options.Add(tablesOption);
+backfillCommand.Options.Add(fromBlockOption);
+backfillCommand.Options.Add(toBlockOption);
+backfillCommand.Options.Add(connectionStringOption);
+backfillCommand.Options.Add(rpcUrlOption);
+backfillCommand.Options.Add(batchSizeOption);
+backfillCommand.Options.Add(dryRunOption);
+backfillCommand.Options.Add(hubAddressOption);
+backfillCommand.Options.Add(forceOption);
+
+backfillCommand.SetAction(async (parseResult, cancellationToken) =>
+{
+    var tables = parseResult.GetValue(tablesOption)!;
+    var fromBlock = parseResult.GetValue(fromBlockOption);
+    var toBlock = parseResult.GetValue(toBlockOption);
+    var connectionString = GetConnectionString(parseResult.GetValue(connectionStringOption));
+    var rpcUrl = parseResult.GetValue(rpcUrlOption)!;
+    var batchSize = parseResult.GetValue(batchSizeOption);
+    var dryRun = parseResult.GetValue(dryRunOption);
+    var hubAddress = parseResult.GetValue(hubAddressOption);
+    var force = parseResult.GetValue(forceOption);
 
     if (string.IsNullOrEmpty(connectionString))
     {
-        Console.Error.WriteLine("Error: Connection string required.");
-        Console.Error.WriteLine("  Use --connection-string, or set POSTGRES_CONNECTION_STRING,");
-        Console.Error.WriteLine("  or set POSTGRES_USER + POSTGRES_PASSWORD (+ optional POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB)");
-        context.ExitCode = 1;
-        return;
+        PrintConnectionStringError();
+        return 1;
     }
 
     var options = new BackfillOptions
@@ -132,64 +138,59 @@ backfillCommand.SetHandler(async (context) =>
     };
 
     var runner = new BackfillRunner(options);
-    var exitCode = await runner.RunAsync(context.GetCancellationToken());
-    context.ExitCode = exitCode;
+    return await runner.RunAsync(cancellationToken);
 });
 
 // List-tables command
 var listTablesCommand = new Command("list-tables", "List all available tables and their LogParser mappings");
 
-var listConnectionStringOption = new Option<string?>(
-    name: "--connection-string",
-    description: "PostgreSQL connection string (or set POSTGRES_CONNECTION_STRING, or POSTGRES_USER+POSTGRES_PASSWORD env vars)");
-listConnectionStringOption.AddAlias("-c");
-
-listTablesCommand.AddOption(listConnectionStringOption);
-
-listTablesCommand.SetHandler(async (context) =>
+var listConnectionStringOption = new Option<string?>("--connection-string", "-c")
 {
-    var connectionString = GetConnectionString(context.ParseResult.GetValueForOption(listConnectionStringOption));
+    Description = connectionStringHelp
+};
+
+listTablesCommand.Options.Add(listConnectionStringOption);
+
+listTablesCommand.SetAction(async (parseResult, _) =>
+{
+    var connectionString = GetConnectionString(parseResult.GetValue(listConnectionStringOption));
 
     if (string.IsNullOrEmpty(connectionString))
     {
-        Console.Error.WriteLine("Error: Connection string required.");
-        Console.Error.WriteLine("  Use --connection-string, or set POSTGRES_CONNECTION_STRING,");
-        Console.Error.WriteLine("  or set POSTGRES_USER + POSTGRES_PASSWORD (+ optional POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB)");
-        context.ExitCode = 1;
-        return;
+        PrintConnectionStringError();
+        return 1;
     }
 
     await BackfillRunner.ListTablesAsync(connectionString);
+    return 0;
 });
 
 // Status command
 var statusCommand = new Command("status", "Show backfill progress for all tables");
 
-var statusConnectionStringOption = new Option<string?>(
-    name: "--connection-string",
-    description: "PostgreSQL connection string (or set POSTGRES_CONNECTION_STRING, or POSTGRES_USER+POSTGRES_PASSWORD env vars)");
-statusConnectionStringOption.AddAlias("-c");
-
-statusCommand.AddOption(statusConnectionStringOption);
-
-statusCommand.SetHandler(async (context) =>
+var statusConnectionStringOption = new Option<string?>("--connection-string", "-c")
 {
-    var connectionString = GetConnectionString(context.ParseResult.GetValueForOption(statusConnectionStringOption));
+    Description = connectionStringHelp
+};
+
+statusCommand.Options.Add(statusConnectionStringOption);
+
+statusCommand.SetAction(async (parseResult, _) =>
+{
+    var connectionString = GetConnectionString(parseResult.GetValue(statusConnectionStringOption));
 
     if (string.IsNullOrEmpty(connectionString))
     {
-        Console.Error.WriteLine("Error: Connection string required.");
-        Console.Error.WriteLine("  Use --connection-string, or set POSTGRES_CONNECTION_STRING,");
-        Console.Error.WriteLine("  or set POSTGRES_USER + POSTGRES_PASSWORD (+ optional POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB)");
-        context.ExitCode = 1;
-        return;
+        PrintConnectionStringError();
+        return 1;
     }
 
     await BackfillRunner.ShowStatusAsync(connectionString);
+    return 0;
 });
 
-rootCommand.AddCommand(backfillCommand);
-rootCommand.AddCommand(listTablesCommand);
-rootCommand.AddCommand(statusCommand);
+rootCommand.Subcommands.Add(backfillCommand);
+rootCommand.Subcommands.Add(listTablesCommand);
+rootCommand.Subcommands.Add(statusCommand);
 
-return await rootCommand.InvokeAsync(args);
+return await rootCommand.Parse(args).InvokeAsync();
