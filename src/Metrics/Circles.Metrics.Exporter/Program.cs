@@ -52,7 +52,7 @@ builder.Services.AddHostedService<TrustHistorySnapshotService>();
 
 // Rep score monitoring (AA circles_rep_score DB — bad actor radar + ScoreGroup distribution)
 // Optional: skip if RepScoreDb is not configured (AA may not be deployed in all environments)
-if (repScoreConnectionString is not null)
+if (!string.IsNullOrWhiteSpace(repScoreConnectionString))
 {
     builder.Services.AddSingleton(sp =>
         new RepScoreRepository(
