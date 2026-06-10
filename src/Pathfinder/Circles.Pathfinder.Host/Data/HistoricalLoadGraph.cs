@@ -20,6 +20,9 @@ namespace Circles.Pathfinder.Host.Data;
 /// - Uses block-filtered registered_avatars CTE (not V_CrcV2_Avatars view) for correct historical filtering
 /// - Includes tokenAddress registration filter (production fix 2026-02-14)
 /// - Reads NpgsqlDataReader directly instead of JSON deserialization
+/// - Full live-graph parity for wrapped ERC20 tokens: loads wrapper balances (static + demurraged)
+///   and projects trust edges onto trustee wrappers, mirroring balanceQuery.sql / trustQuery.sql
+///   (ProxyLoadGraph deliberately omits these for its Anvil fixtures)
 /// </summary>
 public sealed class HistoricalLoadGraph : ILoadGraph
 {
@@ -34,7 +37,7 @@ public sealed class HistoricalLoadGraph : ILoadGraph
 
     // Block-filtered registered avatars CTE — used in balance and trust queries
     // to ensure only avatars registered at or before the target block are included.
-    private const string RegisteredAvatarsCte = """
+    internal const string RegisteredAvatarsCte = """
         registered_avatars AS (
             SELECT avatar FROM "CrcV2_RegisterHuman" WHERE "blockNumber" <= {0}
             UNION ALL
@@ -47,9 +50,55 @@ public sealed class HistoricalLoadGraph : ILoadGraph
     // Balance query with block-filtered registered_avatars CTE.
     // Filters BOTH account AND tokenAddress against registered avatars
     // (production fix 2026-02-14: prevents AvatarMustBeRegistered reverts).
-    private const string BalanceQueryTemplate = """
+    // Mirrors the live balanceQuery.sql: native ERC1155 balances PLUS static (circlesType=1)
+    // and demurraged (circlesType=0) ERC20 wrapper balances, every source table pinned to {0}.
+    // Without the wrapper branches, historical graphs had no wrapped balances at all, so
+    // wrapped routing silently dead-ended — diverging from the live graph.
+    internal const string BalanceQueryTemplate = """
         WITH {2},
-        tx AS (
+        static_wrapper_transfers AS (
+            SELECT t."timestamp", t."tokenAddress", t."from", t."to", t."amount"
+            FROM "CrcV2_Erc20WrapperTransfer" t
+            JOIN "CrcV2_ERC20WrapperDeployed" d
+                ON d."circlesType" = 1 AND d."erc20Wrapper" = t."tokenAddress"
+               AND d."blockNumber" <= {0}
+            JOIN registered_avatars a ON a.avatar = d.avatar
+            WHERE t."blockNumber" <= {0}
+        ), static_sum AS (
+            SELECT sum(diff) AS balance, account, "tokenAddress", max("timestamp") AS last_ts,
+                   true AS "isWrapped", 'static' AS "circlesType"
+            FROM (
+                SELECT t."timestamp", t."tokenAddress", t."from" AS account, -t."amount" AS diff
+                FROM static_wrapper_transfers t
+                JOIN registered_avatars ra ON ra.avatar = t."from"
+                UNION ALL
+                SELECT t."timestamp", t."tokenAddress", t."to" AS account, t."amount" AS diff
+                FROM static_wrapper_transfers t
+                JOIN registered_avatars ra ON ra.avatar = t."to"
+            ) AS t
+            GROUP BY account, "tokenAddress"
+        ), demurraged_wrapper_transfers AS (
+            SELECT t."timestamp", t."tokenAddress", t."from", t."to", t."amount"
+            FROM "CrcV2_Erc20WrapperTransfer" t
+            JOIN "CrcV2_ERC20WrapperDeployed" d
+                ON d."circlesType" = 0 AND d."erc20Wrapper" = t."tokenAddress"
+               AND d."blockNumber" <= {0}
+            JOIN registered_avatars a ON a.avatar = d.avatar
+            WHERE t."blockNumber" <= {0}
+        ), demurraged_sum AS (
+            SELECT sum(diff) AS balance, account, "tokenAddress", max("timestamp") AS last_ts,
+                   true AS "isWrapped", 'demurraged' AS "circlesType"
+            FROM (
+                SELECT t."timestamp", t."tokenAddress", t."from" AS account, -t."amount" AS diff
+                FROM demurraged_wrapper_transfers t
+                JOIN registered_avatars ra ON ra.avatar = t."from"
+                UNION ALL
+                SELECT t."timestamp", t."tokenAddress", t."to" AS account, t."amount" AS diff
+                FROM demurraged_wrapper_transfers t
+                JOIN registered_avatars ra ON ra.avatar = t."to"
+            ) AS t
+            GROUP BY account, "tokenAddress"
+        ), tx AS (
             SELECT "timestamp", "from" AS account, "tokenAddress", -value AS delta
             FROM "CrcV2_TransferSingle" WHERE "blockNumber" <= {0}
             UNION ALL
@@ -65,18 +114,33 @@ public sealed class HistoricalLoadGraph : ILoadGraph
             SELECT account, "tokenAddress", sum(delta) AS balance, max("timestamp") AS last_ts
             FROM tx
             GROUP BY account, "tokenAddress"
+        ), native_sum AS (
+            SELECT balance, account, agg."tokenAddress", last_ts,
+                   false AS "isWrapped", 'demurraged' AS "circlesType"
+            FROM agg
+            INNER JOIN registered_avatars ra ON ra.avatar = agg.account
+            INNER JOIN registered_avatars ra_token ON ra_token.avatar = agg."tokenAddress"
+            WHERE account <> '0x0000000000000000000000000000000000000000'
         )
         SELECT balance::text, account, "tokenAddress", last_ts AS "lastActivity",
-               false AS "isWrapped", 'demurraged' AS "circlesType"
-        FROM agg
-        INNER JOIN registered_avatars ra ON ra.avatar = agg.account
-        INNER JOIN registered_avatars ra_token ON ra_token.avatar = agg."tokenAddress"
-        WHERE account <> '0x0000000000000000000000000000000000000000' AND balance > 0
+               "isWrapped", "circlesType"
+        FROM (
+            SELECT * FROM static_sum
+            UNION ALL
+            SELECT * FROM demurraged_sum
+            UNION ALL
+            SELECT * FROM native_sum
+        ) all_balances
+        WHERE balance > 0
         ORDER BY balance, account, "tokenAddress"
         """;
 
     // Trust query with block-filtered registered_avatars CTE.
-    private const string TrustQueryTemplate = """
+    // Mirrors the live trustQuery.sql: direct avatar→avatar trust edges PLUS the projection
+    // of each trust edge onto the trustee's ERC20 wrapper (truster trusts trustee ⇒ truster
+    // accepts the trustee's wrapped token). Without the wrapper branch, wrapped balances in
+    // the historical graph have no incoming trust edges and wrapped routing dead-ends.
+    internal const string TrustQueryTemplate = """
         WITH {2},
         trust_state AS (
             SELECT truster, trustee, "expiryTime",
@@ -95,6 +159,19 @@ public sealed class HistoricalLoadGraph : ILoadGraph
             ON t2."group" = t1.truster
            AND t2."blockNumber" <= {0}
         WHERE t2."group" IS NULL
+
+        UNION ALL
+
+        SELECT t1.truster, w."erc20Wrapper" AS trustee FROM active_trust t1
+        INNER JOIN "CrcV2_ERC20WrapperDeployed" w
+            ON w.avatar = t1.trustee
+           AND w."blockNumber" <= {0}
+        INNER JOIN registered_avatars a1 ON a1.avatar = t1.truster
+        INNER JOIN registered_avatars a2 ON a2.avatar = w.avatar
+        LEFT JOIN "CrcV2_RegisterGroup" t3
+            ON t3."group" = t1.truster
+           AND t3."blockNumber" <= {0}
+        WHERE t3."group" IS NULL
         """;
 
     // Standard-only group query (used when score tables are absent / no score policies configured).
@@ -135,8 +212,11 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         """;
 
     // Standard-only group-trust query (used when score tables are absent / no score policies).
-    private const string GroupTrustQueryTemplate = """
-        WITH trust_state AS (
+    // The trustee registered-avatars join mirrors the live groupTrustQuery.fallback.sql:
+    // collateral tokens of unregistered avatars must not enter the group graph.
+    internal const string GroupTrustQueryTemplate = """
+        WITH {2},
+        trust_state AS (
             SELECT truster, trustee, "expiryTime",
                    row_number() OVER (PARTITION BY truster, trustee
                        ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC) AS rn
@@ -149,13 +229,16 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         SELECT t.truster AS group_address, t.trustee AS trusted_token
         FROM active_trust t
         INNER JOIN "CrcV2_RegisterGroup" g ON g."group" = t.truster
+        INNER JOIN registered_avatars ra ON ra.avatar = t.trustee
         WHERE g."mint" = LOWER(@mintPolicy)
           AND g."blockNumber" <= {0}
         """;
 
     // Score-aware group-trust query — same supported_groups predicate as GroupScoreAwareQueryTemplate.
-    private const string GroupTrustScoreAwareQueryTemplate = """
-        WITH trust_state AS (
+    // The trustee registered-avatars join mirrors the live groupTrustQuery.sql.
+    internal const string GroupTrustScoreAwareQueryTemplate = """
+        WITH {2},
+        trust_state AS (
             SELECT truster, trustee, "expiryTime",
                    row_number() OVER (PARTITION BY truster, trustee
                        ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC) AS rn
@@ -184,6 +267,7 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         SELECT t.truster AS group_address, t.trustee AS trusted_token
         FROM active_trust t
         INNER JOIN supported_groups g ON g.group_address = t.truster
+        INNER JOIN registered_avatars ra ON ra.avatar = t.trustee
         """;
 
     private const string RegisteredAvatarsQueryTemplate = """
@@ -553,8 +637,10 @@ public sealed class HistoricalLoadGraph : ILoadGraph
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
         bool scoreAware = _settings.ScoreGroupMintPolicies.Length > 0 && ScoreGroupTablesAvailable();
+        var registeredAvatarsCte = string.Format(RegisteredAvatarsCte, _blockNumber);
         var sql = string.Format(
-            scoreAware ? GroupTrustScoreAwareQueryTemplate : GroupTrustQueryTemplate, _blockNumber);
+            scoreAware ? GroupTrustScoreAwareQueryTemplate : GroupTrustQueryTemplate,
+            _blockNumber, "", registeredAvatarsCte);
         var results = new List<(string, string)>();
 
         using var conn = _dataSource.OpenConnection();
