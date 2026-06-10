@@ -35,6 +35,8 @@ namespace Circles.Pathfinder.Tests;
 /// </summary>
 [TestFixture]
 [NonParallelizable] // Serialize: each tier creates its own test-env session; concurrent creation flakes on staging.
+[Category("Regression")]
+[Category("RequiresTestEnv")]
 public class ScoreGroupRegressionTests
 {
     /// <summary>Standard group router used by GraphFactory; score routers are loaded from the DB.</summary>

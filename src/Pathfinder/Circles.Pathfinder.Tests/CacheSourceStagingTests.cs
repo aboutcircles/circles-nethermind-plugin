@@ -12,6 +12,7 @@ namespace Circles.Pathfinder.Tests;
 /// </summary>
 [TestFixture]
 [Category("Staging")]
+[Category("RequiresTestEnv")]
 public class CacheSourceStagingTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";

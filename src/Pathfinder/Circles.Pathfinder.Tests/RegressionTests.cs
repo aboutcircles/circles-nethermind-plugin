@@ -23,6 +23,7 @@ namespace Circles.Pathfinder.Tests;
 /// CI triggers these tests automatically on merges to main/dev branches.
 /// </summary>
 [TestFixture]
+[Category("Regression")]
 public class RegressionTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";

@@ -110,13 +110,48 @@ Each test session provides:
 
 ## Test Projects
 
-| Project                         | Location          | Coverage Focus                           |
-| ------------------------------- | ----------------- | ---------------------------------------- |
-| **Circles.Pathfinder.Tests**    | `src/Pathfinder/` | Path algorithm, edge ordering, scenarios |
-| **Circles.Common.Tests**  | `src/Common/`      | Demurrage math, numeric precision        |
-| **Circles.Index.Query.Tests**   | `src/Index/`      | Query building, SQL generation           |
-| **Circles.Cache.Service.Tests** | `src/Cache/`      | Cache invalidation, state management     |
-| **Circles.Rpc.Host.Tests**      | `src/Rpc/`        | RPC handlers, ABI encoding               |
+| Project                            | Location          | Coverage Focus                           |
+| ---------------------------------- | ----------------- | ---------------------------------------- |
+| **Circles.Pathfinder.Tests**       | `src/Pathfinder/` | Path algorithm, edge ordering, scenarios |
+| **Circles.Common.Tests**           | `src/Common/`     | Demurrage math, numeric precision        |
+| **Circles.Index.Query.Tests**      | `src/Index/`      | Query building, SQL generation           |
+| **Circles.Index.CirclesV2.Tests**  | `src/Index/`      | V2 log parsing, event extraction         |
+| **Circles.Index.CirclesViews.Tests** | `src/Index/`    | View DDL, schema projections             |
+| **Circles.Cache.Service.Tests**    | `src/Cache/`      | Cache invalidation, state management     |
+| **Circles.Rpc.Host.Tests**         | `src/Rpc/`        | RPC handlers, ABI encoding               |
+
+`scripts/test.sh` discovers this list from `Circles.sln` — adding a test
+project to the solution is sufficient for it to run locally and in CI.
+
+---
+
+## Test Tiers
+
+Tests are tagged with class-level categories describing their external
+dependencies. Untagged tests run anywhere; tagged tests self-skip
+(`Assert.Ignore`) when their dependency is absent, and can be selected or
+excluded explicitly:
+
+| Category         | Needs                                            | Select with                              |
+| ---------------- | ------------------------------------------------ | ---------------------------------------- |
+| `RequiresTestEnv`| `TEST_ENV_URL` (circles-test-environment)        | `--filter "TestCategory=RequiresTestEnv"`|
+| `RequiresAnvil`  | Anvil fork (foundry) via the test environment    | `--filter "TestCategory=RequiresAnvil"`  |
+| `RequiresDb`     | `POSTGRES_CONNECTION_STRING` (real indexer DB)   | `--filter "TestCategory=RequiresDb"`     |
+| `Snapshot`       | Test-env; pinned-block snapshot comparisons (CI `snapshot-tests` job) | `--filter "TestCategory=Snapshot"` |
+| `Regression`     | Test-env; known-bug regression scenarios (CI `regression-tests` job)  | `--filter "TestCategory=Regression"` |
+
+Cache Service integration tests (xunit + Testcontainers) are gated on Docker
+availability instead: they auto-run when a Docker socket is detected and can
+be forced on/off via `RUN_CACHE_INTEGRATION_TESTS=true|false`.
+
+```bash
+# Pure-local tier only (skip everything that needs external services)
+dotnet test -c Release --filter "TestCategory!~Requires"
+
+# Everything that needs the test environment, against staging
+TEST_ENV_URL=https://staging.circlesubi.network/test-env \
+dotnet test -c Release --filter "TestCategory=RequiresTestEnv"
+```
 
 ---
 

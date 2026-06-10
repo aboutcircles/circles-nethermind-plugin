@@ -21,6 +21,8 @@ namespace Circles.Pathfinder.Tests;
 /// </summary>
 [TestFixture]
 [Category("Anvil")]
+[Category("RequiresTestEnv")]
+[Category("RequiresAnvil")]
 public class AnvilSimulationTests
 {
     [TestCaseSource(typeof(ScenarioLoader), nameof(ScenarioLoader.AnvilScenariosTestData))]

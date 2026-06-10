@@ -27,6 +27,8 @@ namespace Circles.Pathfinder.Tests;
 /// Then add the resulting fixture JSON to RegressionScenarios/
 /// </summary>
 [TestFixture]
+[Category("RequiresTestEnv")]
+[Category("RequiresAnvil")]
 public class PaymentGatewayE2ETests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";

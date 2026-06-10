@@ -21,14 +21,19 @@ echo -e "${BLUE}Running Circles Tests...${NC}\n"
 CONFIGURATION="${BUILD_CONFIGURATION:-Release}"
 VERBOSITY="${TEST_VERBOSITY:-normal}"
 
-# Test projects
-TEST_PROJECTS=(
-  "src/Pathfinder/Circles.Pathfinder.Tests/Circles.Pathfinder.Tests.csproj"
-  "src/Index/Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj"
-  "src/Common/Circles.Common.Tests/Circles.Common.Tests.csproj"
-  "src/Cache/Circles.Cache.Service.Tests/Circles.Cache.Service.Tests.csproj"
-  "src/Rpc/Circles.Rpc.Host.Tests/Circles.Rpc.Host.Tests.csproj"
-)
+# Test projects: discovered from the solution so a newly added test project
+# can never be silently missing here (a hand-maintained list previously
+# dropped Circles.Index.CirclesV2.Tests and Circles.Index.CirclesViews.Tests
+# from CI). Portable loop — macOS ships bash 3.2 without mapfile.
+TEST_PROJECTS=()
+while IFS= read -r project; do
+  TEST_PROJECTS+=("$project")
+done < <(dotnet sln "$SOLUTION_FILE" list | tr '\\' '/' | grep -E 'Tests\.csproj$' | sort)
+
+if [ ${#TEST_PROJECTS[@]} -eq 0 ]; then
+  echo -e "${RED}No test projects found in $SOLUTION_FILE${NC}"
+  exit 1
+fi
 
 # Parse arguments
 RUN_ALL=true
