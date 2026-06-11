@@ -211,6 +211,7 @@ The pathfinder can load its trust graph from the **Cache Service** (recommended)
 | `PATHFINDER_SOLVER_TIMEOUT_SECONDS` | `10` | MaxFlow solver timeout per request |
 | `PATHFINDER_DEMURRAGE_SAFETY_MARGIN` | `0.999999` | Demurrage safety margin (~7 min drift coverage; 1.0 = disabled) |
 | `PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES` | `true` | Exclude consented avatars from intermediary positions in paths |
+| `V2_EXCLUDED_ROUTING_ADDRESSES` | (empty) | Comma-separated addresses dropped from routing (deprecated groups + their wrappers + custom sink wrappers). Groups cascade to their ERC20 wrappers; non-wrapper sink contracts must be listed explicitly. Empty = no effect. |
 
 ### Materialized View Refresh
 

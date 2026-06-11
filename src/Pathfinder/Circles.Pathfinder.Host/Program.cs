@@ -81,7 +81,8 @@ builder.Services.AddSingleton<CapacityGraphPool>(provider =>
     new CapacityGraphPool(
         settings.RouterAddress,
         provider.GetRequiredService<LoadGraph>(),
-        provider.GetRequiredService<ILoggerFactory>().CreateLogger<GraphFactory>()));
+        provider.GetRequiredService<ILoggerFactory>().CreateLogger<GraphFactory>(),
+        settings.ExcludedRoutingAddresses));
 builder.Services.AddSingleton<V2Pathfinder>();
 builder.Services.AddSingleton<HistoricalGraphCache>();
 builder.Services.AddSingleton<FindPathHandler>();
