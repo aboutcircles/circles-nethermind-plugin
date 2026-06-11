@@ -92,6 +92,7 @@ Sources of truth: `src/Common/Circles.Common/Settings.cs`,
 | `PATHFINDER_FULL_REFRESH_INTERVAL_BLOCKS` | int | `200` | Blocks between full DB refreshes (drift correction). |
 | `PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES` | bool | `true` | Exclude consented avatars from intermediary positions in flow paths. |
 | `PATHFINDER_DISABLE_CONSENTED_FLOW` | bool | — | Deprecated alias for `PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES` (read only when the new name is unset). |
+| `V2_EXCLUDED_ROUTING_ADDRESSES` | string | empty | Comma-separated addresses dropped from pathfinding entirely — deprecated groups, their wrappers, and custom sink-wrapper contracts. A listed **group** cascades to its indexed ERC20 wrappers; custom sink wrappers (not `ERC20WrapperDeployed` rows) must be listed **explicitly**. Default empty = no effect. Use to retire an owner-deprecated group/wrapper the chain still treats as valid. |
 | `USE_CACHE_GRAPH_SOURCE` | bool | `true` iff `CACHE_SERVICE_URL` set | Load graph data from the Cache Service instead of the DB. |
 | `CACHE_SERVICE_URL` | string | unset | Cache Service base URL. |
 | `CACHE_GRAPH_REQUEST_TIMEOUT_SECONDS` | int | `60` | Cache Service graph request timeout. |
