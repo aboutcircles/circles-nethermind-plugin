@@ -4,11 +4,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Circles.Pathfinder.Graphs;
 
-public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph, ILogger<GraphFactory>? graphFactoryLogger = null)
+public sealed class CapacityGraphPool(
+    string routerAddress,
+    ILoadGraph loadGraph,
+    ILogger<GraphFactory>? graphFactoryLogger = null,
+    IReadOnlyCollection<string>? excludedRoutingAddresses = null)
 {
     private volatile SnapshotState? _state;
     private volatile CapacityGraphSnapshot? _currentWrapped;
-    private readonly GraphFactory _gf = new(routerAddress, loadGraph, graphFactoryLogger);
+    private readonly GraphFactory _gf = new(routerAddress, loadGraph, graphFactoryLogger, excludedRoutingAddresses);
 
     /// <summary>
     /// Packs snapshot + cachedGroupData into a single reference so readers

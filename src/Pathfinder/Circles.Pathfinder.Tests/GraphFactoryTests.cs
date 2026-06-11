@@ -2112,4 +2112,110 @@ public class GraphFactoryTests
     }
 
     #endregion
+
+    #region Routing exclusions (deprecated groups / sink wrappers)
+
+    // V2_EXCLUDED_ROUTING_ADDRESSES drops deprecated addresses (groups, their wrappers, and custom
+    // sink-wrapper contracts) from every graph. Models the real case: a live group is trusted by
+    // BOTH a deprecated and a current sink-wrapper org; only the deprecated one must be removed.
+
+    private const string OldSinkWrapper = "0xf1d4000000000000000000000000000000000016";
+    private const string NewSinkWrapper = "0xf1d7000000000000000000000000000000000017";
+
+    [Test]
+    public void ExcludedSinkWrapper_RemovedFromRouting_CurrentWrapperKeepsRouting()
+    {
+        // GroupG (live, regular) is trusted by an old + a new sink wrapper, so both receive the
+        // Group→avatar mint edge. Excluding ONLY the old wrapper must drop its edges while leaving
+        // the current wrapper fully routable — i.e. routing shifts to the current sink wrapper.
+        var mock = new HelperMock();
+        mock.AddGroup(GroupG);
+        mock.AddTrust(OldSinkWrapper, GroupG);
+        mock.AddTrust(NewSinkWrapper, GroupG);
+
+        int gId = AddressIdPool.IdOf(GroupG);
+        int oldW = AddressIdPool.IdOf(OldSinkWrapper);
+        int newW = AddressIdPool.IdOf(NewSinkWrapper);
+        var request = new FlowRequest { Source = Alice, Sink = Bob };
+
+        var baseFactory = new GraphFactory(RouterAddr, mock);
+        var cg0 = baseFactory.CreateCapacityGraph(
+            baseFactory.V2BalanceGraph(),
+            GraphFactory.BuildTrustLookup(baseFactory.V2TrustGraph()),
+            request);
+        Assert.That(cg0.Edges.Any(e => e.From == gId && e.To == oldW && e.Token == gId), Is.True,
+            "Baseline: deprecated sink wrapper receives the group mint.");
+        Assert.That(cg0.Edges.Any(e => e.From == gId && e.To == newW && e.Token == gId), Is.True,
+            "Baseline: current sink wrapper receives the group mint.");
+
+        var exFactory = new GraphFactory(RouterAddr, mock, null, new[] { OldSinkWrapper });
+        var cg1 = exFactory.CreateCapacityGraph(
+            exFactory.V2BalanceGraph(),
+            GraphFactory.BuildTrustLookup(exFactory.V2TrustGraph()),
+            request);
+        Assert.That(cg1.Edges.Any(e => e.From == oldW || e.To == oldW || e.Token == oldW), Is.False,
+            "No edge may route through the excluded (deprecated) sink wrapper.");
+        Assert.That(cg1.Edges.Any(e => e.From == gId && e.To == newW && e.Token == gId), Is.True,
+            "The current sink wrapper must keep receiving the group mint (no breakage).");
+    }
+
+    [Test]
+    public void ExcludedGroup_CascadesToErc20Wrappers()
+    {
+        // Listing only the GROUP address must also strip routing for its ERC20 wrapper token,
+        // via the WrapperToAvatar cascade — the wrapper need not be listed explicitly.
+        var mock = new HelperMock();
+        mock.AddGroup(GroupG);
+        mock.AddWrapperMapping(WrapperA, GroupG, CirclesType.InflationaryCircles);
+        mock.AddBalance(AddressIdPool.IdOf(Alice), AddressIdPool.IdOf(WrapperA), 100_000_000, isWrapped: true);
+
+        int wrapperId = AddressIdPool.IdOf(WrapperA);
+        var request = new FlowRequest { Source = Alice, Sink = Bob, WithWrap = true };
+
+        var baseFactory = new GraphFactory(RouterAddr, mock);
+        var cg0 = baseFactory.CreateCapacityGraph(
+            baseFactory.V2BalanceGraph(),
+            GraphFactory.BuildTrustLookup(baseFactory.V2TrustGraph()),
+            request);
+        Assert.That(cg0.Edges.Any(e => e.Token == wrapperId), Is.True,
+            "Baseline: the group's wrapped ERC20 held by the source is routable under withWrap.");
+
+        var exFactory = new GraphFactory(RouterAddr, mock, null, new[] { GroupG });
+        var cg1 = exFactory.CreateCapacityGraph(
+            exFactory.V2BalanceGraph(),
+            GraphFactory.BuildTrustLookup(exFactory.V2TrustGraph()),
+            request);
+        Assert.That(cg1.Edges.Any(e => e.Token == wrapperId), Is.False,
+            "Excluding the group cascades to its ERC20 wrapper: no edge carries the wrapper token.");
+    }
+
+    [Test]
+    public void NoExclusionsConfigured_GraphUnchanged()
+    {
+        // An explicit empty list (overriding any env var) must be a pure no-op.
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(Alice);
+        mock.AddRegisteredAvatar(Bob);
+        mock.AddBalance(AddressIdPool.IdOf(Alice), AddressIdPool.IdOf(TokenA), 100_000_000);
+        mock.AddTrust(Bob, TokenA);
+
+        int aliceId = AddressIdPool.IdOf(Alice);
+        var request = new FlowRequest { Source = Alice, Sink = Bob };
+
+        var baseline = new GraphFactory(RouterAddr, mock).CreateCapacityGraph(
+            new GraphFactory(RouterAddr, mock).V2BalanceGraph(),
+            GraphFactory.BuildTrustLookup(new GraphFactory(RouterAddr, mock).V2TrustGraph()),
+            request);
+        var withEmpty = new GraphFactory(RouterAddr, mock, null, System.Array.Empty<string>());
+        var cg = withEmpty.CreateCapacityGraph(
+            withEmpty.V2BalanceGraph(),
+            GraphFactory.BuildTrustLookup(withEmpty.V2TrustGraph()),
+            request);
+
+        Assert.That(cg.Edges.Count, Is.EqualTo(baseline.Edges.Count),
+            "Empty exclusion list must not change the edge set.");
+        Assert.That(cg.Edges.Any(e => e.From == aliceId), Is.True);
+    }
+
+    #endregion
 }
