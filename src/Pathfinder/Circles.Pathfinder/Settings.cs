@@ -165,4 +165,20 @@ public class Settings
         Circles.Common.EnvParsers.ParseAggregatorMap(
             "SCORE_TREASURY_SUBTREASURIES",
             Environment.GetEnvironmentVariable("SCORE_TREASURY_SUBTREASURIES"));
+
+    /// <summary>
+    /// Addresses to drop from pathfinding entirely — deprecated groups, their wrappers, and
+    /// custom sink-wrapper contracts (e.g. SinkGroupWrapperInflationary) that should no longer
+    /// carry flow. A listed group cascades to its indexed ERC20 wrappers automatically (via the
+    /// wrapper→avatar map); contracts that are NOT standard ERC20WrapperDeployed rows must be
+    /// listed explicitly. "Deprecated" is an owner-driven, off-chain decision the pathfinder
+    /// cannot infer from on-chain state (the contract stays a valid registered group), so it is
+    /// supplied here. Reads V2_EXCLUDED_ROUTING_ADDRESSES (comma-separated, lowercased).
+    /// </summary>
+    public string[] ExcludedRoutingAddresses { get; set; } =
+        Environment.GetEnvironmentVariable("V2_EXCLUDED_ROUTING_ADDRESSES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToArray()
+        ?? [];
 }

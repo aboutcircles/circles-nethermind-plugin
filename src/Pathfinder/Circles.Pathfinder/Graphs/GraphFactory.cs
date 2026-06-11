@@ -7,11 +7,22 @@ using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
-public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<GraphFactory>? logger = null)
+public class GraphFactory(
+    string routerAddress,
+    ILoadGraph loadGraph,
+    ILogger<GraphFactory>? logger = null,
+    IReadOnlyCollection<string>? excludedRoutingAddresses = null)
 {
     private const string VirtualSinkSuffix = "_virtual_sink";
     private static int _createdCount;
     private readonly ILogger _logger = logger ?? NullLogger<GraphFactory>.Instance;
+
+    // Deprecated addresses (groups, their wrappers, and custom sink-wrapper contracts) to drop
+    // from every graph this factory builds. An explicit constructor argument wins; otherwise it
+    // falls back to the V2_EXCLUDED_ROUTING_ADDRESSES env var so the static snapshot builders
+    // (BuildFullGraph/BuildFullWrappedGraph), which have no Settings, are covered too.
+    private readonly HashSet<string> _excludedRoutingAddresses =
+        NormalizeExcludedRoutingAddresses(excludedRoutingAddresses);
 
     public static Dictionary<int, HashSet<int>> BuildTrustLookup(TrustGraph graph)
     {
@@ -145,6 +156,9 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         AddGroupMintingEdges(
             capacityGraph, trustLookup,
             sinkId: null, new HashSet<int>(), new HashSet<int>());
+
+        // Drop deprecated/excluded routing addresses from the shared snapshot too.
+        ApplyRoutingExclusions(capacityGraph);
 
         return capacityGraph;
     }
@@ -520,6 +534,10 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             sinkId,
             toTokensFilter,
             excludedToTokensFilter);
+
+        // Drop deprecated/excluded routing addresses (groups, wrappers, sink contracts) BEFORE the
+        // virtual-sink prune so a virtual sink orphaned by the removal is collapsed correctly.
+        ApplyRoutingExclusions(capacityGraph);
 
         // If a virtual sink was created but received no edges, prune it (mirror legacy behaviour)
         if (virtualSinkAddress != null)
@@ -1281,6 +1299,68 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 result.Add(id);
         }
         return result;
+    }
+
+    /// <summary>
+    /// Normalizes the configured routing-exclusion addresses: explicit constructor list when
+    /// provided, else the V2_EXCLUDED_ROUTING_ADDRESSES env var. Trimmed, lowercased, de-duped.
+    /// </summary>
+    private static HashSet<string> NormalizeExcludedRoutingAddresses(IReadOnlyCollection<string>? configured)
+    {
+        IEnumerable<string>? source = configured;
+        if (source == null)
+            source = Environment.GetEnvironmentVariable("V2_EXCLUDED_ROUTING_ADDRESSES")?.Split(',');
+
+        if (source == null)
+            return new HashSet<string>();
+
+        return source
+            .Select(a => a.Trim().ToLowerInvariant())
+            .Where(a => !string.IsNullOrWhiteSpace(a))
+            .ToHashSet();
+    }
+
+    /// <summary>
+    /// Drops configured deprecated addresses (groups, their ERC20 wrappers, and custom
+    /// sink-wrapper contracts) from the graph. A listed group cascades to its indexed wrappers
+    /// via <see cref="CapacityGraph.WrapperToAvatar"/>; non-wrapper contracts (e.g. the
+    /// SinkGroupWrapperInflationary) must be listed explicitly. Runs as a final post-build sweep
+    /// so it catches mint, trust, balance and sink edges regardless of which stage created them.
+    /// No-op when nothing is configured.
+    /// </summary>
+    private void ApplyRoutingExclusions(CapacityGraph g)
+    {
+        if (_excludedRoutingAddresses.Count == 0)
+            return;
+
+        // Resolve to node IDs without allocating new pool entries — an address absent from the
+        // pool cannot match any graph node, so there is nothing to exclude for it.
+        var excludedIds = new HashSet<int>();
+        foreach (var addr in _excludedRoutingAddresses)
+            if (AddressIdPool.TryIdOf(addr, out var id))
+                excludedIds.Add(id);
+
+        if (excludedIds.Count == 0)
+            return;
+
+        // Cascade an excluded group/avatar to its ERC20 wrapper token IDs.
+        ExpandFilterWithWrapperIds(excludedIds, g.WrapperToAvatar, "excludedRoutingAddresses");
+
+        // Stop treating excluded ids as live groups so no later logic re-adds mint edges.
+        int groupsRemoved = g.GroupNodes.RemoveWhere(excludedIds.Contains);
+
+        // Remove every edge whose source, target, or token is excluded.
+        int edgesBefore = g.Edges.Count;
+        g.Edges.RemoveAll(e =>
+            excludedIds.Contains(e.From)
+            || excludedIds.Contains(e.To)
+            || excludedIds.Contains(e.Token));
+        int edgesRemoved = edgesBefore - g.Edges.Count;
+
+        if (edgesRemoved > 0 || groupsRemoved > 0)
+            _logger.LogInformation(
+                "Routing exclusions: dropped {Edges} edge(s) and {Groups} group node(s) for {Addrs} excluded address(es)",
+                edgesRemoved, groupsRemoved, excludedIds.Count);
     }
 
     /// <summary>
