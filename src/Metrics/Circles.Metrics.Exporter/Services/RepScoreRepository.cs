@@ -46,9 +46,9 @@ public class RepScoreRepository
         const string sql = """
             WITH member_blacklist AS (
                 SELECT
-                    COUNT(DISTINCT s.avatar)                             AS members_total,
-                    COUNT(DISTINCT s.avatar) FILTER (WHERE s.score > 0) AS members_nonzero_score
-                FROM rep_score_state s
+                    COUNT(DISTINCT s.avatar)                                  AS members_total,
+                    COUNT(DISTINCT s.avatar) FILTER (WHERE s.score_uint > 0)  AS members_nonzero_score
+                FROM rep_score_emitted_state s
                 JOIN blacklist b ON b.address = s.avatar
                 WHERE s.group_id = @groupId
             ),
