@@ -160,6 +160,29 @@ public class RevertClassifierTests
         Assert.That(label, Is.EqualTo("wrapper_unwrap_insufficient_balance"));
     }
 
+    [Test]
+    public void ExceedsOfferLimit_ClassifiedAsInput()
+    {
+        // ERC20TokenOfferCycle.ExceedsOfferLimit(uint256,uint256) — token offer sink rejects when
+        // the routed amount exceeds the offer's remaining limit. Receiver-side app guard; not a
+        // pathfinder bug → category=input (mirrors soft_lock). Real selector seen on staging2.
+        var revert = "execution reverted: 0xd4abbc77" + Word("1") + Word("2");
+        var (category, label) = RevertClassifier.Classify(revert);
+        Assert.That(category, Is.EqualTo("input"));
+        Assert.That(label, Is.EqualTo("exceeds_offer_limit"));
+    }
+
+    [Test]
+    public void NotExactlyRequiredAmount_ClassifiedAsInput()
+    {
+        // NotExactlyRequiredAmount() — sink requires an exact amount but a different amount was
+        // routed. No-arg selector, bare 4 bytes. Receiver-side constraint; not a pathfinder bug
+        // → category=input. Real selector seen on staging2.
+        var (category, label) = RevertClassifier.Classify("execution reverted: 0x9d0210ab");
+        Assert.That(category, Is.EqualTo("input"));
+        Assert.That(label, Is.EqualTo("not_exactly_required_amount"));
+    }
+
     // ── Edge cases ──────────────────────────────────────────────────
 
     [Test]

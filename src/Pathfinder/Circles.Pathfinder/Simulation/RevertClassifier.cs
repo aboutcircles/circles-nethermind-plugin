@@ -48,6 +48,12 @@ public static class RevertClassifier
     // app guard orthogonal to the Circles trust/balance graph: the pathfinder builds a structurally
     // valid flow but the cycle rejects it because the source over-claimed. Not a pathfinder bug.
     private const string SoftLock = "0x66ef7607";
+    // ExceedsOfferLimit(uint256,uint256) — token offer sink rejects when the routed amount exceeds
+    // the offer's remaining limit. Receiver-side app guard; not a pathfinder bug.
+    private const string ExceedsOfferLimit = "0xd4abbc77";
+    // NotExactlyRequiredAmount() — sink requires an exact amount but the path routed a different
+    // amount. Receiver-side constraint; not a pathfinder bug.
+    private const string NotExactlyRequiredAmount = "0x9d0210ab";
 
     // ABI layout after selector: each param is 32 bytes (64 hex chars).
     // CirclesErrorAddressUintArgs: address(32) + uint256(32) + uint8(32) = 96 bytes.
@@ -96,6 +102,12 @@ public static class RevertClassifier
         // pathfinder bug — classify as input so it surfaces named instead of as a generic/unknown revert.
         if (Contains(lower, ERC20InsufficientBalance))
             return ("input", "wrapper_unwrap_insufficient_balance");
+
+        if (Contains(lower, ExceedsOfferLimit))
+            return ("input", "exceeds_offer_limit");
+
+        if (Contains(lower, NotExactlyRequiredAmount))
+            return ("input", "not_exactly_required_amount");
 
         // Generic revert string patterns
         if (lower.Contains("execution reverted"))
