@@ -671,8 +671,8 @@ public static class HubContractValidator
     // Collateral keying: matches GraphFactory.cs:999 + GraphFactory.cs:1032
     // exactly — raw TokenOwner address, no wrapper resolution. The
     // ScoreGroupMintLimits cache is keyed on avatar addresses (per
-    // ScoreGroupMintLimits.cs BaseRowsSql joining V_CrcV2_TrustRelations
-    // → V_CrcV2_Avatars), so groups only trust avatars, not wrapper
+    // ScoreGroupMintLimits.cs, whose trust resolution only admits registered
+    // avatars as trustees), so groups only trust avatars, not wrapper
     // contracts — wrappers cannot appear as TokenOwner on a
     // score-router→group hop. Resolving wrappers here would create
     // a key mismatch with the cache and spuriously fail-close.
