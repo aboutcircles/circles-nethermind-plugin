@@ -190,6 +190,84 @@ public sealed class ScoreGroupBaseRowsQueryParityTests
             "Historical SQL must NOT reference the matview (which only holds HEAD state)");
         Assert.That(ScoreGroupMintLimitReader.BaseRowsSqlHistorical, Does.Contain("\"blockNumber\" <= @maxBlock"),
             "Historical SQL must filter all raw table reads by blockNumber <= @maxBlock");
+
+        // Fix B (treasury pre-aggregation) is applied to both the live and historical queries:
+        // the per-row correlated subquery over `balances` is replaced by a treasury_balances join.
+        Assert.That(ScoreGroupMintLimitReader.BaseRowsSqlHistorical, Does.Contain("treasury_balances"),
+            "Historical SQL must aggregate treasury balances via a join, not a correlated subquery");
+        Assert.That(ScoreGroupMintLimitReader.BaseRowsSqlHistorical, Does.Not.Contain("b.account = ANY(gt.treasuries)"),
+            "Historical SQL must not retain the per-row correlated treasury subquery");
+    }
+
+    [Test]
+    public void ReadBaseRows_LiveSql_HasOptimizedStructure()
+    {
+        // The live (maxBlock IS NULL) query carries all three optimizations from the
+        // ScoreGroupMintLimits perf rewrite. These structural guards prevent a future edit
+        // from silently reintroducing the O(n^2) / full-table-window patterns. Functional
+        // equivalence was validated directly against staging (set + value parity vs the
+        // original view-based query).
+        var sql = ScoreGroupMintLimitReader.BaseRowsSql;
+
+        // Fix A: trust resolved by pushing the truster filter into CrcV2_Trust before the
+        // window, and avatar registration checked via an indexed EXISTS — not the views.
+        Assert.That(sql, Does.Contain("group_trust"),
+            "Live SQL must resolve trust via the pushed-down group_trust CTE");
+        Assert.That(sql, Does.Not.Contain("\"V_CrcV2_TrustRelations\""),
+            "Live SQL must not window the whole V_CrcV2_TrustRelations view");
+        Assert.That(sql, Does.Not.Contain("\"V_CrcV2_Avatars\""),
+            "Live SQL must not join the un-indexed V_CrcV2_Avatars view");
+
+        // Fix B: treasury balances aggregated once via join, not a per-row subquery.
+        Assert.That(sql, Does.Contain("treasury_balances"),
+            "Live SQL must aggregate treasury balances via a join");
+        Assert.That(sql, Does.Not.Contain("b.account = ANY(gt.treasuries)"),
+            "Live SQL must not retain the per-row correlated treasury subquery");
+
+        // Fix C: matview watermarks inlined as literals (replaced by ReadBaseRows) so the
+        // planner uses the blockNumber indexes for the delta tail.
+        Assert.That(sql, Does.Contain("__BALANCE_WM__"),
+            "Live SQL must carry the balance-watermark literal placeholder");
+        Assert.That(sql, Does.Contain("__AVATAR_WM__"),
+            "Live SQL must carry the avatar-watermark literal placeholder");
+    }
+
+    [Test]
+    public void ReadBaseRows_LiveSql_WatermarkPlaceholdersFullySubstituted()
+    {
+        // Guard Fix C's runtime substitution: ReadBaseRows replaces both placeholders with the
+        // matview watermark integers. If a future rename leaves one placeholder behind, the
+        // generated SQL would carry a literal "__…__" token → a Postgres parse error (or, worse,
+        // a silently-dropped EXISTS branch feeding wrong tokens into a financial sum). Mirror the
+        // exact .Replace() chain ReadBaseRows performs and assert no placeholder survives.
+        var substituted = ScoreGroupMintLimitReader.BaseRowsSql
+            .Replace("__BALANCE_WM__", "46000000")
+            .Replace("__AVATAR_WM__", "46000001");
+
+        Assert.That(substituted, Does.Not.Contain("__"),
+            "After watermark substitution the live SQL must contain no residual '__…__' placeholder");
+    }
+
+    [Test]
+    public void ReadBaseRows_SharedTreasuryTail_IdenticalAcrossLiveAndHistorical()
+    {
+        // Fix B's treasury aggregation + final projection is duplicated verbatim in BaseRowsSql
+        // and BaseRowsSqlHistorical. A correctness fix to one tail that misses the other would
+        // silently diverge live vs historical (block-pinned) mint-limit math. Pin the tails as
+        // string-identical so any drift fails CI.
+        const string tailMarker = "treasury_pairs AS (";
+        var liveTail = TailFrom(ScoreGroupMintLimitReader.BaseRowsSql, tailMarker);
+        var historicalTail = TailFrom(ScoreGroupMintLimitReader.BaseRowsSqlHistorical, tailMarker);
+
+        Assert.That(liveTail, Is.Not.Empty, "Live SQL must contain the shared treasury tail");
+        Assert.That(historicalTail, Is.EqualTo(liveTail),
+            "The treasury_pairs/treasury_balances/final-SELECT tail must stay identical across the live and historical queries");
+    }
+
+    private static string TailFrom(string sql, string marker)
+    {
+        var index = sql.IndexOf(marker, StringComparison.Ordinal);
+        return index < 0 ? string.Empty : sql[index..];
     }
 
     private static List<ScoreGroupMintLimitBaseRow> ParseBaseRows(QueryResponse response)
