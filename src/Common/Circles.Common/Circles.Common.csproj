@@ -26,7 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.37.1" />
+    <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.38.0" />
     <PackageReference Include="Nethermind.Numerics.Int256" Version="1.5.0" />
   </ItemGroup>
 

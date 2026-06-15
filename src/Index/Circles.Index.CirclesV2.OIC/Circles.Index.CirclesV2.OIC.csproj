@@ -17,7 +17,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.37.1" />
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.38.0" />
     </ItemGroup>
 
     <ItemGroup>
