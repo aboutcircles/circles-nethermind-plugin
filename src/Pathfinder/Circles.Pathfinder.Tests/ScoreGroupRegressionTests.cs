@@ -35,6 +35,8 @@ namespace Circles.Pathfinder.Tests;
 /// </summary>
 [TestFixture]
 [NonParallelizable] // Serialize: each tier creates its own test-env session; concurrent creation flakes on staging.
+[Category("Regression")]
+[Category("RequiresTestEnv")]
 public class ScoreGroupRegressionTests
 {
     /// <summary>Standard group router used by GraphFactory; score routers are loaded from the DB.</summary>
@@ -143,7 +145,7 @@ public class ScoreGroupRegressionTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -247,7 +249,7 @@ public class ScoreGroupRegressionTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -304,7 +306,7 @@ public class ScoreGroupRegressionTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -465,7 +467,7 @@ public class ScoreGroupRegressionTests
                 await Task.Delay(1500 * attempt);
         }
 
-        Assert.Ignore($"Test environment not available after {attempts} attempts: {lastError?.Message}");
+        Assert.Fail($"Test environment not available after {attempts} attempts: {lastError?.Message}");
         return false;
     }
 }

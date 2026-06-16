@@ -3,11 +3,11 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Circles.Rpc.CacheServiceClient;
 using Circles.Rpc.CacheServiceClient.Models;
+using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Moq.Protected;
 using Xunit;
-using FluentAssertions;
 
 namespace Circles.Cache.Service.Tests;
 
@@ -245,7 +245,7 @@ public class RpcCacheClientTests
             Avatar: "0xtest",
             Version: 2,
             Type: "CrcV2_RegisterHuman"
-            // ShortName property does not exist!
+        // ShortName property does not exist!
         );
 
         // Verify the cache model has the field

@@ -143,8 +143,7 @@ public partial class NotificationListenerService
                 if (Math.Abs(current - desired) <= ReconcileEpsilon)
                     continue;
 
-                _caches.V2BalancesByAccountAndToken.Add(toBlock, key, desired);
-                _caches.UpdateBalanceIndex(key, isV1: false, desired);
+                _caches.UpsertBalance(toBlock, key, isV1: false, desired);
                 if (lastActivity > 0)
                     _caches.V2LastActivity.Add(toBlock, key, lastActivity);
 

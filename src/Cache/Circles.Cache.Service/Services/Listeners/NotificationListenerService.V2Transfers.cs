@@ -107,14 +107,10 @@ public partial class NotificationListenerService
                 {
                     if (currentBlock != -1)
                     {
-                        // Flush balances for the previous block.
-                        // Update secondary index BEFORE writing balance so concurrent reads
-                        // see the token in the index before the balance appears (worst case:
-                        // momentary 0-balance entry, not an invisible balance).
+                        // Flush balances for the previous block (atomic index+balance write).
                         foreach (var kvp in currentBalances)
                         {
-                            _caches.UpdateBalanceIndex(kvp.Key, isV1: false, kvp.Value);
-                            _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                            _caches.UpsertBalance(currentBlock, kvp.Key, isV1: false, kvp.Value);
                         }
                     }
                     currentBlock = blockNumber;
@@ -155,13 +151,12 @@ public partial class NotificationListenerService
             }
         }
 
-        // Flush balances for the last block (index-before-balance ordering)
+        // Flush balances for the last block (atomic index+balance write)
         if (currentBlock != -1)
         {
             foreach (var kvp in currentBalances)
             {
-                _caches.UpdateBalanceIndex(kvp.Key, isV1: false, kvp.Value);
-                _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                _caches.UpsertBalance(currentBlock, kvp.Key, isV1: false, kvp.Value);
             }
         }
 

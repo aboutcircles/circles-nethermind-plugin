@@ -19,6 +19,15 @@ public class Settings : Circles.Common.Settings
     public readonly bool EthSubscribeEnabled =
         Environment.GetEnvironmentVariable("ETH_SUBSCRIBE_ENABLED")?.ToLowerInvariant() != "false";
 
+    /// <summary>
+    /// Maximum number of concurrent WebSocket sessions across the host (default: 1000).
+    /// Connections beyond the cap are rejected with HTTP 503. Values ≤ 0 disable the cap.
+    /// </summary>
+    public readonly int MaxConcurrentWsSessions =
+        int.TryParse(Environment.GetEnvironmentVariable("RPC_MAX_CONCURRENT_WS_SESSIONS"), out var maxWsSessions)
+            ? maxWsSessions
+            : 1000;
+
     public readonly string BalanceMode =
         Environment.GetEnvironmentVariable("BALANCE_MODE")
         ?? "live"; // "database" or "live"

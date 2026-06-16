@@ -51,6 +51,21 @@ feature/* (development)
 3. Uploads test results
 4. Comments results on PRs
 
+The workflow also contains two follow-up jobs that run against the staging
+test environment (`TEST_ENV_URL=https://staging.circlesubi.network/test-env`):
+
+- **snapshot-tests** — runs `dotnet test --filter "Category=Snapshot"`:
+  pinned-block snapshot comparisons (scenario batteries, query/RPC/cache
+  snapshot integration tests).
+- **regression-tests** — runs `dotnet test --filter "Category=Regression"`:
+  known-bug regression scenarios.
+
+Both jobs fail on real assertion failures **and** when the staging test
+environment is unreachable or unhealthy: with `TEST_ENV_URL` set, an outage is
+a failure (`Assert.Fail`), not a skip — green means the suites actually ran.
+Tests only self-skip (`Assert.Ignore`) when `TEST_ENV_URL` is not set or a
+required fixture (pinned block, Anvil) is absent.
+
 **Run locally**:
 ```bash
 make build

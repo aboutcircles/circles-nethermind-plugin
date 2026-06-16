@@ -23,6 +23,7 @@ namespace Circles.Rpc.Host.Tests;
 /// A Testcontainers-managed Postgres is started automatically so no manual setup is required.
 /// </summary>
 [TestFixture]
+[Category("RequiresDocker")]
 [Ignore("Requires Nethermind runtime; temporarily skipped until Nethermind build artifacts are available.")]
 public class CirclesRpcModuleTests
 {

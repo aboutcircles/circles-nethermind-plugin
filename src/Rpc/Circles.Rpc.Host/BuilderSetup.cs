@@ -34,6 +34,7 @@ public static class BuilderSetup
 
         Console.WriteLine("Starting Circles.Rpc service...");
         Console.WriteLine($"* RPC max concurrent requests: {settings.RpcMaxConcurrentRequests}");
+        Console.WriteLine($"* RPC max concurrent WS sessions: {(settings.MaxConcurrentWsSessions > 0 ? settings.MaxConcurrentWsSessions.ToString() : "disabled")}");
         Console.WriteLine($"* RPC rate limit: {(settings.RpcRateLimitPerSecond > 0 ? $"{settings.RpcRateLimitPerSecond}/s (burst {settings.RpcRateLimitBurst})" : "disabled")}");
 
         var csb = new NpgsqlConnectionStringBuilder(settings.IndexReadonlyDbConnectionString);
@@ -137,7 +138,14 @@ public static class BuilderSetup
                     serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown"))
                 .WithTracing(tracing => tracing
                     .AddSource(Tracing.Name)
-                    .AddAspNetCoreInstrumentation()
+                    .AddAspNetCoreInstrumentation(opts =>
+                    {
+                        opts.EnrichWithHttpRequest = (activity, request) =>
+                        {
+                            if (request.Headers.ContainsKey(CirclesRpcModule.MaxBlockNumberHeader))
+                                activity.SetTag("session.historical", "true");
+                        };
+                    })
                     .AddHttpClientInstrumentation()
                     .AddNpgsql()
                     .AddOtlpExporter());

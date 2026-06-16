@@ -21,6 +21,8 @@ namespace Circles.Rpc.Host.Tests;
 ///    TEST_ENV_URL=https://staging.circlesubi.network/test-env dotnet test
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class RpcSnapshotTests
 {
     [Test]
@@ -63,6 +65,8 @@ public class RpcSnapshotTests
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class RpcQuerySnapshotTests
 {
     // Block 43193632 = state at the time of the mint-along-path bug
@@ -85,12 +89,12 @@ public class RpcQuerySnapshotTests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy");
+                Assert.Fail("Test environment not healthy");
             }
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -189,7 +193,8 @@ public class RpcQuerySnapshotTests
         else
         {
             var result = await _session.ExecuteScalarAsync(sql, parameters);
-            return Convert.ToInt64(result ?? 0);
+            // Proxy cells arrive as boxed JsonElement (not IConvertible) — go through the string form.
+            return long.Parse(result?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }
@@ -201,6 +206,8 @@ public class RpcQuerySnapshotTests
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class SchemaValidationSnapshotTests
 {
     private const long TestBlock = 43193632;
@@ -221,12 +228,12 @@ public class SchemaValidationSnapshotTests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy");
+                Assert.Fail("Test environment not healthy");
             }
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -356,6 +363,8 @@ public class SchemaValidationSnapshotTests
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class AvatarQuerySnapshotTests
 {
     private const long BugReproBlock = 43193632;
@@ -381,12 +390,12 @@ public class AvatarQuerySnapshotTests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy");
+                Assert.Fail("Test environment not healthy");
             }
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -419,7 +428,9 @@ public class AvatarQuerySnapshotTests
             WHERE ""avatar"" = @address",
             new Dictionary<string, object?> { ["address"] = KnownSource });
 
-        Assert.That(count, Is.EqualTo(1), $"Source address {KnownSource} should exist in avatars");
+        // V_Crc_Avatars is the combined V1+V2 view: an avatar registered in both protocol
+        // versions legitimately yields one row per version.
+        Assert.That(count, Is.GreaterThanOrEqualTo(1), $"Source address {KnownSource} should exist in avatars");
     }
 
     [Test]
@@ -433,7 +444,7 @@ public class AvatarQuerySnapshotTests
             WHERE ""avatar"" = @address",
             new Dictionary<string, object?> { ["address"] = KnownSink });
 
-        Assert.That(count, Is.EqualTo(1), $"Sink address {KnownSink} should exist in avatars");
+        Assert.That(count, Is.GreaterThanOrEqualTo(1), $"Sink address {KnownSink} should exist in avatars");
     }
 
     [Test]
@@ -471,7 +482,7 @@ public class AvatarQuerySnapshotTests
         Assert.That(_session, Is.Not.Null);
 
         var sql = @"
-            SELECT ""tokenId"", ""balance""
+            SELECT ""tokenId"", ""demurragedTotalBalance""
             FROM ""V_CrcV2_BalancesByAccountAndToken""
             WHERE ""account"" = @address
             LIMIT 50";
@@ -507,7 +518,8 @@ public class AvatarQuerySnapshotTests
         else
         {
             var result = await _session.ExecuteScalarAsync(sql, parameters);
-            return Convert.ToInt64(result ?? 0);
+            // Proxy cells arrive as boxed JsonElement (not IConvertible) — go through the string form.
+            return long.Parse(result?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }
@@ -518,6 +530,8 @@ public class AvatarQuerySnapshotTests
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class TransactionHistorySnapshotTests
 {
     private const long TestBlock = 43193632;
@@ -538,12 +552,12 @@ public class TransactionHistorySnapshotTests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy");
+                Assert.Fail("Test environment not healthy");
             }
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -624,7 +638,8 @@ public class TransactionHistorySnapshotTests
         else
         {
             var result = await _session.ExecuteScalarAsync(sql, parameters);
-            return Convert.ToInt64(result ?? 0);
+            // Proxy cells arrive as boxed JsonElement (not IConvertible) — go through the string form.
+            return long.Parse(result?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }

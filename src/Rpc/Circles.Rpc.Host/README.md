@@ -50,6 +50,7 @@ Default: `http://localhost:8081`
 | `PROFILE_PINNING_SERVICE_URL` | — | Profile pinning service (fast profile search proxy, falls back to SQL) |
 | `CORS_ALLOWED_ORIGINS` | `*` | Comma-separated origins, or `*` for all |
 | `RPC_MAX_CONCURRENT_REQUESTS` | `max(CPU×4, 32)` | Concurrency semaphore limit; excess returns 503 |
+| `RPC_MAX_CONCURRENT_WS_SESSIONS` | `1000` | Max concurrent WebSocket sessions; excess returns 503 (≤ 0 disables the cap) |
 | `RPC_RATE_LIMIT_PER_SECOND` | `100` | Per-IP sustained rate (0 = disabled); batch items count individually |
 | `RPC_RATE_LIMIT_BURST` | `200` | Per-IP burst allowance before throttling kicks in |
 | `INDEXER_MAX_LAG_BLOCKS` | `100` | Max block lag before `/ready` returns 503 (0 = disabled) |

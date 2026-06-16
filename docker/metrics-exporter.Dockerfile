@@ -4,6 +4,7 @@ WORKDIR /src
 
 # Copy shared build props (defines TFM)
 COPY Directory.Build.props ./
+COPY Directory.Packages.props ./
 
 # Copy Metrics Exporter project and its dependencies
 COPY src/Metrics ./Metrics

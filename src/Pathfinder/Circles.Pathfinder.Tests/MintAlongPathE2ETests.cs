@@ -20,9 +20,12 @@ namespace Circles.Pathfinder.Tests;
 /// - Tests create sessions with Anvil fork for contract execution
 ///
 /// The tests run by default but gracefully skip when TEST_ENV_URL is not set.
-/// CI triggers these tests automatically on merges to main/dev branches.
+/// Not selected by any CI job — run them explicitly (e.g.
+/// --filter "TestCategory=RequiresAnvil") with TEST_ENV_URL set.
 /// </summary>
 [TestFixture]
+[Category("RequiresTestEnv")]
+[Category("RequiresAnvil")]
 public class MintAlongPathE2ETests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -56,12 +59,12 @@ public class MintAlongPathE2ETests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy. Check deployment status.");
+                Assert.Fail("Test environment not healthy. Check deployment status.");
             }
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not reachable at {testEnvUrl}: {ex.Message}");
+            Assert.Fail($"Test environment not reachable at {testEnvUrl}: {ex.Message}");
             return;
         }
 
