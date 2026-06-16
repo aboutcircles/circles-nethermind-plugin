@@ -10,7 +10,11 @@ public class RepScoreRepository
     private readonly string _groupId;
     private readonly double _highScoreThreshold;
     private readonly double _scoreDropThreshold;
+    // Previous-score floor (0-100 scale) separating "significant" new-zero
+    // transitions from fringe dust churn. Mirrors the _scoreDropThreshold pattern.
+    private readonly double _newZeroSignificantThreshold;
     public double ScoreDropThreshold => _scoreDropThreshold;
+    public double NewZeroSignificantThreshold => _newZeroSignificantThreshold;
     private readonly ILogger<RepScoreRepository> _logger;
 
     public RepScoreRepository(
@@ -19,6 +23,7 @@ public class RepScoreRepository
         string groupId,
         double highScoreThreshold,
         double scoreDropThreshold,
+        double newZeroSignificantThreshold,
         ILogger<RepScoreRepository> logger)
     {
         _repScoreConn = repScoreConn;
@@ -26,6 +31,7 @@ public class RepScoreRepository
         _groupId = groupId;
         _highScoreThreshold = highScoreThreshold;
         _scoreDropThreshold = scoreDropThreshold;
+        _newZeroSignificantThreshold = newZeroSignificantThreshold;
         _logger = logger;
     }
 
@@ -185,53 +191,86 @@ public class RepScoreRepository
 
     public record AnomalyStats(
         long Drops24h,
-        long NewZero24h,
+        long NewZeroSignificantBlacklist24h,
+        long NewZeroSignificantTrust24h,
+        long NewZeroFringeBlacklist24h,
+        long NewZeroFringeTrust24h,
         long NewMembers24h,
         long LostMembers24h);
 
+    // new_zero is split by previous-score tier (significant vs fringe dust) and by
+    // cause (blacklisted vs not). The LEFT JOIN blacklist mirrors the direct
+    // address match in GetBlacklistStatsAsync (no case normalisation — AA writes
+    // blacklist.address and rep_score_history.avatar in the same representation).
+    // blacklist.address is unique, so the join cannot fan out history rows.
+    //
+    // NOTE: is_blacklisted reflects CURRENT blacklist membership at scrape time, not
+    // membership at the instant the score hit zero — so the `cause` split is a triage
+    // hint, not an exact transition cause. It never changes the new-zero TOTAL (the
+    // sum over cause that the alert fires on), only its attribution. If the blacklist
+    // table is empty/unpopulated, every new-zero is attributed to trust_collapse.
+    //
+    // The `prev_score > 0` guard is on ALL FOUR new_zero filters (not just fringe) so
+    // the significant+fringe partition stays disjoint AND exhaustive over the original
+    // `prev_score > 0 AND score = 0` domain for ANY @sig — including a misconfigured
+    // @sig <= 0, which would otherwise pull `prev_score = 0` rows into significant.
+    //
+    // Exposed as a const so Circles.Metrics.Exporter.Tests can run the EXACT production
+    // SQL (no drift). Bind @groupId, @drop, @sig before executing.
+    public const string AnomalyStatsSql = """
+        WITH window_24h AS (
+            SELECT h.avatar, h.prev_score, h.score, h.prev_is_member,
+                   (b.address IS NOT NULL) AS is_blacklisted
+            FROM rep_score_history h
+            LEFT JOIN blacklist b ON b.address = h.avatar
+            WHERE h.group_id = @groupId
+              AND h.snapshot_at > NOW() - INTERVAL '24 hours'
+        ),
+        lost AS (
+            SELECT COUNT(DISTINCT h.avatar) AS cnt
+            FROM rep_score_history h
+            LEFT JOIN rep_score_state s ON s.group_id = @groupId AND s.avatar = h.avatar
+            WHERE h.group_id = @groupId
+              AND h.snapshot_at > NOW() - INTERVAL '24 hours'
+              AND h.prev_is_member = true
+              AND s.avatar IS NULL
+        )
+        SELECT
+            COUNT(*) FILTER (WHERE (prev_score - score) * 100 >= @drop AND prev_score > score)                                 AS drops_24h,
+            COUNT(*) FILTER (WHERE prev_score > 0 AND prev_score * 100 >= @sig AND score = 0 AND is_blacklisted)               AS new_zero_sig_blacklist,
+            COUNT(*) FILTER (WHERE prev_score > 0 AND prev_score * 100 >= @sig AND score = 0 AND NOT is_blacklisted)           AS new_zero_sig_trust,
+            COUNT(*) FILTER (WHERE prev_score > 0 AND prev_score * 100 < @sig AND score = 0 AND is_blacklisted)                AS new_zero_fringe_blacklist,
+            COUNT(*) FILTER (WHERE prev_score > 0 AND prev_score * 100 < @sig AND score = 0 AND NOT is_blacklisted)            AS new_zero_fringe_trust,
+            COUNT(*) FILTER (WHERE prev_is_member = false OR prev_is_member IS NULL)                                           AS new_members_24h,
+            (SELECT cnt FROM lost)                                                                                             AS lost_members_24h
+        FROM window_24h
+        """;
+
     public async Task<AnomalyStats> GetAnomalyStatsAsync(CancellationToken ct = default)
     {
-        const string sql = """
-            WITH window_24h AS (
-                SELECT avatar, prev_score, score, prev_is_member
-                FROM rep_score_history
-                WHERE group_id = @groupId
-                  AND snapshot_at > NOW() - INTERVAL '24 hours'
-            ),
-            lost AS (
-                SELECT COUNT(DISTINCT h.avatar) AS cnt
-                FROM rep_score_history h
-                LEFT JOIN rep_score_state s ON s.group_id = @groupId AND s.avatar = h.avatar
-                WHERE h.group_id = @groupId
-                  AND h.snapshot_at > NOW() - INTERVAL '24 hours'
-                  AND h.prev_is_member = true
-                  AND s.avatar IS NULL
-            )
-            SELECT
-                COUNT(*) FILTER (WHERE (prev_score - score) * 100 >= @drop AND prev_score > score) AS drops_24h,
-                COUNT(*) FILTER (WHERE prev_score > 0 AND score = 0)                       AS new_zero_24h,
-                COUNT(*) FILTER (WHERE prev_is_member = false OR prev_is_member IS NULL)   AS new_members_24h,
-                (SELECT cnt FROM lost)                                                     AS lost_members_24h
-            FROM window_24h
-            """;
-
         await using var conn = new NpgsqlConnection(_repScoreConn);
         await conn.OpenAsync(ct);
-        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var cmd = new NpgsqlCommand(AnomalyStatsSql, conn);
         cmd.Parameters.AddWithValue("groupId", _groupId);
         cmd.Parameters.AddWithValue("drop", _scoreDropThreshold);
+        cmd.Parameters.AddWithValue("sig", _newZeroSignificantThreshold);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
         if (await reader.ReadAsync(ct))
         {
+            // Named arguments: the four same-typed `long` NewZero* fields map positionally
+            // to the SQL column order, so name them to make a transposition a compile error.
             return new AnomalyStats(
-                reader.GetInt64(0),
-                reader.GetInt64(1),
-                reader.GetInt64(2),
-                reader.IsDBNull(3) ? 0 : reader.GetInt64(3));
+                Drops24h: reader.GetInt64(0),
+                NewZeroSignificantBlacklist24h: reader.GetInt64(1),
+                NewZeroSignificantTrust24h: reader.GetInt64(2),
+                NewZeroFringeBlacklist24h: reader.GetInt64(3),
+                NewZeroFringeTrust24h: reader.GetInt64(4),
+                NewMembers24h: reader.GetInt64(5),
+                LostMembers24h: reader.IsDBNull(6) ? 0 : reader.GetInt64(6));
         }
 
-        return new AnomalyStats(0, 0, 0, 0);
+        return new AnomalyStats(0, 0, 0, 0, 0, 0, 0);
     }
 
     // ===========================================

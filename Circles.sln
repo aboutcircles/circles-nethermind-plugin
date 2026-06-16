@@ -130,6 +130,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.Erc
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.ScoreGroup", "src\Index\Circles.Index.CirclesV2.ScoreGroup\Circles.Index.CirclesV2.ScoreGroup.csproj", "{33BB3570-C5C7-4C7C-90E4-EA41F3ECFCEB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Metrics.Exporter.Tests", "src\Metrics\Circles.Metrics.Exporter.Tests\Circles.Metrics.Exporter.Tests.csproj", "{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -619,6 +621,18 @@ Global
 		{33BB3570-C5C7-4C7C-90E4-EA41F3ECFCEB}.Release|x64.Build.0 = Release|Any CPU
 		{33BB3570-C5C7-4C7C-90E4-EA41F3ECFCEB}.Release|x86.ActiveCfg = Release|Any CPU
 		{33BB3570-C5C7-4C7C-90E4-EA41F3ECFCEB}.Release|x86.Build.0 = Release|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Debug|x64.Build.0 = Debug|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Debug|x86.Build.0 = Debug|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Release|x64.ActiveCfg = Release|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Release|x64.Build.0 = Release|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Release|x86.ActiveCfg = Release|Any CPU
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -670,5 +684,6 @@ Global
 		{4A1D0AFD-B98E-428D-AD9D-3A3674D1E623} = {664289F4-DCD6-D41D-7163-C693306A2F35}
 		{454E0010-6E2A-48B4-86AF-1E2FB548719D} = {664289F4-DCD6-D41D-7163-C693306A2F35}
 		{33BB3570-C5C7-4C7C-90E4-EA41F3ECFCEB} = {664289F4-DCD6-D41D-7163-C693306A2F35}
+		{B1E2A596-B0EB-4634-BDD8-2C52FCDC1AF8} = {D1E2F3A4-B5C6-7890-1234-ABCDEF123456}
 	EndGlobalSection
 EndGlobal

@@ -82,9 +82,15 @@ public static class RepScoreMetrics
         .CreateGauge("circles_rep_score_drops_24h",
             "Members with a score drop >= threshold in the last 24 hours (organised attack signal)");
 
+    // Stratified by previous-score tier and cause so the alert can target genuine
+    // events instead of dust churn:
+    //   tier  = significant (prev_score*100 >= NewZeroSignificantThreshold) | fringe
+    //   cause = blacklist (avatar in TrustGard blacklist) | trust_collapse (not blacklisted)
+    // Alert on sum without(cause)(...{tier="significant"}) > 5.
     public static readonly Gauge NewZeroScore24h = Prometheus.Metrics
         .CreateGauge("circles_rep_score_new_zero_24h",
-            "Members whose score hit 0 in the last 24 hours (new blacklisting or gate failures) — alert if > 5");
+            "Members whose score hit 0 in the last 24 hours, by previous-score tier and cause — alert if sum without(cause)(...{tier=\"significant\"}) > 5",
+            new GaugeConfiguration { LabelNames = ["tier", "cause"] });
 
     public static readonly Gauge NewMembers24h = Prometheus.Metrics
         .CreateGauge("circles_rep_score_new_members_24h",
