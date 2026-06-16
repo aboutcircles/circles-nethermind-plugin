@@ -23,6 +23,7 @@ namespace Circles.Common.Tests;
 /// </summary>
 [TestFixture]
 [Category("Integration")]
+[Category("RequiresTestEnv")]
 public sealed class ScoreGroupBaseRowsQueryParityTests
 {
     private const string ScoreGroupMintPolicy = "0x450d68272e43c4cab7cbc7faa37893a50fae9569";

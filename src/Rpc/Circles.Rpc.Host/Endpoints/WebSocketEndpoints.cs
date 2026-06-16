@@ -8,6 +8,11 @@ namespace Circles.Rpc.Host.Endpoints;
 /// </summary>
 public static class WebSocketEndpoints
 {
+    private static int _activeSessions;
+
+    /// <summary>Current number of active WebSocket sessions.</summary>
+    internal static int ActiveSessions => Volatile.Read(ref _activeSessions);
+
     public static WebApplication MapCirclesWebSockets(this WebApplication app)
     {
         app.Map("/ws/subscribe", HandleUnifiedWebSocket).DisableAntiforgery();
@@ -32,12 +37,31 @@ public static class WebSocketEndpoints
             return;
         }
 
-        logger.LogInformation("WebSocket session started from {RemoteIp}", remoteIp);
-        using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+        var active = Interlocked.Increment(ref _activeSessions);
+        try
+        {
+            var cap = settings.MaxConcurrentWsSessions;
+            if (cap > 0 && active > cap)
+            {
+                logger.LogWarning(
+                    "Rejected WebSocket session from {RemoteIp}: concurrent session cap of {Cap} reached",
+                    remoteIp, cap);
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                await context.Response.WriteAsync("Too many concurrent WebSocket sessions.");
+                return;
+            }
 
-        await using var session = new WebSocketSession(webSocket, circlesSvc, nethermindProxy, settings, logger);
-        await session.RunAsync(context.RequestAborted);
+            logger.LogInformation("WebSocket session started from {RemoteIp}", remoteIp);
+            using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
 
-        logger.LogInformation("WebSocket session ended for {RemoteIp}", remoteIp);
+            await using var session = new WebSocketSession(webSocket, circlesSvc, nethermindProxy, settings, logger);
+            await session.RunAsync(context.RequestAborted);
+
+            logger.LogInformation("WebSocket session ended for {RemoteIp}", remoteIp);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeSessions);
+        }
     }
 }

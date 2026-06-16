@@ -4,6 +4,7 @@ WORKDIR /src
 
 # Copy shared build props (defines TFM)
 COPY Directory.Build.props ./
+COPY Directory.Packages.props ./
 
 # Copy entire Index directory (needed for project references)
 COPY src/Index ./Index

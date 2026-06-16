@@ -1,7 +1,7 @@
 using System.Numerics;
 using Circles.Common;
-using Nethermind.Int256;
 using Circles.Index.CirclesV2.ScoreGroup;
+using Nethermind.Int256;
 using ScoreGroupDatabaseSchema = Circles.Index.CirclesV2.ScoreGroup.DatabaseSchema;
 
 namespace Circles.Index.CirclesV2.Tests;

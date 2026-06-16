@@ -1,5 +1,5 @@
-using Circles.Common;
 using System.Numerics;
+using Circles.Common;
 using Circles.Pathfinder.Data;
 
 namespace Circles.Pathfinder.Tests;

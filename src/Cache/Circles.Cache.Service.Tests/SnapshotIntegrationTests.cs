@@ -8,6 +8,7 @@ namespace Circles.Cache.Service.Tests;
 /// Integration tests that verify cache service queries work against real Circles data.
 /// These tests run by default but skip gracefully when TEST_ENV_URL is not set.
 /// </summary>
+[Trait("Category", "RequiresTestEnv")]
 public class SnapshotIntegrationTests : IAsyncLifetime
 {
     private static readonly bool TestEnvConfigured =
@@ -252,7 +253,7 @@ public class SnapshotIntegrationTests : IAsyncLifetime
         var result = await _session!.ExecuteQueryAsync(@"
             SELECT MAX(""blockNumber"") FROM ""System_Block""");
 
-        var maxBlock = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var maxBlock = long.Parse(result.Rows.FirstOrDefault()?[0]?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
 
         // Due to block filtering, should not exceed session block
         maxBlock.Should().BeLessThanOrEqualTo(TestBlock,
@@ -271,7 +272,7 @@ public class SnapshotIntegrationTests : IAsyncLifetime
             SELECT COUNT(*) FROM ""V_Crc_Avatars"" WHERE avatar = @addr",
             new Dictionary<string, object?> { ["addr"] = knownAddress });
 
-        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var count = long.Parse(result.Rows.FirstOrDefault()?[0]?.ToString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
         count.Should().Be(1, $"Known address {knownAddress} should exist in avatars");
     }
 

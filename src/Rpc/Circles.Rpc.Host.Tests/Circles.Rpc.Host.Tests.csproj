@@ -5,22 +5,21 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPackable>false</IsPackable>
-        <NethermindReferenceAssembliesVersion>1.37.1</NethermindReferenceAssembliesVersion>
         <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../..'))</RepoRoot>
         <NethermindRuntimeDir>$(RepoRoot)/nethermind-dev/nethermind</NethermindRuntimeDir>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="coverlet.collector" Version="8.0.0" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.5.1" />
-        <PackageReference Include="NUnit" Version="4.6.0" />
-        <PackageReference Include="NUnit.Analyzers" Version="4.13.0" />
-        <PackageReference Include="NUnit3TestAdapter" Version="6.2.0" />
-        <PackageReference Include="Moq" Version="4.20.72" />
-        <PackageReference Include="Npgsql" Version="10.0.1" />
-        <PackageReference Include="Testcontainers.PostgreSql" Version="4.11.0" />
-        <PackageReference Include="System.Reflection.Metadata" Version="10.0.5" />
-        <PackageReference Include="Nethermind.ReferenceAssemblies" Version="$(NethermindReferenceAssembliesVersion)" PrivateAssets="all" />
+        <PackageReference Include="coverlet.collector" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" />
+        <PackageReference Include="NUnit" />
+        <PackageReference Include="NUnit.Analyzers" />
+        <PackageReference Include="NUnit3TestAdapter" />
+        <PackageReference Include="Moq" />
+        <PackageReference Include="Npgsql" />
+        <PackageReference Include="Testcontainers.PostgreSql" />
+        <PackageReference Include="System.Reflection.Metadata" />
+        <PackageReference Include="Nethermind.ReferenceAssemblies" PrivateAssets="all" />
     </ItemGroup>
 
     <ItemGroup>

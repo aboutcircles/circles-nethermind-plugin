@@ -21,6 +21,8 @@ namespace Circles.Pathfinder.Tests;
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
 public class ScenarioTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -47,7 +49,7 @@ public class ScenarioTests
                 var health = await TestEnvironmentClient.GetHealthAsync();
                 if (health?.Status != "healthy")
                 {
-                    Assert.Ignore("Test environment not healthy");
+                    Assert.Fail("Test environment not healthy");
                 }
 
                 var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
@@ -59,7 +61,7 @@ public class ScenarioTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -264,6 +266,7 @@ public class ScenarioTests
 /// Multiple pathfinder requests on the same session should not interfere.
 /// </summary>
 [TestFixture]
+[Category("RequiresTestEnv")]
 public class ConcurrentSessionTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -303,7 +306,7 @@ public class ConcurrentSessionTests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy");
+                Assert.Fail("Test environment not healthy");
             }
 
             // Use a common block that should work for all scenarios
@@ -322,7 +325,7 @@ public class ConcurrentSessionTests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 
@@ -400,9 +403,13 @@ public class ConcurrentSessionTests
 /// afterwards, so state mutations don't leak between tests.
 ///
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
-/// CI triggers these tests automatically on merges to main/dev branches.
+/// Selected by the CI snapshot-tests job (--filter "Category=Snapshot"), which
+/// runs on PRs and pushes to dev/main against the staging test environment.
 /// </summary>
 [TestFixture]
+[Category("Snapshot")]
+[Category("RequiresTestEnv")]
+[Category("RequiresAnvil")]
 public class ScenarioE2ETests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -439,7 +446,7 @@ public class ScenarioE2ETests
             {
                 var health = await TestEnvironmentClient.GetHealthAsync();
                 if (health?.Status != "healthy")
-                    Assert.Ignore("Test environment not healthy");
+                    Assert.Fail("Test environment not healthy");
 
                 var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
                 if (!exists)
@@ -450,7 +457,7 @@ public class ScenarioE2ETests
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available: {ex.Message}");
+            Assert.Fail($"Test environment not available: {ex.Message}");
             return;
         }
 

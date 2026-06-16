@@ -10,6 +10,9 @@ builder.Configuration.AddEnvironmentVariables();
 var connectionString = builder.Configuration.GetConnectionString("CirclesDb")
     ?? throw new InvalidOperationException("ConnectionStrings:CirclesDb is required");
 
+// RepScoreDb is optional — exporter degrades gracefully without AA
+var repScoreConnectionString = builder.Configuration.GetConnectionString("RepScoreDb");
+
 // Register services
 builder.Services.AddSingleton(sp =>
     new KpiRepository(connectionString, sp.GetRequiredService<ILogger<KpiRepository>>()));
@@ -46,6 +49,31 @@ builder.Services.AddHostedService<TrustCollectorService>();
 
 // Trust score history snapshot service (runs daily for anomaly detection)
 builder.Services.AddHostedService<TrustHistorySnapshotService>();
+
+// Rep score monitoring (AA circles_rep_score DB — bad actor radar + ScoreGroup distribution)
+// Optional: skip if RepScoreDb is not configured (AA may not be deployed in all environments)
+if (!string.IsNullOrWhiteSpace(repScoreConnectionString))
+{
+    builder.Services.AddSingleton(sp =>
+        new RepScoreRepository(
+            repScoreConnectionString,
+            connectionString,
+            builder.Configuration.GetValue<string>("RepScore:GroupId", "score_group")!,
+            builder.Configuration.GetValue<double>("RepScore:HighScoreThreshold", 70.0),
+            builder.Configuration.GetValue<double>("RepScore:ScoreDropThreshold", 20.0),
+            // Previous-score floor (0-100 scale) below which a new-zero transition is
+            // "fringe" dust churn rather than a "significant" event. 0.1 == prev_score
+            // 0.001, matching the existing zero-rep dust line in LoadMemberAddressBuckets.
+            builder.Configuration.GetValue<double>("RepScore:NewZeroSignificantThreshold", 0.1),
+            sp.GetRequiredService<ILogger<RepScoreRepository>>()));
+
+    builder.Services.AddHostedService<RepScoreCollectorService>();
+}
+else
+{
+    var startupLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("Program");
+    startupLogger.LogWarning("ConnectionStrings:RepScoreDb not configured — rep score metrics disabled");
+}
 
 // Deployment status monitoring (probes RPC endpoints, no DB access needed)
 builder.Services.AddHttpClient<DeploymentProber>();

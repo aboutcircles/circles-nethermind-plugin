@@ -21,14 +21,22 @@ echo -e "${BLUE}Running Circles Tests...${NC}\n"
 CONFIGURATION="${BUILD_CONFIGURATION:-Release}"
 VERBOSITY="${TEST_VERBOSITY:-normal}"
 
-# Test projects
-TEST_PROJECTS=(
-  "src/Pathfinder/Circles.Pathfinder.Tests/Circles.Pathfinder.Tests.csproj"
-  "src/Index/Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj"
-  "src/Common/Circles.Common.Tests/Circles.Common.Tests.csproj"
-  "src/Cache/Circles.Cache.Service.Tests/Circles.Cache.Service.Tests.csproj"
-  "src/Rpc/Circles.Rpc.Host.Tests/Circles.Rpc.Host.Tests.csproj"
-)
+# Test projects: discovered from the solution so a newly added test project
+# can never be silently missing here (a hand-maintained list previously
+# dropped Circles.Index.CirclesV2.Tests and Circles.Index.CirclesViews.Tests
+# from CI). Capture the sln listing first so a dotnet failure aborts via
+# set -e instead of silently truncating the list inside process substitution.
+# Portable loop — macOS ships bash 3.2 without mapfile.
+sln_output=$(dotnet sln "$SOLUTION_FILE" list)
+TEST_PROJECTS=()
+while IFS= read -r project; do
+  TEST_PROJECTS+=("$project")
+done < <(printf '%s\n' "$sln_output" | tr '\\' '/' | grep -E 'Tests\.csproj$' | sort)
+
+if [ ${#TEST_PROJECTS[@]} -eq 0 ]; then
+  echo -e "${RED}No test projects found in $SOLUTION_FILE${NC}"
+  exit 1
+fi
 
 # Parse arguments
 RUN_ALL=true
@@ -57,6 +65,8 @@ for arg in "$@"; do
       RUN_ALL=false
       SPECIFIC_PROJECTS=(
         "src/Index/Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj"
+        "src/Index/Circles.Index.CirclesV2.Tests/Circles.Index.CirclesV2.Tests.csproj"
+        "src/Index/Circles.Index.CirclesViews.Tests/Circles.Index.CirclesViews.Tests.csproj"
         "src/Common/Circles.Common.Tests/Circles.Common.Tests.csproj"
       )
       shift
@@ -86,7 +96,7 @@ for arg in "$@"; do
       echo "  pathfinder    Run only Pathfinder tests"
       echo "  query         Run only Query tests"
       echo "  common        Run only Common tests"
-      echo "  index         Run only Index tests (query + common)"
+      echo "  index         Run only Index tests (query + circlesv2 + views + common)"
       echo "  cache         Run only Cache tests"
       echo "  rpc           Run only RPC tests"
       echo ""
@@ -95,7 +105,7 @@ for arg in "$@"; do
       echo "  --filter=<expression> Filter tests by expression"
       echo ""
       echo "Environment Variables:"
-      echo "  BUILD_CONFIGURATION   Build configuration (default: Debug)"
+      echo "  BUILD_CONFIGURATION   Build configuration (default: Release)"
       echo "  TEST_VERBOSITY        Test verbosity (default: normal)"
       echo ""
       echo "Examples:"

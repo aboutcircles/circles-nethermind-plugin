@@ -1,5 +1,5 @@
-using Circles.Common;
 using System.Collections.Concurrent;
+using Circles.Common;
 using Circles.Common.TestUtils;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;

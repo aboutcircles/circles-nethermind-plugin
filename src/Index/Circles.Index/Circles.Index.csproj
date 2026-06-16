@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <!-- NuGet Package Metadata -->
-    <Version>0.0.1</Version>
-    <Authors>Gnosis Service GmbH</Authors>
+    <Version>0.0.7</Version>
+    <Authors>Daniel Janz (Gnosis Service GmbH);Tobias Leinss (Gnosis Service GmbH)</Authors>
     <Copyright>Gnosis Service GmbH</Copyright>
     <Product>Circles</Product>
     <PackageId>Gnosis.Circles.Nethermind.Plugin</PackageId>
@@ -14,13 +14,8 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.0.7</Version>
-    <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
-    <Copyright>Gnosis Service GmbH</Copyright>
-    <Product>Circles</Product>
     <AssemblyVersion>1.25.0</AssemblyVersion>
     <FileVersion>1.25.0</FileVersion>
-    <PackageId>Gnosis.Circles.Nethermind.Plugin</PackageId>
     <OutputType>Library</OutputType>
     <!-- Copy all Circles.Index.*.dlls into the final nupkg -->
     <TargetsForTfmSpecificBuildOutput>
@@ -28,8 +23,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Autofac" Version="9.1.0" />
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.3" />
+    <PackageReference Include="Autofac" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
   </ItemGroup>
 
 

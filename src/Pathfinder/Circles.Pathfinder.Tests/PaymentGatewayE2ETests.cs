@@ -27,6 +27,8 @@ namespace Circles.Pathfinder.Tests;
 /// Then add the resulting fixture JSON to RegressionScenarios/
 /// </summary>
 [TestFixture]
+[Category("RequiresTestEnv")]
+[Category("RequiresAnvil")]
 public class PaymentGatewayE2ETests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -63,12 +65,12 @@ public class PaymentGatewayE2ETests
             var health = await TestEnvironmentClient.GetHealthAsync();
             if (health?.Status != "healthy")
             {
-                Assert.Ignore("Test environment not healthy. Check deployment status.");
+                Assert.Fail("Test environment not healthy. Check deployment status.");
             }
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not reachable at {testEnvUrl}: {ex.Message}");
+            Assert.Fail($"Test environment not reachable at {testEnvUrl}: {ex.Message}");
             return;
         }
 

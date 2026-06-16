@@ -369,6 +369,7 @@ This will:
 - **Circles.Pathfinder.Tests** - Pathfinding algorithm tests
 - **Circles.Index.Query.Tests** - Query system tests
 - **Circles.Index.CirclesV2.Tests** - V2 contract indexing tests
+- **Circles.Index.CirclesViews.Tests** - View DDL and schema projection tests
 - **Circles.Common.Tests** - Common utilities tests
 - **Circles.Rpc.Host.Tests** - RPC endpoint tests
 - **Circles.Cache.Service.Tests** - Cache service tests

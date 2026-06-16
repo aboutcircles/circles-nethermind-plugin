@@ -83,15 +83,15 @@ public class SimulationCanaryResolverFastPathTests
         Assert.That(resolved.Count, Is.EqualTo(3));
         // Per-row From/Wrapper assertions in addition to Amount: catches a future
         // factory mutation that swaps fields (e.g. `new(call.Wrapper, call.From, ...)`).
-        Assert.That(resolved[0].From,    Is.EqualTo("0xfromA"));
+        Assert.That(resolved[0].From, Is.EqualTo("0xfromA"));
         Assert.That(resolved[0].Wrapper, Is.EqualTo("0xwrapA"));
-        Assert.That(resolved[0].Amount,  Is.EqualTo(BigInteger.Parse("100")));
-        Assert.That(resolved[1].From,    Is.EqualTo("0xfromB"));
+        Assert.That(resolved[0].Amount, Is.EqualTo(BigInteger.Parse("100")));
+        Assert.That(resolved[1].From, Is.EqualTo("0xfromB"));
         Assert.That(resolved[1].Wrapper, Is.EqualTo("0xwrapB"));
-        Assert.That(resolved[1].Amount,  Is.EqualTo(BigInteger.Parse("200")));
-        Assert.That(resolved[2].From,    Is.EqualTo("0xfromC"));
+        Assert.That(resolved[1].Amount, Is.EqualTo(BigInteger.Parse("200")));
+        Assert.That(resolved[2].From, Is.EqualTo("0xfromC"));
         Assert.That(resolved[2].Wrapper, Is.EqualTo("0xwrapC"));
-        Assert.That(resolved[2].Amount,  Is.EqualTo(BigInteger.Parse("300")));
+        Assert.That(resolved[2].Amount, Is.EqualTo(BigInteger.Parse("300")));
     }
 
     [Test]
@@ -141,13 +141,13 @@ public class SimulationCanaryResolverFastPathTests
         Assert.That(handler.Count, Is.EqualTo(2),
             "positive control: 1× eth_getBlockByNumber + 1× eth_simulateV1 batch");
         Assert.That(resolved.Count, Is.EqualTo(2));
-        Assert.That(resolved[0].From,    Is.EqualTo("0xfromD"));
+        Assert.That(resolved[0].From, Is.EqualTo("0xfromD"));
         Assert.That(resolved[0].Wrapper, Is.EqualTo("0xwrapD"));
-        Assert.That(resolved[0].Amount,  Is.EqualTo(BigInteger.Parse("100")),
+        Assert.That(resolved[0].Amount, Is.EqualTo(BigInteger.Parse("100")),
             "DemurrageCircles entry passes through unchanged");
-        Assert.That(resolved[1].From,    Is.EqualTo("0xfromI"));
+        Assert.That(resolved[1].From, Is.EqualTo("0xfromI"));
         Assert.That(resolved[1].Wrapper, Is.EqualTo("0xwrapI"));
-        Assert.That(resolved[1].Amount,  Is.EqualTo(BigInteger.Parse("300")),
+        Assert.That(resolved[1].Amount, Is.EqualTo(BigInteger.Parse("300")),
             "InflationaryCircles entry substituted with scripted convertDemurrageToInflationaryValue result");
     }
 
@@ -183,15 +183,15 @@ public class SimulationCanaryResolverFastPathTests
         Assert.That(resolved.Count, Is.EqualTo(3));
         // Slot 0 (inflationary) gets the first scripted return = 300
         Assert.That(resolved[0].Wrapper, Is.EqualTo("0xwrapI1"));
-        Assert.That(resolved[0].Amount,  Is.EqualTo(BigInteger.Parse("300")));
+        Assert.That(resolved[0].Amount, Is.EqualTo(BigInteger.Parse("300")));
         // Slot 1 (demurraged) passes through with original 500 — proves the resolver
         // does NOT consume an inflationary-batch result for this position.
         Assert.That(resolved[1].Wrapper, Is.EqualTo("0xwrapD"));
-        Assert.That(resolved[1].Amount,  Is.EqualTo(BigInteger.Parse("500")));
+        Assert.That(resolved[1].Amount, Is.EqualTo(BigInteger.Parse("500")));
         // Slot 2 (inflationary) gets the second scripted return = 700; an off-by-one
         // infIdx would either reuse 300 here or assign 700 to slot 0 / 500 to slot 2.
         Assert.That(resolved[2].Wrapper, Is.EqualTo("0xwrapI2"));
-        Assert.That(resolved[2].Amount,  Is.EqualTo(BigInteger.Parse("700")));
+        Assert.That(resolved[2].Amount, Is.EqualTo(BigInteger.Parse("700")));
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -293,10 +293,10 @@ public class SimulationCanaryResolverFastPathTests
         Assert.That(resolved.Count, Is.EqualTo(2));
         // Slot 0 succeeded — inflated value applied (300 from scripted return; bump=0 below 1e12)
         Assert.That(resolved[0].Wrapper, Is.EqualTo("0xwrapOK"));
-        Assert.That(resolved[0].Amount,  Is.EqualTo(BigInteger.Parse("300")));
+        Assert.That(resolved[0].Amount, Is.EqualTo(BigInteger.Parse("300")));
         // Slot 1 failed — falls back to its original demurraged amount unchanged
         Assert.That(resolved[1].Wrapper, Is.EqualTo("0xwrapFAIL"));
-        Assert.That(resolved[1].Amount,  Is.EqualTo(BigInteger.Parse("500")));
+        Assert.That(resolved[1].Amount, Is.EqualTo(BigInteger.Parse("500")));
     }
 
     [Test]
@@ -319,12 +319,12 @@ public class SimulationCanaryResolverFastPathTests
                 "0xfromB", "0xwrapB", BigInteger.Parse("500"), CirclesType.InflationaryCircles),
         };
 
-        var beforeFailed  = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_failed",  "unwrap").Value;
+        var beforeFailed = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Value;
         var beforePartial = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_partial", "unwrap").Value;
         using var client = factory.CreateClient("canary-simulation");
         var resolved = await service.ResolveInflationaryAmountsAsync(
             item, calls, "0x3e8", client, CancellationToken.None);
-        var afterFailed  = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_failed",  "unwrap").Value;
+        var afterFailed = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_failed", "unwrap").Value;
         var afterPartial = SimulationCanaryService.SimulationTotal.WithLabels("inflation_resolve_partial", "unwrap").Value;
 
         Assert.That(afterFailed - beforeFailed, Is.EqualTo(1.0),

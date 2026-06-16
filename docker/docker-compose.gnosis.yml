@@ -270,7 +270,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - BACKUP_DIR=/backups
       - SCHEDULE=0 3 * * *
-      - KEEP_DAYS=7
+      - KEEP_DAYS=${POSTGRES_BACKUP_KEEP_DAYS:-7}
     depends_on:
       - postgres-gnosis
     volumes:
@@ -389,6 +389,7 @@ services:
       - Balancer__ApiUrl=${BALANCER_API_URL:-https://api-v3.balancer.fi/graphql}
       - Balancer__ReferenceScrcAddress=${BALANCER_REFERENCE_SCRC:-}
       - Deployment__Environments__Staging=${DEPLOYMENT__ENVIRONMENTS__STAGING:-}
+      - ConnectionStrings__RepScoreDb=${METRICS_REP_SCORE_DB_HOST:+Server=${METRICS_REP_SCORE_DB_HOST};Port=${METRICS_REP_SCORE_DB_PORT:-5433};Database=circles_rep_score;User Id=${METRICS_REP_SCORE_DB_USER};Password=${METRICS_REP_SCORE_DB_PASSWORD};Application Name=metrics-exporter;Maximum Pool Size=3;}
     deploy:
       resources:
         limits:

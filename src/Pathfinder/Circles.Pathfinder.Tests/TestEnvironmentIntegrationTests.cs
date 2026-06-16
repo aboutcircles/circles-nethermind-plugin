@@ -10,6 +10,7 @@ namespace Circles.Pathfinder.Tests;
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
+[Category("RequiresTestEnv")]
 public class TestEnvironmentIntegrationTests
 {
     private HttpClient _client = null!;
@@ -36,12 +37,12 @@ public class TestEnvironmentIntegrationTests
             var response = await _client.GetAsync("health");
             if (!response.IsSuccessStatusCode)
             {
-                Assert.Ignore($"Test environment not healthy at {_testEnvUrl}");
+                Assert.Fail($"Test environment not healthy at {_testEnvUrl}");
             }
         }
         catch (Exception ex)
         {
-            Assert.Ignore($"Test environment not available at {_testEnvUrl}: {ex.Message}");
+            Assert.Fail($"Test environment not available at {_testEnvUrl}: {ex.Message}");
         }
     }
 
