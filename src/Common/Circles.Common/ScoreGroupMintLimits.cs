@@ -1,3 +1,4 @@
+using System.Data;
 using System.Globalization;
 using System.Numerics;
 using Npgsql;
@@ -21,24 +22,43 @@ public static class ScoreGroupMintLimitReader
 {
     private const uint InflationDayZeroUnix = 1_602_720_000;
 
+    /// <summary>Session-local temp table holding the materialized group_tokens set on the live
+    /// path. Built + ANALYZEd by <see cref="ReadBaseRows"/> from <see cref="LiveGroupTokensSql"/>,
+    /// consumed by <see cref="LiveBalancesTailSql"/>. See Fix D on <see cref="LiveGroupTokensSql"/>.</summary>
+    internal const string LiveGroupTokensTempTable = "_sg_mint_group_tokens";
+
     /// <summary>
-    /// Base-rows SQL. Each score group's "treasury" (as recorded in
-    /// <c>CrcV2_RegisterGroup.treasury</c>) is expanded into one or more
-    /// effective treasury addresses via the <c>treasury_overrides</c> CTE.
-    /// When the on-chain treasury is a <c>ScoreTreasury</c> router/splitter
-    /// (does not custody collateral itself but forwards to score-keyed
-    /// sub-treasuries), the override list contains the sub-treasuries that
-    /// actually hold tokens. Groups not in the override map fall back to
-    /// single-treasury behavior — the override list defaults to
-    /// <c>ARRAY[treasury]</c>.
+    /// Live path, statement 1 — the base-rows builder. Each score group's "treasury" (as recorded
+    /// in <c>CrcV2_RegisterGroup.treasury</c>) is expanded into one or more effective treasury
+    /// addresses via the <c>treasury_overrides</c> CTE. When the on-chain treasury is a
+    /// <c>ScoreTreasury</c> router/splitter (does not custody collateral itself but forwards to
+    /// score-keyed sub-treasuries), the override list contains the sub-treasuries that actually
+    /// hold tokens. Groups not in the override map fall back to single-treasury behavior — the
+    /// override list defaults to <c>ARRAY[treasury]</c>.
     ///
-    /// Balance computation: instead of querying the <c>V_CrcV2_BalancesByAccountAndToken</c>
-    /// view (which FULL JOINs all 140K rows in the materialized table before filtering),
-    /// this query inlines the view's logic with the tokenAddress filter applied before the
-    /// FULL JOIN. The materialized table has an index on tokenAddress so only the handful of
-    /// relevant score-group token rows are scanned.
+    /// Balance computation (in <see cref="LiveBalancesTailSql"/>) inlines the
+    /// <c>V_CrcV2_BalancesByAccountAndToken</c> view logic (matview + post-refresh delta tail)
+    /// with the tokenAddress filter applied before the FULL JOIN. Four coordinated optimizations
+    /// keep this fast even for score groups that trust thousands of collateral tokens:
+    ///   - <b>A</b> — trust relations are resolved by pushing the truster filter into
+    ///     <c>CrcV2_Trust</c> before the <c>row_number()</c> window (the
+    ///     <c>V_CrcV2_TrustRelations</c> view windows the whole table); avatar registration is
+    ///     an indexed <c>EXISTS</c> mirroring <c>V_CrcV2_Avatars</c> instead of joining the view.
+    ///   - <b>B</b> — treasury balances are aggregated once per (group, token) via a join
+    ///     rather than a per-row correlated subquery over the full <c>balances</c> set.
+    ///   - <b>C</b> — the matview balance watermark (<c>__BALANCE_WM__</c>) and avatar watermark
+    ///     (<c>__AVATAR_WM__</c>) are inlined as integer literals by <see cref="ReadBaseRows"/>
+    ///     so the planner uses the blockNumber indexes for the small delta tail. The fetch runs
+    ///     inside a REPEATABLE READ snapshot to stay consistent with <c>filtered_mat</c>.
+    ///   - <b>D</b> — <c>group_tokens</c> (this builder's output) is materialized into the
+    ///     <see cref="LiveGroupTokensTempTable"/> temp table and ANALYZEd before the balance tail
+    ///     runs, so the planner has real cardinalities and picks hash joins for the treasury/supply
+    ///     aggregations. As an inline CTE it estimated 1 row and collapsed those joins into a
+    ///     ~47M-row nested loop (~8.5s on a group trusting ~10k tokens).
+    /// The live query is therefore split into two statements: this builder and
+    /// <see cref="LiveBalancesTailSql"/> (which reads the temp table).
     /// </summary>
-    private const string BaseRowsSql = """
+    internal const string LiveGroupTokensSql = """
         WITH latest_score_group AS (
             SELECT DISTINCT ON ("group")
                 "group" AS group_address,
@@ -77,43 +97,79 @@ public static class ScoreGroupMintLimitReader
             FROM score_groups sg
             LEFT JOIN treasury_overrides o ON o.aggregator = sg.treasury
         ),
-        group_tokens AS (
-            SELECT
-                et.group_address,
-                et.treasuries,
-                et.policy,
-                t.trustee AS trusted_token
-            FROM effective_treasuries et
-            INNER JOIN "V_CrcV2_TrustRelations" t ON t.truster = et.group_address
-            INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = t.trustee
-            WHERE (@collateralTokenFilter::text IS NULL OR t.trustee = @collateralTokenFilter)
-        ),
-        -- Inline the V_CrcV2_BalancesByAccountAndToken view logic with the tokenAddress
-        -- filter applied before the FULL JOIN so the planner uses the tokenAddress index
-        -- on M_CrcV2_BalancesByAccountAndToken instead of scanning all 140K rows.
-        watermark AS (
-            SELECT COALESCE(MAX("_maxBlock"), 0) AS wm FROM "M_CrcV2_BalancesByAccountAndToken"
-        ),
-        delta_tx AS (
+        -- Fix A: push the truster filter into CrcV2_Trust BEFORE the row_number() window so it
+        -- runs over only the score groups' trust rows (idx_CrcV2_Trust_truster) instead of
+        -- windowing all ~760K rows. V_CrcV2_TrustRelations cannot push the predicate through
+        -- its window function, which made this the dominant cost (~60s+ on large groups).
+        group_trust AS (
+            SELECT truster, trustee
+            FROM (
+                SELECT t.truster, t.trustee, t."expiryTime",
+                       row_number() OVER (
+                           PARTITION BY t.truster, t.trustee
+                           ORDER BY t."blockNumber" DESC, t."transactionIndex" DESC, t."logIndex" DESC
+                       ) AS rn
+                FROM "CrcV2_Trust" t
+                WHERE t.truster IN (SELECT DISTINCT group_address FROM effective_treasuries)
+            ) d
+            WHERE d.rn = 1
+              AND d."expiryTime" > COALESCE((SELECT MAX("timestamp") FROM "System_Block"), 0)::numeric
+        )
+        -- group_tokens final projection — materialized into the temp table by ReadBaseRows.
+        -- Mirror V_CrcV2_Avatars (matview + registrations since its watermark) with an indexed
+        -- existence check. A semi-join against the view itself costs ~18s because the view has
+        -- no index. __AVATAR_WM__ is the inlined MAX("blockNumber") of M_CrcV2_Avatars (see
+        -- ReadBaseRows); the three register-table branches cover avatars registered after the
+        -- last matview refresh.
+        SELECT
+            et.group_address,
+            et.treasuries,
+            et.policy,
+            gt.trustee AS trusted_token
+        FROM effective_treasuries et
+        INNER JOIN group_trust gt ON gt.truster = et.group_address
+        WHERE (@collateralTokenFilter::text IS NULL OR gt.trustee = @collateralTokenFilter)
+          AND (
+              EXISTS (SELECT 1 FROM "M_CrcV2_Avatars" a WHERE a.avatar = gt.trustee)
+              OR EXISTS (SELECT 1 FROM "CrcV2_RegisterHuman" r WHERE r.avatar = gt.trustee AND r."blockNumber" > __AVATAR_WM__)
+              OR EXISTS (SELECT 1 FROM "CrcV2_RegisterOrganization" r WHERE r.organization = gt.trustee AND r."blockNumber" > __AVATAR_WM__)
+              OR EXISTS (SELECT 1 FROM "CrcV2_RegisterGroup" r WHERE r."group" = gt.trustee AND r."blockNumber" > __AVATAR_WM__)
+          );
+        """;
+
+    /// <summary>
+    /// Live path, statement 2: consumes the group_tokens temp table
+    /// (<see cref="LiveGroupTokensTempTable"/>) and computes per-(group, collateral) treasury
+    /// balance + current supply. Reads <c>M_CrcV2_BalancesByAccountAndToken</c> (matview) PLUS
+    /// the post-watermark delta tail and merges them, so the result reflects HEAD state even
+    /// though the matview lags. The temp table carries real ANALYZEd statistics, so the planner
+    /// picks hash joins for the treasury/supply aggregations instead of the nested-loop plan an
+    /// inline (estimated-1-row) CTE produced. Fix C: the matview balance watermark is inlined as
+    /// a literal (__BALANCE_WM__) so the planner uses the blockNumber indexes for the small delta
+    /// tail; ReadBaseRows reads it inside the same REPEATABLE READ snapshot as the matview and the
+    /// temp-table build, keeping the watermark consistent with the rows read here.
+    /// </summary>
+    internal const string LiveBalancesTailSql = """
+        WITH delta_tx AS (
             SELECT "timestamp", "from" AS account, "tokenAddress", id, -value AS delta
             FROM "CrcV2_TransferSingle"
-            WHERE "blockNumber" > (SELECT wm FROM watermark)
-              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            WHERE "blockNumber" > __BALANCE_WM__
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM _sg_mint_group_tokens))
             UNION ALL
             SELECT "timestamp", "to" AS account, "tokenAddress", id, value AS delta
             FROM "CrcV2_TransferSingle"
-            WHERE "blockNumber" > (SELECT wm FROM watermark)
-              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            WHERE "blockNumber" > __BALANCE_WM__
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM _sg_mint_group_tokens))
             UNION ALL
             SELECT "timestamp", "from" AS account, "tokenAddress", id, -value AS delta
             FROM "CrcV2_TransferBatch"
-            WHERE "blockNumber" > (SELECT wm FROM watermark)
-              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            WHERE "blockNumber" > __BALANCE_WM__
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM _sg_mint_group_tokens))
             UNION ALL
             SELECT "timestamp", "to" AS account, "tokenAddress", id, value AS delta
             FROM "CrcV2_TransferBatch"
-            WHERE "blockNumber" > (SELECT wm FROM watermark)
-              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            WHERE "blockNumber" > __BALANCE_WM__
+              AND "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM _sg_mint_group_tokens))
         ),
         delta_agg AS (
             SELECT account, id::text AS "tokenId", "tokenAddress",
@@ -124,7 +180,7 @@ public static class ScoreGroupMintLimitReader
         filtered_mat AS (
             SELECT account, "tokenId", "tokenAddress", "lastActivity", "totalBalance"
             FROM "M_CrcV2_BalancesByAccountAndToken"
-            WHERE "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM group_tokens))
+            WHERE "tokenAddress" = ANY(ARRAY(SELECT DISTINCT trusted_token FROM _sg_mint_group_tokens))
               AND account <> '0x0000000000000000000000000000000000000000'
         ),
         merged AS (
@@ -156,28 +212,43 @@ public static class ScoreGroupMintLimitReader
                 b."tokenAddress",
                 SUM(b."demurragedTotalBalance")::text AS current_supply
             FROM balances b
-            INNER JOIN (SELECT DISTINCT trusted_token FROM group_tokens) gt
+            INNER JOIN (SELECT DISTINCT trusted_token FROM _sg_mint_group_tokens) gt
                 ON gt.trusted_token = b."tokenAddress"
             GROUP BY b."tokenAddress"
+        ),
+        -- Fix B: aggregate treasury balances once per (group, token) via a join instead of a
+        -- correlated subquery that rescanned `balances` for every group_tokens row
+        -- (O(tokens x balances) -> the 120s+ blowup on large groups).
+        treasury_pairs AS (
+            SELECT DISTINCT gt.group_address, gt.trusted_token, ta.account
+            FROM _sg_mint_group_tokens gt, unnest(gt.treasuries) AS ta(account)
+        ),
+        treasury_balances AS (
+            SELECT tp.group_address, tp.trusted_token,
+                   COALESCE(SUM(b."demurragedTotalBalance"), 0) AS treasury_balance
+            FROM treasury_pairs tp
+            LEFT JOIN balances b
+                ON b.account = tp.account
+               AND b."tokenAddress" = tp.trusted_token
+            GROUP BY tp.group_address, tp.trusted_token
         )
         SELECT
             gt.group_address,
             gt.trusted_token,
             gt.policy,
-            COALESCE((
-                SELECT SUM(b."demurragedTotalBalance")
-                FROM balances b
-                WHERE b.account = ANY(gt.treasuries)
-                  AND b."tokenAddress" = gt.trusted_token
-            ), 0)::text AS treasury_balance,
+            COALESCE(tb.treasury_balance, 0)::text AS treasury_balance,
             COALESCE(ts.current_supply, '0') AS current_supply
-        FROM group_tokens gt
+        FROM _sg_mint_group_tokens gt
+        LEFT JOIN treasury_balances tb
+            ON tb.group_address = gt.group_address
+           AND tb.trusted_token = gt.trusted_token
         LEFT JOIN token_supply ts
             ON ts."tokenAddress" = gt.trusted_token;
         """;
 
     /// <summary>
-    /// Historical variant of <see cref="BaseRowsSql"/> used when <c>maxBlock</c> is non-null.
+    /// Historical variant of the live <see cref="LiveGroupTokensSql"/> + <see cref="LiveBalancesTailSql"/>
+    /// pair, used when <c>maxBlock</c> is non-null.
     /// Bypasses <c>M_CrcV2_BalancesByAccountAndToken</c> (the matview, which only holds HEAD
     /// state and has no block-pinned twin in the test environment) and instead aggregates
     /// directly from raw <c>CrcV2_TransferSingle/Batch</c> tables with
@@ -287,19 +358,33 @@ public static class ScoreGroupMintLimitReader
             INNER JOIN (SELECT DISTINCT trusted_token FROM group_tokens) gt
                 ON gt.trusted_token = b."tokenAddress"
             GROUP BY b."tokenAddress"
+        ),
+        -- Fix B: aggregate treasury balances once per (group, token) via a join instead of a
+        -- correlated subquery that rescanned `balances` for every group_tokens row
+        -- (O(tokens x balances) -> the 120s+ blowup on large groups).
+        treasury_pairs AS (
+            SELECT DISTINCT gt.group_address, gt.trusted_token, ta.account
+            FROM group_tokens gt, unnest(gt.treasuries) AS ta(account)
+        ),
+        treasury_balances AS (
+            SELECT tp.group_address, tp.trusted_token,
+                   COALESCE(SUM(b."demurragedTotalBalance"), 0) AS treasury_balance
+            FROM treasury_pairs tp
+            LEFT JOIN balances b
+                ON b.account = tp.account
+               AND b."tokenAddress" = tp.trusted_token
+            GROUP BY tp.group_address, tp.trusted_token
         )
         SELECT
             gt.group_address,
             gt.trusted_token,
             gt.policy,
-            COALESCE((
-                SELECT SUM(b."demurragedTotalBalance")
-                FROM balances b
-                WHERE b.account = ANY(gt.treasuries)
-                  AND b."tokenAddress" = gt.trusted_token
-            ), 0)::text AS treasury_balance,
+            COALESCE(tb.treasury_balance, 0)::text AS treasury_balance,
             COALESCE(ts.current_supply, '0') AS current_supply
         FROM group_tokens gt
+        LEFT JOIN treasury_balances tb
+            ON tb.group_address = gt.group_address
+           AND tb.trusted_token = gt.trusted_token
         LEFT JOIN token_supply ts
             ON ts."tokenAddress" = gt.trusted_token;
         """;
@@ -442,8 +527,9 @@ public static class ScoreGroupMintLimitReader
     }
 
     // Two SQL paths selected at runtime:
-    //   maxBlock IS NULL  → BaseRowsSql: fast matview + delta tail, demurrage at NOW().
-    //                       Used by the live pathfinder (HEAD state queries).
+    //   maxBlock IS NULL  → LiveGroupTokensSql (materialized into an ANALYZEd temp table) +
+    //                       LiveBalancesTailSql: matview + delta tail, demurrage at NOW().
+    //                       Used by the live pathfinder + RPC (HEAD state queries).
     //   maxBlock IS NOT NULL → BaseRowsSqlHistorical: aggregates raw transfer tables with
     //                       blockNumber <= @maxBlock, demurrage anchored to the block's
     //                       own timestamp. Used by HistoricalLoadGraph (snapshot/historical-graph
@@ -474,34 +560,162 @@ public static class ScoreGroupMintLimitReader
             .Select(kv => string.Join(",", kv.Value.Select(addr => addr.Trim().ToLowerInvariant())))
             .ToArray();
 
-        var sql = maxBlock.HasValue ? BaseRowsSqlHistorical : BaseRowsSql;
-        var rows = new List<ScoreGroupMintLimitBaseRow>();
-        using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.CommandTimeout = commandTimeoutSeconds;
-        command.Parameters.AddWithValue("scoreMintPolicies", policies);
-        command.Parameters.AddWithValue("subTreasuryAggregators", subTreasuryAggregators);
-        command.Parameters.AddWithValue("subTreasuryLists", subTreasuryLists);
-        AddMaxBlockParameter(command, maxBlock);
-        AddTextFilterParameter(command, "groupAddressFilter", groupAddressFilter);
-        AddTextFilterParameter(command, "collateralTokenFilter", collateralTokenFilter);
+        // Binds the parameters shared by the historical query and the live temp-table builder.
+        void AddBaseRowParameters(NpgsqlCommand command)
+        {
+            command.CommandTimeout = commandTimeoutSeconds;
+            command.Parameters.AddWithValue("scoreMintPolicies", policies);
+            command.Parameters.AddWithValue("subTreasuryAggregators", subTreasuryAggregators);
+            command.Parameters.AddWithValue("subTreasuryLists", subTreasuryLists);
+            AddMaxBlockParameter(command, maxBlock);
+            AddTextFilterParameter(command, "groupAddressFilter", groupAddressFilter);
+            AddTextFilterParameter(command, "collateralTokenFilter", collateralTokenFilter);
+        }
 
+        // Historical/snapshot path: one self-contained query carrying all parameters.
+        List<ScoreGroupMintLimitBaseRow> Execute(string sql, NpgsqlTransaction? tx)
+        {
+            using var command = new NpgsqlCommand(sql, connection, tx);
+            AddBaseRowParameters(command);
+            return MaterializeBaseRows(command);
+        }
+
+        // Historical/snapshot path bounds every table on blockNumber <= @maxBlock, so the
+        // planner already has a real value to estimate — no watermark inlining needed.
+        if (maxBlock.HasValue)
+            return Execute(BaseRowsSqlHistorical, transaction);
+
+        // Live path: inline the matview watermarks as integer literals so the planner uses the
+        // blockNumber indexes for the post-refresh delta tail (Fix C). The inlined balance
+        // watermark must reflect the SAME matview snapshot that filtered_mat reads, otherwise a
+        // concurrent REFRESH between the watermark fetch and the main query could double-count
+        // the delta tail. That holds only under a snapshot-stable isolation level:
+        //   - when we own the transaction, we open it REPEATABLE READ below;
+        //   - when one is supplied, the caller MUST have done the same — enforced here so a
+        //     future caller passing READ COMMITTED fails loud rather than silently mis-counting.
+        if (transaction != null
+            && transaction.IsolationLevel is not (IsolationLevel.RepeatableRead
+                or IsolationLevel.Serializable
+                or IsolationLevel.Snapshot))
+        {
+            throw new InvalidOperationException(
+                "ScoreGroupMintLimits live query requires a REPEATABLE READ (or stricter) " +
+                "transaction so the inlined matview watermark stays consistent with filtered_mat; " +
+                $"got {transaction.IsolationLevel}.");
+        }
+
+        var ownTransaction = transaction == null;
+        var liveTransaction = transaction
+            ?? connection.BeginTransaction(IsolationLevel.RepeatableRead);
+        try
+        {
+            var (balanceWatermark, avatarWatermark) =
+                ReadMatviewWatermarks(connection, liveTransaction, commandTimeoutSeconds);
+
+            // Fix D: materialize group_tokens into an ANALYZEd temp table so the planner has the
+            // real row count (~10k for a large score group) for the balance/treasury joins in the
+            // tail. As an inline CTE it estimated 1 row and the treasury_balances/token_supply
+            // joins collapsed into a nested loop (a ~47M-row filter, ~8.5s); with real stats they
+            // become hash joins (~0.6s). The temp table is ON COMMIT DROP and lives in the same
+            // REPEATABLE READ snapshot as the watermark read above — consistent and self-cleaning.
+            var builderSql = LiveGroupTokensSql
+                .Replace("__AVATAR_WM__", avatarWatermark.ToString(CultureInfo.InvariantCulture));
+            using (var dropCommand = new NpgsqlCommand(
+                       $"DROP TABLE IF EXISTS {LiveGroupTokensTempTable}", connection, liveTransaction))
+            {
+                dropCommand.CommandTimeout = commandTimeoutSeconds;
+                dropCommand.ExecuteNonQuery();
+            }
+            using (var buildCommand = new NpgsqlCommand(
+                       $"CREATE TEMP TABLE {LiveGroupTokensTempTable} ON COMMIT DROP AS\n{builderSql}",
+                       connection, liveTransaction))
+            {
+                AddBaseRowParameters(buildCommand);
+                buildCommand.ExecuteNonQuery();
+            }
+            using (var analyzeCommand = new NpgsqlCommand(
+                       $"ANALYZE {LiveGroupTokensTempTable}", connection, liveTransaction))
+            {
+                analyzeCommand.CommandTimeout = commandTimeoutSeconds;
+                analyzeCommand.ExecuteNonQuery();
+            }
+
+            var tailSql = LiveBalancesTailSql
+                .Replace("__BALANCE_WM__", balanceWatermark.ToString(CultureInfo.InvariantCulture));
+            using var tailCommand = new NpgsqlCommand(tailSql, connection, liveTransaction);
+            tailCommand.CommandTimeout = commandTimeoutSeconds;
+            var rows = MaterializeBaseRows(tailCommand);
+
+            if (ownTransaction)
+                liveTransaction.Commit();
+            return rows;
+        }
+        catch
+        {
+            // Preserve the original failure: a Rollback() on an already-broken connection can
+            // itself throw and would otherwise mask the root-cause exception.
+            if (ownTransaction)
+            {
+                try { liveTransaction.Rollback(); }
+                catch { /* ignore — original exception below is the diagnostically useful one */ }
+            }
+
+            throw;
+        }
+        finally
+        {
+            if (ownTransaction)
+                liveTransaction.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Reads the 5-column base-row shape (group, collateral, policy, treasury balance, supply)
+    /// produced by both the historical query and the live balance tail.
+    /// </summary>
+    private static List<ScoreGroupMintLimitBaseRow> MaterializeBaseRows(NpgsqlCommand command)
+    {
+        var rows = new List<ScoreGroupMintLimitBaseRow>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            var group = reader.GetString(0).ToLowerInvariant();
-            var collateralToken = reader.GetString(1).ToLowerInvariant();
-            var policy = reader.GetString(2).ToLowerInvariant();
-            var treasuryBalance = ParseBigInteger(reader.GetString(3));
-            var currentSupply = ParseBigInteger(reader.GetString(4));
             rows.Add(new ScoreGroupMintLimitBaseRow(
-                group,
-                collateralToken,
-                policy,
-                treasuryBalance,
-                currentSupply));
+                reader.GetString(0).ToLowerInvariant(),
+                reader.GetString(1).ToLowerInvariant(),
+                reader.GetString(2).ToLowerInvariant(),
+                ParseBigInteger(reader.GetString(3)),
+                ParseBigInteger(reader.GetString(4))));
         }
 
         return rows;
+    }
+
+    /// <summary>
+    /// Reads the current matview watermarks used to inline <c>__BALANCE_WM__</c> (max
+    /// <c>_maxBlock</c> in <c>M_CrcV2_BalancesByAccountAndToken</c>, the cutoff for the balance
+    /// delta tail) and <c>__AVATAR_WM__</c> (max <c>blockNumber</c> in <c>M_CrcV2_Avatars</c>,
+    /// the cutoff for the avatar-registration delta) into <see cref="LiveGroupTokensSql"/>
+    /// (avatar) and <see cref="LiveBalancesTailSql"/> (balance).
+    /// </summary>
+    private static (long BalanceWatermark, long AvatarWatermark) ReadMatviewWatermarks(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        int commandTimeoutSeconds)
+    {
+        const string sql = """
+            SELECT
+                COALESCE((SELECT MAX("_maxBlock") FROM "M_CrcV2_BalancesByAccountAndToken"), 0)::bigint,
+                COALESCE((SELECT MAX("blockNumber") FROM "M_CrcV2_Avatars"), 0)::bigint
+            """;
+        using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.CommandTimeout = commandTimeoutSeconds;
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return (0L, 0L);
+
+        var balanceWatermark = reader.IsDBNull(0) ? 0L : reader.GetInt64(0);
+        var avatarWatermark = reader.IsDBNull(1) ? 0L : reader.GetInt64(1);
+        return (balanceWatermark, avatarWatermark);
     }
 
     private static Dictionary<(string Policy, string Group, string Collateral), (BigInteger Amount, ulong Day)> ReadHistorical(
