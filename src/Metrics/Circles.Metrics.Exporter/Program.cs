@@ -61,6 +61,10 @@ if (!string.IsNullOrWhiteSpace(repScoreConnectionString))
             builder.Configuration.GetValue<string>("RepScore:GroupId", "score_group")!,
             builder.Configuration.GetValue<double>("RepScore:HighScoreThreshold", 70.0),
             builder.Configuration.GetValue<double>("RepScore:ScoreDropThreshold", 20.0),
+            // Previous-score floor (0-100 scale) below which a new-zero transition is
+            // "fringe" dust churn rather than a "significant" event. 0.1 == prev_score
+            // 0.001, matching the existing zero-rep dust line in LoadMemberAddressBuckets.
+            builder.Configuration.GetValue<double>("RepScore:NewZeroSignificantThreshold", 0.1),
             sp.GetRequiredService<ILogger<RepScoreRepository>>()));
 
     builder.Services.AddHostedService<RepScoreCollectorService>();

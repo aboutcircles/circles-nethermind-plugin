@@ -133,12 +133,20 @@ public class RepScoreCollectorService : BackgroundService
             var anomaly = await _repository.GetAnomalyStatsAsync(ct);
 
             RepScoreMetrics.ScoreDrops24h.Set(anomaly.Drops24h);
-            RepScoreMetrics.NewZeroScore24h.Set(anomaly.NewZero24h);
+            // Set all four tier×cause children every cycle (even at 0) so the
+            // {tier="significant"} series the alert queries always exists.
+            RepScoreMetrics.NewZeroScore24h.WithLabels("significant", "blacklist").Set(anomaly.NewZeroSignificantBlacklist24h);
+            RepScoreMetrics.NewZeroScore24h.WithLabels("significant", "trust_collapse").Set(anomaly.NewZeroSignificantTrust24h);
+            RepScoreMetrics.NewZeroScore24h.WithLabels("fringe", "blacklist").Set(anomaly.NewZeroFringeBlacklist24h);
+            RepScoreMetrics.NewZeroScore24h.WithLabels("fringe", "trust_collapse").Set(anomaly.NewZeroFringeTrust24h);
             RepScoreMetrics.NewMembers24h.Set(anomaly.NewMembers24h);
             RepScoreMetrics.LostMembers24h.Set(anomaly.LostMembers24h);
 
-            if (anomaly.NewZero24h > 0)
-                _logger.LogWarning("{Count} member(s) dropped to rep_score=0 in the last 24h", anomaly.NewZero24h);
+            var newZeroSignificant = anomaly.NewZeroSignificantBlacklist24h + anomaly.NewZeroSignificantTrust24h;
+            if (newZeroSignificant > 0)
+                _logger.LogWarning(
+                    "{Count} member(s) hit a significant rep_score=0 in 24h (blacklist={Blacklist}, trust_collapse={Trust}; prev_score >= {Threshold}/100)",
+                    newZeroSignificant, anomaly.NewZeroSignificantBlacklist24h, anomaly.NewZeroSignificantTrust24h, _repository.NewZeroSignificantThreshold);
 
             if (anomaly.Drops24h > 0)
                 _logger.LogInformation("Rep score drops (>={Threshold}pts) in 24h: {Count}", _repository.ScoreDropThreshold, anomaly.Drops24h);
