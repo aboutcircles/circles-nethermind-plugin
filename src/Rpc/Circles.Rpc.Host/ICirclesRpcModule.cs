@@ -403,6 +403,25 @@ public interface ICirclesRpcModule
     Task<ScoreGroupMintLimitsResponse> GetScoreGroupMintLimits(string groupAddress, string? collateralToken = null);
 
     /// <summary>
+    /// Computes the redeem capacity for a holder converting a score group's gCRC back into its
+    /// backing collateral (source==sink==holder, fromToken=gCRC). Output mirrors
+    /// <see cref="FindPathV2"/> (a <c>MaxFlowResponse</c>) so SDK clients consume it unchanged.
+    ///
+    /// Redeemable per collateral = MIN(holder entitlement budget, ScoreTreasury.balanceOfCollateral(c)),
+    /// where the budget is the holder's demurraged gCRC balance (capped by <paramref name="amount"/>)
+    /// allocated greedily (largest treasury holding first) across collaterals. <c>transfers</c> is one
+    /// collateral leg (treasury → holder) per allocated collateral; <c>maxFlow</c> = total gCRC
+    /// redeemable (== Σ collateral, 1:1). No gCRC "burn leg" is emitted — its on-chain destination
+    /// depends on the not-yet-deployed redeem contract and <c>maxFlow</c> already states the amount.
+    /// The collateral-selection order is a greedy placeholder, finalized once the redeem contract ships;
+    /// the amounts/clamping are final.
+    /// </summary>
+    /// <param name="group">Score group address whose gCRC is being redeemed.</param>
+    /// <param name="holder">Holder/redeemer address (== source == sink).</param>
+    /// <param name="amount">Optional uint256 decimal cap on gCRC to redeem; null/empty redeems up to the full balance.</param>
+    Task<MaxFlowResponse> FindScoreGroupRedeemPath(string group, string holder, string? amount = null);
+
+    /// <summary>
     /// Gets a snapshot of the entire Circles trust network.
     /// This method proxies the request to an external Pathfinder service.
     /// Returns the raw pathfinder response to match production behavior.
