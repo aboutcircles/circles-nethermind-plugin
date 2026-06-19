@@ -17,6 +17,11 @@ public class RepScoreRepository
     public double NewZeroSignificantThreshold => _newZeroSignificantThreshold;
     private readonly ILogger<RepScoreRepository> _logger;
 
+    // Dust floor (0-100 scale) for the computed blacklist-leak count. A blacklisted
+    // avatar should compute to exactly 0 (AA forces it), so anything above dust is a
+    // genuine leak. Matches the 0.1 used by the score-distribution / new-zero logic.
+    private const double ComputedLeakDustScore100 = 0.1;
+
     public RepScoreRepository(
         string repScoreConn,
         string circlesDbConn,
@@ -43,6 +48,7 @@ public class RepScoreRepository
         long Total,
         long MembersTotal,
         long MembersNonzeroScore,
+        long MembersNonzeroComputedScore,
         long Additions24h,
         long Removals24h,
         double LastRefreshAgeSeconds);
@@ -58,6 +64,17 @@ public class RepScoreRepository
                 JOIN blacklist b ON b.address = s.avatar
                 WHERE s.group_id = @groupId
             ),
+            member_blacklist_computed AS (
+                -- Leading indicator: blacklisted members whose COMPUTED (pre-publish)
+                -- score is still above dust. AA forces a blacklisted avatar to 0 at
+                -- compute time, so any row here is a genuine leak ~2h ahead of the
+                -- emitted view. score is the [0,1] float, hence the *100 dust compare.
+                SELECT COUNT(DISTINCT st.avatar) AS members_nonzero_computed
+                FROM rep_score_state st
+                JOIN blacklist b ON b.address = st.avatar
+                WHERE st.group_id = @groupId
+                  AND st.score * 100 > @dust
+            ),
             refresh_stats AS (
                 SELECT
                     COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(completed_at) FILTER (WHERE error IS NULL))), 999999) AS last_refresh_age,
@@ -69,16 +86,18 @@ public class RepScoreRepository
                 (SELECT COUNT(*) FROM blacklist) AS total,
                 mb.members_total,
                 mb.members_nonzero_score,
+                mbc.members_nonzero_computed,
                 rs.additions_24h,
                 rs.removals_24h,
                 rs.last_refresh_age
-            FROM member_blacklist mb, refresh_stats rs
+            FROM member_blacklist mb, member_blacklist_computed mbc, refresh_stats rs
             """;
 
         await using var conn = new NpgsqlConnection(_repScoreConn);
         await conn.OpenAsync(ct);
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("groupId", _groupId);
+        cmd.Parameters.AddWithValue("dust", ComputedLeakDustScore100);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
         if (await reader.ReadAsync(ct))
@@ -89,10 +108,11 @@ public class RepScoreRepository
                 reader.GetInt64(2),
                 reader.GetInt64(3),
                 reader.GetInt64(4),
-                reader.GetDouble(5));
+                reader.GetInt64(5),
+                reader.GetDouble(6));
         }
 
-        return new BlacklistStats(0, 0, 0, 0, 0, 999999);
+        return new BlacklistStats(0, 0, 0, 0, 0, 0, 999999);
     }
 
     // ===========================================

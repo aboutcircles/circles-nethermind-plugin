@@ -18,7 +18,19 @@ public static class RepScoreMetrics
 
     public static readonly Gauge BlacklistMembersNonzeroScore = Prometheus.Metrics
         .CreateGauge("circles_blacklist_members_nonzero_score",
-            "Blacklisted ScoreGroup members whose last-emitted score_uint is still > 0 — alert if > 0");
+            "Blacklisted ScoreGroup members whose last-EMITTED score_uint is still > 0 — alert if > 0. "
+            + "score_uint is round() on the 0-100 scale so the smallest nonzero value (1 ≈ 1%) is already "
+            + "well above dust; this lags the computed view by up to one publish cycle (~2h).");
+
+    // Leading indicator: same condition as above but on the COMPUTED (pre-publish)
+    // rep_score_state instead of the emitted snapshot. AA forces a blacklisted avatar's
+    // score to 0 at compute time, so a blacklisted member with computed score > dust is a
+    // genuine leak visible ~2h BEFORE it would surface in the emitted metric. Float score,
+    // so a real dust threshold (score*100 > dust) applies here (unlike the integer emitted).
+    public static readonly Gauge BlacklistMembersNonzeroComputedScore = Prometheus.Metrics
+        .CreateGauge("circles_blacklist_members_nonzero_computed_score",
+            "Blacklisted ScoreGroup members whose COMPUTED (pre-publish) score is still > dust — "
+            + "leading indicator of unzeroed scores, ~2h ahead of circles_blacklist_members_nonzero_score.");
 
     public static readonly Gauge BlacklistAdditions24h = Prometheus.Metrics
         .CreateGauge("circles_blacklist_additions_24h",
