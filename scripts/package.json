@@ -10,6 +10,6 @@
     "deploy-gateway": "node payment-gateway-test.mjs deploy-gateway"
   },
   "dependencies": {
-    "ethers": "^6.13.0"
+    "ethers": "^6.17.0"
   }
 }
