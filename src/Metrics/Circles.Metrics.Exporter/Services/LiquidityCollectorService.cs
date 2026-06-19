@@ -106,16 +106,22 @@ public class LiquidityCollectorService : BackgroundService
 
     private async Task CollectAllLiquidityMetricsAsync(CancellationToken ct)
     {
-        // Run independent collections in parallel
-        await Task.WhenAll(
-            CollectBalancerVaultMetricsAsync(ct),
-            CollectGroupTreasuryMetricsAsync(ct),
-            CollectAggregateTvlMetricsAsync(ct),
-            CollectDrainDetectionMetricsAsync(ct),
-            CollectGroupTreasuryDrainDetectionAsync(ct),
-            CollectSybilDetectionMetricsAsync(ct),
-            CollectWhaleTransferMetricsAsync(ct)
-        );
+        // Run collections sequentially to cap concurrent DB load. Several of these
+        // are heavy aggregates (TVL SUM, drain/sybil/whale detection over transfer
+        // tables) that postgres parallelizes with worker backends; firing all seven
+        // at once via Task.WhenAll spiked the metrics-exporter to ~14 active backends
+        // on postgres-gnosis and tripped MetricsExporterQueryPileup. At a 300s
+        // interval, serial execution (a few seconds total) is well within budget and
+        // keeps the active-connection count to one query (+ its workers) at a time.
+        // Each sub-collection catches its own exceptions, so a failure still does not
+        // block the others (behaviour preserved from the WhenAll version).
+        await CollectBalancerVaultMetricsAsync(ct);
+        await CollectGroupTreasuryMetricsAsync(ct);
+        await CollectAggregateTvlMetricsAsync(ct);
+        await CollectDrainDetectionMetricsAsync(ct);
+        await CollectGroupTreasuryDrainDetectionAsync(ct);
+        await CollectSybilDetectionMetricsAsync(ct);
+        await CollectWhaleTransferMetricsAsync(ct);
     }
 
     /// <summary>
