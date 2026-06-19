@@ -62,6 +62,7 @@ public class RepScoreCollectorService : BackgroundService
             RepScoreMetrics.BlacklistTotal.Set(stats.Total);
             RepScoreMetrics.BlacklistMembersTotal.Set(stats.MembersTotal);
             RepScoreMetrics.BlacklistMembersNonzeroScore.Set(stats.MembersNonzeroScore);
+            RepScoreMetrics.BlacklistMembersNonzeroComputedScore.Set(stats.MembersNonzeroComputedScore);
             RepScoreMetrics.BlacklistAdditions24h.Set(stats.Additions24h);
             RepScoreMetrics.BlacklistRemovals24h.Set(stats.Removals24h);
             RepScoreMetrics.BlacklistLastRefreshAgeSeconds.Set(stats.LastRefreshAgeSeconds);
@@ -70,6 +71,11 @@ public class RepScoreCollectorService : BackgroundService
                 _logger.LogWarning("Blacklisted ScoreGroup members with nonzero score: {Count}", stats.MembersNonzeroScore);
             else if (stats.MembersTotal > 0)
                 _logger.LogInformation("Blacklisted ScoreGroup members present but all scored 0 (grace period ok): {Count}", stats.MembersTotal);
+
+            // Leading indicator: computed-stage leak. Nonzero here means scores have not
+            // been zeroed at compute time yet — surfaces ~2h before the emitted metric.
+            if (stats.MembersNonzeroComputedScore > 0)
+                _logger.LogWarning("Blacklisted ScoreGroup members with nonzero COMPUTED (pre-publish) score: {Count} — leading leak indicator", stats.MembersNonzeroComputedScore);
 
             _logger.LogDebug("Blacklist: total={Total}, members={Members}, age={Age}s",
                 stats.Total, stats.MembersTotal, (int)stats.LastRefreshAgeSeconds);
