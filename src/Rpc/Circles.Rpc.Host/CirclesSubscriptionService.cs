@@ -16,6 +16,13 @@ public sealed class CirclesSubscriptionService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ConcurrentDictionary<string, WebSocketSubscriber> _subscribers = new();
 
+    // The NOTIFY payload from the indexer uses camelCase property names; match them
+    // case-insensitively so the PascalCase BlockRangePayload record binds correctly.
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public CirclesSubscriptionService(
         ILogger<CirclesSubscriptionService> logger,
         Settings settings,
@@ -81,10 +88,16 @@ public sealed class CirclesSubscriptionService : BackgroundService
             _ = Task.Run(async () => await HandleNotificationAsync(args.Payload, stoppingToken), stoppingToken);
         };
 
-        await using var command = new NpgsqlCommand("LISTEN circles_events", connection);
+        // Listen on the same channel the indexer notifies (Settings.PgNotifyChannel,
+        // default "circles_index_events"). Read it from settings rather than hardcoding so
+        // this listener stays consistent with the indexer's pg_notify and the cache service's
+        // NotificationListenerService, all of which derive the channel from the same setting.
+        // Channel names cannot be parameterized in LISTEN, and the value is a trusted
+        // env/default (not user input), so interpolation is safe here.
+        await using var command = new NpgsqlCommand($"LISTEN {_settings.PgNotifyChannel}", connection);
         await command.ExecuteNonQueryAsync(stoppingToken);
 
-        _logger.LogInformation("Listening on circles_events channel");
+        _logger.LogInformation("Listening on {Channel} channel", _settings.PgNotifyChannel);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -97,7 +110,12 @@ public sealed class CirclesSubscriptionService : BackgroundService
         BlockRangePayload? blockRange;
         try
         {
-            blockRange = JsonSerializer.Deserialize<BlockRangePayload>(payload);
+            // The indexer serializes the payload with camelCase keys
+            // ({"fromBlock":N,"toBlock":M,"timestamp":T} — see StateMachine.NotifyViaPostgres),
+            // so deserialize case-insensitively. Without this, the PascalCase record properties
+            // never bind and every range parses as 0-0, so GetEvents finds nothing and no events
+            // are ever broadcast.
+            blockRange = JsonSerializer.Deserialize<BlockRangePayload>(payload, PayloadJsonOptions);
         }
         catch (Exception ex)
         {
