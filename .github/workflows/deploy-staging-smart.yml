@@ -8,7 +8,7 @@ name: Smart Deploy to Staging
 on:
   push:
     branches:
-      - dev
+      - staging
     paths:
       - "docker/**"
       - "src/**"
