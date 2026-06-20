@@ -16,6 +16,13 @@ public sealed class CirclesSubscriptionService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ConcurrentDictionary<string, WebSocketSubscriber> _subscribers = new();
 
+    // The NOTIFY payload from the indexer uses camelCase property names; match them
+    // case-insensitively so the PascalCase BlockRangePayload record binds correctly.
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public CirclesSubscriptionService(
         ILogger<CirclesSubscriptionService> logger,
         Settings settings,
@@ -103,7 +110,12 @@ public sealed class CirclesSubscriptionService : BackgroundService
         BlockRangePayload? blockRange;
         try
         {
-            blockRange = JsonSerializer.Deserialize<BlockRangePayload>(payload);
+            // The indexer serializes the payload with camelCase keys
+            // ({"fromBlock":N,"toBlock":M,"timestamp":T} — see StateMachine.NotifyViaPostgres),
+            // so deserialize case-insensitively. Without this, the PascalCase record properties
+            // never bind and every range parses as 0-0, so GetEvents finds nothing and no events
+            // are ever broadcast.
+            blockRange = JsonSerializer.Deserialize<BlockRangePayload>(payload, PayloadJsonOptions);
         }
         catch (Exception ex)
         {
