@@ -1,14 +1,15 @@
 name: Code Quality & Security
 
 on:
-  # Only run on PRs and main pushes (not every dev push - too expensive)
+  # Only run on PRs and master pushes (not every dev push - too expensive)
   push:
     branches:
-      - main # Run on main pushes (releases)
+      - master # Run on master pushes (releases)
   pull_request:
     branches:
       - dev
-      - main
+      - staging
+      - master
   schedule:
     # Run weekly security scans (Monday 6am UTC)
     - cron: "0 9 * * 1"
