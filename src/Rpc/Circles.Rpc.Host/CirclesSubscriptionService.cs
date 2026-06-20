@@ -81,10 +81,16 @@ public sealed class CirclesSubscriptionService : BackgroundService
             _ = Task.Run(async () => await HandleNotificationAsync(args.Payload, stoppingToken), stoppingToken);
         };
 
-        await using var command = new NpgsqlCommand("LISTEN circles_events", connection);
+        // Listen on the same channel the indexer notifies (Settings.PgNotifyChannel,
+        // default "circles_index_events"). Read it from settings rather than hardcoding so
+        // this listener stays consistent with the indexer's pg_notify and the cache service's
+        // NotificationListenerService, all of which derive the channel from the same setting.
+        // Channel names cannot be parameterized in LISTEN, and the value is a trusted
+        // env/default (not user input), so interpolation is safe here.
+        await using var command = new NpgsqlCommand($"LISTEN {_settings.PgNotifyChannel}", connection);
         await command.ExecuteNonQueryAsync(stoppingToken);
 
-        _logger.LogInformation("Listening on circles_events channel");
+        _logger.LogInformation("Listening on {Channel} channel", _settings.PgNotifyChannel);
 
         while (!stoppingToken.IsCancellationRequested)
         {
