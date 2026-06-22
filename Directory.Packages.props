@@ -27,7 +27,7 @@
          runtime image by a patch release (currently 1.37.1 vs image 1.37.2); keep both within
          the same minor and bump together once the matching ref-assemblies release exists. -->
     <PackageVersion Include="Nethermind.ReferenceAssemblies" Version="1.37.1" />
-    <PackageVersion Include="Npgsql" Version="10.0.1" />
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
     <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.1" />
     <PackageVersion Include="NUnit" Version="4.6.0" />
     <PackageVersion Include="NUnit.Analyzers" Version="4.13.0" />
