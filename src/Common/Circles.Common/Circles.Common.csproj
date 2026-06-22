@@ -26,6 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" VersionOverride="10.0.9" />
     <PackageReference Include="Nethermind.ReferenceAssemblies" />
     <PackageReference Include="Nethermind.Numerics.Int256" />
   </ItemGroup>
