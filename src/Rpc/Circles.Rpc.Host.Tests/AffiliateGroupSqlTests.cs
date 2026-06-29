@@ -42,15 +42,28 @@ public class AffiliateGroupSqlTests
         WHERE m.avatar = @avatar
         ORDER BY m.""timestamp"" DESC, m.""affiliateGroup""";
 
-    // Mirrors GetAffiliateGroupMembersInternal in CirclesRpcModule.Affiliate.cs.
+    // Mirrors GetAffiliateGroupMembersInternal in CirclesRpcModule.Affiliate.cs: a MATERIALIZED page
+    // (filter + order + limit off the view) enriched with names scoped to that page's avatars. {0} is
+    // the trusted-only join. (LIMIT is a constant here; the method binds @limit.)
     private const string MembersSql = @"
-        SELECT m.avatar, f.payload->>'name' AS avatar_name
-        FROM ""V_CrcV2_AffiliateGroupMembers"" m
-        {0}
-        LEFT JOIN ""V_CrcV2_Avatars"" a ON a.avatar = m.avatar
-        LEFT JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
-        WHERE m.""affiliateGroup"" = @group
-        ORDER BY m.""blockNumber"" DESC, m.""transactionIndex"" DESC, m.""logIndex"" DESC";
+        WITH page AS MATERIALIZED (
+            SELECT m.""blockNumber"", m.""timestamp"", m.""transactionIndex"", m.""logIndex"", m.avatar
+            FROM ""V_CrcV2_AffiliateGroupMembers"" m
+            {0}
+            WHERE m.""affiliateGroup"" = @group
+            ORDER BY m.""blockNumber"" DESC, m.""transactionIndex"" DESC, m.""logIndex"" DESC
+            LIMIT 1000
+        ),
+        names AS (
+            SELECT a.avatar, f.payload->>'name' AS avatar_name
+            FROM ""V_CrcV2_Avatars"" a
+            LEFT JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
+            WHERE a.avatar = ANY(ARRAY(SELECT avatar FROM page))
+        )
+        SELECT p.avatar, n.avatar_name
+        FROM page p
+        LEFT JOIN names n ON n.avatar = p.avatar
+        ORDER BY p.""blockNumber"" DESC, p.""transactionIndex"" DESC, p.""logIndex"" DESC";
 
     private const string TrustJoin =
         @"INNER JOIN ""V_CrcV2_TrustRelations"" t ON t.truster = m.""affiliateGroup"" AND t.trustee = m.avatar";

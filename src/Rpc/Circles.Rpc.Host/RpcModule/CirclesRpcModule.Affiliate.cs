@@ -157,37 +157,49 @@ public partial class CirclesRpcModule
                     ON t.truster = m.""affiliateGroup"" AND t.trustee = m.avatar"
             : "";
 
-        var sql = $@"
-            SELECT
-                m.""blockNumber"",
-                m.""timestamp"",
-                m.""transactionIndex"",
-                m.""logIndex"",
-                m.avatar,
-                f.payload->>'name' AS avatar_name
-            FROM ""V_CrcV2_AffiliateGroupMembers"" m
-            {trustJoin}
-            LEFT JOIN ""V_CrcV2_Avatars"" a ON a.avatar = m.avatar
-            LEFT JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
-            WHERE m.""affiliateGroup"" = @group
-        ";
-
         var parameters = new List<NpgsqlParameter> { new("group", groupAddress) };
 
+        // Keyset cursor predicate lives INSIDE the page CTE so the LIMIT bounds the page before any
+        // name enrichment runs.
+        var cursorPredicate = "";
         if (cursorBlock.HasValue && cursorTxIndex.HasValue && cursorLogIndex.HasValue)
         {
-            sql += @"
+            cursorPredicate = @"
                 AND (m.""blockNumber"", m.""transactionIndex"", m.""logIndex"") < (@cursorBlock, @cursorTxIndex, @cursorLogIndex)";
             parameters.Add(new NpgsqlParameter("cursorBlock", cursorBlock.Value));
             parameters.Add(new NpgsqlParameter("cursorTxIndex", cursorTxIndex.Value));
             parameters.Add(new NpgsqlParameter("cursorLogIndex", cursorLogIndex.Value));
         }
-
-        sql += @"
-            ORDER BY m.""blockNumber"" DESC, m.""transactionIndex"" DESC, m.""logIndex"" DESC
-            LIMIT @limit
-        ";
         parameters.Add(new NpgsqlParameter("limit", limit + 1));
+
+        // Two-stage so name enrichment never drives the query plan:
+        //  1. `page` (MATERIALIZED) selects + orders + LIMITs the bounded page straight off the cheap
+        //     V_CrcV2_AffiliateGroupMembers view (its reset/window logic is ~tens of ms).
+        //  2. `names` resolves avatar names ONLY for that page's avatars, scoped via
+        //     `= ANY(ARRAY(SELECT avatar FROM page))`, so the expensive (un-indexable) V_CrcV2_Avatars
+        //     view is touched once via its PK index instead of being re-scanned per member.
+        // Without this fence the planner mis-estimates the view at 1 row and nested-loops V_CrcV2_Avatars
+        // once per member (measured 37s for a ~2.8k-member group; this rewrite: ~0.2s).
+        var sql = $@"
+            WITH page AS MATERIALIZED (
+                SELECT m.""blockNumber"", m.""timestamp"", m.""transactionIndex"", m.""logIndex"", m.avatar
+                FROM ""V_CrcV2_AffiliateGroupMembers"" m
+                {trustJoin}
+                WHERE m.""affiliateGroup"" = @group{cursorPredicate}
+                ORDER BY m.""blockNumber"" DESC, m.""transactionIndex"" DESC, m.""logIndex"" DESC
+                LIMIT @limit
+            ),
+            names AS (
+                SELECT a.avatar, f.payload->>'name' AS avatar_name
+                FROM ""V_CrcV2_Avatars"" a
+                LEFT JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
+                WHERE a.avatar = ANY(ARRAY(SELECT avatar FROM page))
+            )
+            SELECT p.""blockNumber"", p.""timestamp"", p.""transactionIndex"", p.""logIndex"", p.avatar, n.avatar_name
+            FROM page p
+            LEFT JOIN names n ON n.avatar = p.avatar
+            ORDER BY p.""blockNumber"" DESC, p.""transactionIndex"" DESC, p.""logIndex"" DESC
+        ";
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddRange(parameters.ToArray());
