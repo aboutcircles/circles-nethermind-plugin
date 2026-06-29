@@ -277,6 +277,50 @@ public interface ICirclesRpcModule
     /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
     Task<PagedResponse<GroupMembershipRow>> GetGroupMemberships(string memberAddress, int limit = 50, string? cursor = null);
 
+    // ========================================================================
+    // Multi-Affiliate Groups (community willingness)
+    // ========================================================================
+
+    /// <summary>
+    /// Gets the groups an avatar has signalled on-chain intent to join (the wishlist), each with
+    /// its membership fee, plus the total committed fee percentage. Intent only — reflects the
+    /// MultiAffiliateGroupRegistry, not actual group trust.
+    /// </summary>
+    /// <param name="avatar">Avatar address to query.</param>
+    Task<AffiliateGroupListResponse> GetAffiliateGroupWishlist(string avatar);
+
+    /// <summary>
+    /// Gets the confirmed-membership subset of an avatar's wishlist: groups that currently trust
+    /// the avatar on-chain (the bilateral handshake). Reflects TMS delay.
+    /// </summary>
+    /// <param name="avatar">Avatar address to query.</param>
+    Task<AffiliateGroupListResponse> GetAffiliateGroups(string avatar);
+
+    /// <summary>
+    /// Gets the avatars that have signalled intent to join a group (the members wishlist).
+    /// This is the endpoint the TMS reads to reconcile trust. Cursor-paginated.
+    /// </summary>
+    /// <param name="groupAddress">Group address to query.</param>
+    /// <param name="limit">Maximum number of members to return (default: 100).</param>
+    /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log).</param>
+    Task<PagedResponse<AffiliateGroupMemberRow>> GetAffiliateGroupMembersWishlist(string groupAddress, int limit = 100, string? cursor = null);
+
+    /// <summary>
+    /// Gets the confirmed-membership subset of a group's wishlist: avatars the group actually
+    /// trusts on-chain. Reflects TMS delay. Cursor-paginated.
+    /// </summary>
+    /// <param name="groupAddress">Group address to query.</param>
+    /// <param name="limit">Maximum number of members to return (default: 100).</param>
+    /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log).</param>
+    Task<PagedResponse<AffiliateGroupMemberRow>> GetAffiliateGroupMembers(string groupAddress, int limit = 100, string? cursor = null);
+
+    /// <summary>
+    /// Gets an avatar's total committed fee percentage across all groups it has signalled intent
+    /// to join. Used by GA to block joins over 100% and by the TMS to enforce the cap off-chain.
+    /// </summary>
+    /// <param name="avatar">Avatar address to query.</param>
+    Task<AffiliateFeesPercentageResponse> GetAffiliateGroupFeesPercentage(string avatar);
+
     /// <summary>
     /// Gets transaction history for an avatar with cursor-based pagination.
     /// SDK-compatible method with all circle amount formats calculated.
