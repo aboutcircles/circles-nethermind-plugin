@@ -38,6 +38,10 @@
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
     <ProjectReference
+      Include="..\Circles.Index.CirclesV2.MultiAffiliateGroupRegistry\Circles.Index.CirclesV2.MultiAffiliateGroupRegistry.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference
       Include="..\Circles.Index.CirclesV2.BaseGroupDeployer\Circles.Index.CirclesV2.BaseGroupDeployer.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>

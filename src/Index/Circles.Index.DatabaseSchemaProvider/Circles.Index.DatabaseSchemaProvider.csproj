@@ -29,6 +29,9 @@
       Include="..\Circles.Index.CirclesV2.AffiliateGroupRegistry\Circles.Index.CirclesV2.AffiliateGroupRegistry.csproj">
     </ProjectReference>
     <ProjectReference
+      Include="..\Circles.Index.CirclesV2.MultiAffiliateGroupRegistry\Circles.Index.CirclesV2.MultiAffiliateGroupRegistry.csproj">
+    </ProjectReference>
+    <ProjectReference
       Include="..\Circles.Index.CirclesV2.BaseGroupDeployer\Circles.Index.CirclesV2.BaseGroupDeployer.csproj">
     </ProjectReference>
     <ProjectReference
