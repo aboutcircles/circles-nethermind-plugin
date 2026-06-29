@@ -25,6 +25,13 @@ public static class BusinessKpiMetrics
         .CreateGauge("circles_total_groups",
             "Total number of registered groups");
 
+    // Safety net for the MultiAffiliateGroupRegistry initialize() overwrite edge case.
+    // Counts avatars whose affiliate willingness had events before a later initialize() seed
+    // (V_CrcV2_AffiliateGroupSeedConflicts). Expected 0; alert if > 0.
+    public static readonly Gauge AffiliateSeedConflicts = Prometheus.Metrics
+        .CreateGauge("circles_affiliate_seed_conflicts",
+            "Avatars whose affiliate willingness was overwritten by an initialize() seed (expected 0; >0 = investigate)");
+
     public static readonly Gauge NewUsers = Prometheus.Metrics
         .CreateGauge("circles_new_users",
             "Number of new users in time window",

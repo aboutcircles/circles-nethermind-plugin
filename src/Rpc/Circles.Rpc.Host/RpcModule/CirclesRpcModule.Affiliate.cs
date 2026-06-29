@@ -1,0 +1,293 @@
+using System.Globalization;
+using System.Text.Json.Serialization;
+using Npgsql;
+
+namespace Circles.Rpc.Host;
+
+/// <summary>
+/// Multi-affiliate-group ("community willingness") methods for CirclesRpcModule.
+///
+/// Backed by the MultiAffiliateGroupRegistry contract: an avatar signals on-chain *intent*
+/// to join a group via AffiliateGroupAdded / AffiliateGroupRemoved. The registry stores intent
+/// only — it does NOT enforce the membership-fee cap or any group criteria. Those are computed
+/// off-chain here (fee % from the group profile) and in the TMS (trust reconciliation).
+///
+/// Current membership ("wishlist") is read from the latest-event-wins view
+/// V_CrcV2_AffiliateGroupMembers. The "trusted" subset additionally requires the group to trust
+/// the avatar on-chain (V_CrcV2_TrustRelations: truster=group, trustee=avatar, not expired) —
+/// i.e. the bilateral handshake from GA 2.0. Each group's membership fee is the group profile's
+/// `membershipCriteria.membershipFee` (a percent in [0,100] of daily gCRC mint, enforced by the
+/// profile pinning service), resolved through the ipfs_files jsonb payload and summed into a
+/// totalFeePercentage for the 100%-cap check. The fee is null when a group profile carries no
+/// membershipCriteria; absent fees contribute 0 to the total.
+///
+/// Recompute-per-request (no cache-service path). NOTE: the new V_CrcV2_AffiliateGroupMembers /
+/// V_CrcV2_AffiliateGroupSeedConflicts views have no circles_at_block twins yet, so X-Max-Block-Number
+/// is currently a NO-OP for these endpoints — they always read head. Add twins in the test-env repo to
+/// make them block-pinnable (the trusted-subset join to V_CrcV2_TrustRelations is also head-only here).
+/// </summary>
+public partial class CirclesRpcModule
+{
+    // ------------------------------------------------------------------
+    // Per-avatar endpoints
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns the groups an avatar has signalled intent to join (the wishlist), each with its
+    /// membership fee, plus the total committed fee percentage across all of them.
+    /// </summary>
+    public async Task<AffiliateGroupListResponse> GetAffiliateGroupWishlist(string avatar)
+    {
+        avatar = ValidateAndNormalizeAddress(avatar, nameof(avatar));
+        await using var connection = await CreateConnectionAsync();
+        var rows = await LoadAffiliateGroupRowsAsync(connection, avatar, trustedOnly: false);
+        return new AffiliateGroupListResponse(SumFees(rows), rows.ToArray());
+    }
+
+    /// <summary>
+    /// Returns the confirmed-membership subset of the wishlist: groups that currently trust the
+    /// avatar on-chain. Reflects TMS delay (a wished group only appears once the group trusts the
+    /// avatar). The totalFeePercentage is summed over this confirmed subset.
+    /// </summary>
+    public async Task<AffiliateGroupListResponse> GetAffiliateGroups(string avatar)
+    {
+        avatar = ValidateAndNormalizeAddress(avatar, nameof(avatar));
+        await using var connection = await CreateConnectionAsync();
+        var rows = await LoadAffiliateGroupRowsAsync(connection, avatar, trustedOnly: true);
+        return new AffiliateGroupListResponse(SumFees(rows), rows.ToArray());
+    }
+
+    /// <summary>
+    /// Returns the avatar's current total committed fee percentage across all groups it has
+    /// signalled intent to join (the wishlist/intent set). Used by GA to block joins that would
+    /// exceed 100% and by the TMS to enforce the cap off-chain.
+    /// </summary>
+    public async Task<AffiliateFeesPercentageResponse> GetAffiliateGroupFeesPercentage(string avatar)
+    {
+        avatar = ValidateAndNormalizeAddress(avatar, nameof(avatar));
+        await using var connection = await CreateConnectionAsync();
+        var rows = await LoadAffiliateGroupRowsAsync(connection, avatar, trustedOnly: false);
+        return new AffiliateFeesPercentageResponse(SumFees(rows));
+    }
+
+    // ------------------------------------------------------------------
+    // Per-group endpoints
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns the avatars that have signalled intent to join the given group (the group's
+    /// members wishlist). This is the endpoint the TMS reads to reconcile trust. Paginated.
+    /// </summary>
+    public async Task<PagedResponse<AffiliateGroupMemberRow>> GetAffiliateGroupMembersWishlist(
+        string groupAddress, int limit = 100, string? cursor = null)
+    {
+        groupAddress = ValidateAndNormalizeAddress(groupAddress, nameof(groupAddress));
+        return await GetAffiliateGroupMembersInternal(groupAddress, limit, cursor, trustedOnly: false);
+    }
+
+    /// <summary>
+    /// Returns the confirmed-membership subset of a group's wishlist: avatars the group actually
+    /// trusts on-chain. Reflects TMS delay. Paginated.
+    /// </summary>
+    public async Task<PagedResponse<AffiliateGroupMemberRow>> GetAffiliateGroupMembers(
+        string groupAddress, int limit = 100, string? cursor = null)
+    {
+        groupAddress = ValidateAndNormalizeAddress(groupAddress, nameof(groupAddress));
+        return await GetAffiliateGroupMembersInternal(groupAddress, limit, cursor, trustedOnly: true);
+    }
+
+    // ------------------------------------------------------------------
+    // Internals
+    // ------------------------------------------------------------------
+
+    private async Task<List<AffiliateGroupRow>> LoadAffiliateGroupRowsAsync(
+        NpgsqlConnection connection, string avatar, bool trustedOnly)
+    {
+        // trustedOnly: require the group to currently trust the avatar (bilateral handshake).
+        var trustJoin = trustedOnly
+            ? @"INNER JOIN ""V_CrcV2_TrustRelations"" t
+                    ON t.truster = m.""affiliateGroup"" AND t.trustee = m.avatar"
+            : "";
+
+        var sql = $@"
+            SELECT
+                m.""affiliateGroup"",
+                g.name AS group_name,
+                f.payload->'membershipCriteria'->>'membershipFee' AS membership_fee,
+                m.""timestamp""
+            FROM ""V_CrcV2_AffiliateGroupMembers"" m
+            {trustJoin}
+            LEFT JOIN ""CrcV2_RegisterGroup"" g ON g.""group"" = m.""affiliateGroup""
+            LEFT JOIN ""V_CrcV2_Avatars"" a ON a.avatar = m.""affiliateGroup""
+            LEFT JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
+            WHERE m.avatar = @avatar
+            ORDER BY m.""timestamp"" DESC, m.""affiliateGroup""
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.Add(new NpgsqlParameter("avatar", avatar));
+
+        var rows = new List<AffiliateGroupRow>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var groupAddress = reader.GetString(0);
+            var groupName = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var feeRaw = reader.IsDBNull(2) ? null : reader.GetString(2);
+            var timestamp = reader.GetInt64(3);
+
+            rows.Add(new AffiliateGroupRow(groupName, groupAddress, ParseFee(feeRaw), timestamp));
+        }
+
+        return rows;
+    }
+
+    private async Task<PagedResponse<AffiliateGroupMemberRow>> GetAffiliateGroupMembersInternal(
+        string groupAddress, int limit, string? cursor, bool trustedOnly)
+    {
+        // Clamp to a sane page size — an unbounded LIMIT would be a result-set DoS (matches the
+        // clamping convention used by the other paginated circles_* endpoints).
+        limit = Math.Clamp(limit, 1, 1000);
+
+        await using var connection = await CreateConnectionAsync();
+        var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
+
+        var trustJoin = trustedOnly
+            ? @"INNER JOIN ""V_CrcV2_TrustRelations"" t
+                    ON t.truster = m.""affiliateGroup"" AND t.trustee = m.avatar"
+            : "";
+
+        var sql = $@"
+            SELECT
+                m.""blockNumber"",
+                m.""timestamp"",
+                m.""transactionIndex"",
+                m.""logIndex"",
+                m.avatar,
+                f.payload->>'name' AS avatar_name
+            FROM ""V_CrcV2_AffiliateGroupMembers"" m
+            {trustJoin}
+            LEFT JOIN ""V_CrcV2_Avatars"" a ON a.avatar = m.avatar
+            LEFT JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
+            WHERE m.""affiliateGroup"" = @group
+        ";
+
+        var parameters = new List<NpgsqlParameter> { new("group", groupAddress) };
+
+        if (cursorBlock.HasValue && cursorTxIndex.HasValue && cursorLogIndex.HasValue)
+        {
+            sql += @"
+                AND (m.""blockNumber"", m.""transactionIndex"", m.""logIndex"") < (@cursorBlock, @cursorTxIndex, @cursorLogIndex)";
+            parameters.Add(new NpgsqlParameter("cursorBlock", cursorBlock.Value));
+            parameters.Add(new NpgsqlParameter("cursorTxIndex", cursorTxIndex.Value));
+            parameters.Add(new NpgsqlParameter("cursorLogIndex", cursorLogIndex.Value));
+        }
+
+        sql += @"
+            ORDER BY m.""blockNumber"" DESC, m.""transactionIndex"" DESC, m.""logIndex"" DESC
+            LIMIT @limit
+        ";
+        parameters.Add(new NpgsqlParameter("limit", limit + 1));
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddRange(parameters.ToArray());
+
+        var results = new List<AffiliateGroupMemberRow>();
+        var cursorData = new List<(long blockNumber, int txIndex, int logIndex)>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var blockNumber = reader.GetInt64(0);
+            var timestamp = reader.GetInt64(1);
+            var txIndex = reader.GetInt32(2);
+            var logIndex = reader.GetInt32(3);
+            var avatar = reader.GetString(4);
+            var avatarName = reader.IsDBNull(5) ? null : reader.GetString(5);
+
+            results.Add(new AffiliateGroupMemberRow(avatarName, avatar, timestamp));
+            cursorData.Add((blockNumber, txIndex, logIndex));
+        }
+
+        var hasMore = results.Count > limit;
+        if (hasMore)
+        {
+            results.RemoveAt(results.Count - 1);
+            cursorData.RemoveAt(cursorData.Count - 1);
+        }
+
+        string? nextCursor = null;
+        if (hasMore && cursorData.Count > 0)
+        {
+            var last = cursorData[^1];
+            nextCursor = CursorUtils.EncodeCursor(last.blockNumber, last.txIndex, last.logIndex);
+        }
+
+        return new PagedResponse<AffiliateGroupMemberRow>(results.ToArray(), hasMore, nextCursor);
+    }
+
+    private static decimal SumFees(IEnumerable<AffiliateGroupRow> rows) =>
+        rows.Aggregate(0m, (acc, r) => acc + (r.MembershipFee ?? 0m));
+
+    /// <summary>
+    /// Parses a group-profile <c>membershipFee</c> value defensively.
+    ///
+    /// By the profile schema the field is a JSON number, but a group could publish a malformed profile
+    /// document directly to IPFS. <c>payload->&gt;'membershipFee'</c> yields the value's text form whether
+    /// it was stored as a JSON number (<c>0.1</c>) or a JSON string (<c>"0.1"</c>), so both shapes parse.
+    /// A stray trailing '%' is tolerated. Anything else — non-numeric, negative, or absent — is treated as
+    /// "no fee" (null → contributes 0 to <c>totalFeePercentage</c>), so a single mis-published group can
+    /// never break or under-count the 100%-cap sum.
+    ///
+    /// The value is a percent in [0,100] per the profile pinning service's schema (MIN/MAX 0..100),
+    /// summed verbatim so the totalFeePercentage and the GA 100%-cap check use the same scale.
+    /// </summary>
+    internal static decimal? ParseFee(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var s = raw.Trim();
+        if (s.EndsWith('%')) s = s[..^1].Trim();
+        return decimal.TryParse(s, NumberStyles.Number, CultureInfo.InvariantCulture, out var fee) && fee >= 0m
+            ? fee
+            : null;
+    }
+}
+
+// ========================================================================
+// Affiliate-group DTOs
+// ========================================================================
+
+/// <summary>
+/// One affiliate group in a per-avatar wishlist / confirmed-membership list.
+/// <c>membershipFee</c> is the group profile's membershipCriteria.membershipFee — a percent in
+/// [0,100] of daily gCRC mint — or null when the group sets no membership criteria.
+/// </summary>
+public record AffiliateGroupRow(
+    [property: JsonPropertyName("groupName")] string? GroupName,
+    [property: JsonPropertyName("groupAddress")] string GroupAddress,
+    [property: JsonPropertyName("membershipFee")] decimal? MembershipFee,
+    [property: JsonPropertyName("timestamp")] long Timestamp
+);
+
+/// <summary>
+/// Per-avatar wishlist / confirmed-membership response: the groups plus the summed total fee.
+/// </summary>
+public record AffiliateGroupListResponse(
+    [property: JsonPropertyName("totalFeePercentage")] decimal TotalFeePercentage,
+    [property: JsonPropertyName("groups")] AffiliateGroupRow[] Groups
+);
+
+/// <summary>
+/// One member in a per-group members wishlist / confirmed-members list.
+/// </summary>
+public record AffiliateGroupMemberRow(
+    [property: JsonPropertyName("avatarName")] string? AvatarName,
+    [property: JsonPropertyName("avatarAddress")] string AvatarAddress,
+    [property: JsonPropertyName("timestamp")] long Timestamp
+);
+
+/// <summary>
+/// Response for circles_getAffiliateGroupFeesPercentage: the avatar's total committed fee %.
+/// </summary>
+public record AffiliateFeesPercentageResponse(
+    [property: JsonPropertyName("totalFeePercentage")] decimal TotalFeePercentage
+);

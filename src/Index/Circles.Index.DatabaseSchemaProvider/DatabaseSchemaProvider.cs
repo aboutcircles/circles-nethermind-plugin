@@ -19,6 +19,7 @@ public static class Schemas
         new CirclesV1.NameRegistry.DatabaseSchema(),
         new CirclesV2.DatabaseSchema(),
         new CirclesV2.AffiliateGroupRegistry.DatabaseSchema(),
+        new CirclesV2.MultiAffiliateGroupRegistry.DatabaseSchema(),
         new CirclesV2.BaseGroupDeployer.DatabaseSchema(),
         new CirclesV2.CMGroupDeployer.DatabaseSchema(),
         new CirclesV2.InvitationEscrow.DatabaseSchema(),
