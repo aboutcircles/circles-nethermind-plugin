@@ -133,35 +133,37 @@ public class Phase3RegressionTests
     // ================================================================
 
     [Test]
-    public void BalancesByAccountAndToken_HasMaterializedView()
+    public void BalancesByAccountAndToken_HasPreAggregatedTable()
     {
         var sql = _viewSql["V_CrcV2_BalancesByAccountAndToken"];
-        Assert.That(sql, Does.Contain("CREATE MATERIALIZED VIEW").IgnoreCase,
-            "Must create a materialized view M_CrcV2_BalancesByAccountAndToken for pre-aggregated balances.");
+        Assert.That(sql, Does.Contain("CREATE TABLE").IgnoreCase,
+            "Must create the pre-aggregated table M_CrcV2_BalancesByAccountAndToken — it is " +
+            "maintained by the pathfinder's incremental upsert (a matview cannot be DML'd).");
     }
 
     [Test]
-    public void BalancesByAccountAndToken_MaterializedViewHasUniqueIndex()
+    public void BalancesByAccountAndToken_TableHasUniqueIndex()
     {
         var sql = _viewSql["V_CrcV2_BalancesByAccountAndToken"];
         Assert.That(sql, Does.Contain("CREATE UNIQUE INDEX").IgnoreCase,
-            "Materialized view needs a UNIQUE INDEX for REFRESH MATERIALIZED VIEW CONCURRENTLY.");
+            "The table needs a UNIQUE INDEX on (account, tokenId, tokenAddress) for the " +
+            "incremental ON CONFLICT upsert.");
     }
 
     [Test]
-    public void BalancesByAccountAndToken_MaterializedViewHasNoNow()
+    public void BalancesByAccountAndToken_PreAggregatedTableHasNoNow()
     {
         var sql = _viewSql["V_CrcV2_BalancesByAccountAndToken"];
-        // Extract only the MATERIALIZED VIEW definition (before the regular view)
-        var matViewStart = sql.IndexOf("CREATE MATERIALIZED VIEW", StringComparison.OrdinalIgnoreCase);
-        var regularViewStart = sql.IndexOf("create or replace view", matViewStart + 1, StringComparison.OrdinalIgnoreCase);
-        var matViewSql = sql.Substring(matViewStart, regularViewStart - matViewStart);
+        // Extract only the M_ table definition (before the regular V_ view)
+        var tableStart = sql.IndexOf("CREATE TABLE", StringComparison.OrdinalIgnoreCase);
+        var regularViewStart = sql.IndexOf("create or replace view", tableStart + 1, StringComparison.OrdinalIgnoreCase);
+        var tableSql = sql.Substring(tableStart, regularViewStart - tableStart);
 
-        Assert.That(matViewSql, Does.Not.Contain("NOW()").IgnoreCase,
-            "Materialized view must not use NOW() — demurrage depends on current time " +
-            "and would be stale after materialization.");
-        Assert.That(matViewSql, Does.Not.Contain("crc_demurrage").IgnoreCase,
-            "Materialized view must not call crc_demurrage — compute at read time.");
+        Assert.That(tableSql, Does.Not.Contain("NOW()").IgnoreCase,
+            "The pre-aggregated table must not use NOW() — demurrage depends on current time " +
+            "and would be stale once stored.");
+        Assert.That(tableSql, Does.Not.Contain("crc_demurrage").IgnoreCase,
+            "The pre-aggregated table must not call crc_demurrage — compute at read time in V_.");
     }
 
     [Test]

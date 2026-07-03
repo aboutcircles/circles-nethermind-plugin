@@ -225,4 +225,29 @@ internal static class GraphUpdateMetrics
         "circles_matview_last_refresh_block",
         "Block number of last materialized view refresh",
         new GaugeConfiguration { LabelNames = new[] { "tier" } });
+
+    // ─── Incremental balance matview refresh metrics ─────────────────────
+
+    /// <summary>
+    /// Rows upserted or deleted during an incremental balance matview refresh.
+    /// Label "op": "upsert" or "delete".
+    /// </summary>
+    public static readonly Counter BalanceMatViewIncrementalRows = Metrics.CreateCounter(
+        "circles_matview_balance_incremental_rows_total",
+        "Rows upserted or deleted during incremental M_CrcV2_BalancesByAccountAndToken refresh",
+        new CounterConfiguration { LabelNames = new[] { "op" } });
+
+    /// <summary>
+    /// How many blocks the incremental refresh covered (watermark advance).
+    /// </summary>
+    public static readonly Gauge BalanceMatViewWatermarkAdvance = Metrics.CreateGauge(
+        "circles_matview_balance_watermark_advance_blocks",
+        "Blocks advanced by last incremental balance matview refresh");
+
+    /// <summary>
+    /// Current watermark (_maxBlock) of M_CrcV2_BalancesByAccountAndToken.
+    /// </summary>
+    public static readonly Gauge BalanceMatViewWatermark = Metrics.CreateGauge(
+        "circles_matview_balance_watermark_block",
+        "Current _maxBlock watermark of M_CrcV2_BalancesByAccountAndToken");
 }

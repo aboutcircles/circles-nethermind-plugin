@@ -40,28 +40,42 @@ public class MaterializedViewDeltaTests
     // ================================================================
 
     [Test]
-    public void Balances_MatviewHas_MaxBlockColumn()
+    public void Balances_TableHas_MaxBlockColumn()
     {
         var sql = _viewSql["V_CrcV2_BalancesByAccountAndToken"];
-        var matViewSql = ExtractMatviewSql(sql);
-        Assert.That(matViewSql, Does.Contain("\"_maxBlock\""),
-            "M_CrcV2_BalancesByAccountAndToken must have _maxBlock column for watermark.");
-        Assert.That(matViewSql, Does.Contain("max(\"blockNumber\")").IgnoreCase,
-            "Matview must compute MAX(blockNumber) per group for watermark.");
+        var tableSql = ExtractMatviewSql(sql);
+        Assert.That(tableSql, Does.Contain("\"_maxBlock\""),
+            "M_CrcV2_BalancesByAccountAndToken must have _maxBlock column for the watermark.");
+        Assert.That(tableSql, Does.Contain("max(\"blockNumber\")").IgnoreCase,
+            "Bootstrap populate must compute MAX(blockNumber) per group for the watermark.");
     }
 
     [Test]
-    public void Balances_MigrationGuard_DropsMatviewWithout_MaxBlock()
+    public void Balances_IsATableNotAMatview()
+    {
+        // The balances object is maintained by incremental INSERT/ON CONFLICT/DELETE, which
+        // PostgreSQL forbids on a materialized view — so it must be a plain TABLE.
+        var sql = _viewSql["V_CrcV2_BalancesByAccountAndToken"];
+        var tableSql = ExtractMatviewSql(sql);
+        Assert.That(tableSql, Does.Contain("CREATE TABLE").IgnoreCase,
+            "M_CrcV2_BalancesByAccountAndToken must be a CREATE TABLE (it is written by the " +
+            "pathfinder's incremental upsert; a materialized view cannot be DML'd).");
+        Assert.That(tableSql, Does.Not.Contain("CREATE MATERIALIZED VIEW").IgnoreCase,
+            "The balances object must NOT be a materialized view.");
+    }
+
+    [Test]
+    public void Balances_MigrationGuard_DropsOldObject()
     {
         var sql = _viewSql["V_CrcV2_BalancesByAccountAndToken"];
-        Assert.That(sql, Does.Contain("pg_matviews"),
-            "Must check pg_matviews to detect existing matview.");
-        Assert.That(sql, Does.Contain("pg_attribute"),
-            "Must check pg_attribute for _maxBlock column existence.");
+        Assert.That(sql, Does.Contain("relkind"),
+            "Migration guard must use pg_class.relkind to detect the old object's kind.");
         Assert.That(sql, Does.Contain("DROP MATERIALIZED VIEW").IgnoreCase,
-            "Must DROP matview if _maxBlock column is missing (migration).");
+            "Must DROP the old materialized view when upgrading it to a table.");
+        Assert.That(sql, Does.Contain("DROP TABLE").IgnoreCase,
+            "Must DROP an existing table that is missing _maxBlock (schema upgrade).");
         Assert.That(sql, Does.Contain("_maxBlock").IgnoreCase,
-            "Migration guard must reference _maxBlock column.");
+            "Migration guard must reference the _maxBlock column.");
     }
 
     [Test]
@@ -605,19 +619,83 @@ public class MaterializedViewDeltaTests
     }
 
     // ================================================================
+    // Incremental upsert path — structural checks
+    // ================================================================
+
+    /// <summary>
+    /// The incremental upsert in NetworkStateUpdaterService.IncrementalRefreshBalancesMatView()
+    /// relies on the unique index (account, tokenId, tokenAddress) to support ON CONFLICT DO UPDATE.
+    /// This test ensures that index still exists after any SQL changes.
+    /// </summary>
+    [Test]
+    public void Balances_MatviewHas_UniqueIndexForOnConflict()
+    {
+        var sql = _viewSql["V_CrcV2_BalancesByAccountAndToken"];
+        Assert.That(sql, Does.Contain("CREATE UNIQUE INDEX").IgnoreCase,
+            "M_CrcV2_BalancesByAccountAndToken must have a UNIQUE INDEX — " +
+            "the incremental upsert path uses ON CONFLICT (account, tokenId, tokenAddress) DO UPDATE " +
+            "and requires this constraint to be present.");
+        Assert.That(sql, Does.Contain("account, \"tokenId\", \"tokenAddress\"").IgnoreCase,
+            "Unique index must cover (account, tokenId, tokenAddress) — exactly the columns " +
+            "used in the incremental ON CONFLICT clause.");
+    }
+
+    /// <summary>
+    /// The incremental delta query filters by blockNumber &gt; watermark and relies on the
+    /// primary key (blockNumber, transactionIndex, logIndex) on both transfer tables for
+    /// fast index range scans.  This test documents that assumption and verifies the
+    /// transfer tables do include blockNumber in the matview definition.
+    /// </summary>
+    [Test]
+    public void Balances_IncrementalDelta_BlockNumberIndexAssumptionHolds()
+    {
+        // The PK on CrcV2_TransferSingle / CrcV2_TransferBatch is (blockNumber, transactionIndex, logIndex).
+        // Since blockNumber is the leading column, a range scan WHERE blockNumber > @watermark is
+        // served by the PK index without a separate standalone index.
+        //
+        // This test verifies that the SQL file references blockNumber in the matview definition.
+        // If blockNumber ever disappeared from the matview, the incremental path would also be broken.
+        var sql = _viewSql["V_CrcV2_BalancesByAccountAndToken"];
+        Assert.That(sql, Does.Contain("\"blockNumber\"").IgnoreCase,
+            "Matview definition must reference blockNumber — the incremental upsert reads " +
+            "blockNumber > watermark from CrcV2_TransferSingle / CrcV2_TransferBatch, " +
+            "which uses the tables' PK index (blockNumber, transactionIndex, logIndex).");
+    }
+
+    /// <summary>
+    /// Verifies the incremental upsert's zero-balance handling contract: balance &gt; 0
+    /// is the matview's own inclusion criterion, and the V_ view independently re-filters.
+    /// A row with totalBalance &lt;= 0 must be excluded; otherwise stale zeros corrupt future deltas.
+    /// </summary>
+    [Test]
+    public void Balances_TableFiltersZeroBalanceAtDefinition()
+    {
+        var sql = _viewSql["V_CrcV2_BalancesByAccountAndToken"];
+        var tableSql = ExtractMatviewSql(sql);
+        Assert.That(tableSql, Does.Contain("balance > 0").IgnoreCase,
+            "Table bootstrap must filter balance > 0 — this is the source-of-truth criterion " +
+            "that the incremental upsert mirrors (rows > 0 upserted, rows <= 0 deleted). Stale " +
+            "zero rows would corrupt future deltas (existing balance would be added to 0).");
+    }
+
+    // ================================================================
     // Helpers
     // ================================================================
 
     /// <summary>
-    /// Extracts the materialized view portion of a combined SQL file.
+    /// Extracts the M_ object definition of a combined SQL file — the balances object is now a
+    /// CREATE TABLE (maintained incrementally); other M_ files are still CREATE MATERIALIZED VIEW.
+    /// Returns the span from that CREATE up to the regular V_ view creation.
     /// </summary>
     private static string ExtractMatviewSql(string sql)
     {
+        var tableStart = sql.IndexOf("CREATE TABLE", StringComparison.OrdinalIgnoreCase);
         var matViewStart = sql.IndexOf("CREATE MATERIALIZED VIEW", StringComparison.OrdinalIgnoreCase);
-        if (matViewStart < 0) return string.Empty;
-        var regularViewStart = sql.IndexOf("CREATE OR REPLACE VIEW", matViewStart + 1, StringComparison.OrdinalIgnoreCase);
-        if (regularViewStart < 0) return sql.Substring(matViewStart);
-        return sql.Substring(matViewStart, regularViewStart - matViewStart);
+        var start = new[] { tableStart, matViewStart }.Where(i => i >= 0).DefaultIfEmpty(-1).Min();
+        if (start < 0) return string.Empty;
+        var regularViewStart = sql.IndexOf("CREATE OR REPLACE VIEW", start + 1, StringComparison.OrdinalIgnoreCase);
+        if (regularViewStart < 0) return sql.Substring(start);
+        return sql.Substring(start, regularViewStart - start);
     }
 
     /// <summary>
