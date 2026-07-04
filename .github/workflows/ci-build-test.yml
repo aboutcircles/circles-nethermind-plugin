@@ -94,7 +94,7 @@ jobs:
 
       - name: Run snapshot tests
         env:
-          TEST_ENV_URL: https://staging.circlesubi.network/test-env
+          TEST_ENV_URL: https://rpc.staging.aboutcircles.com/test-env
         run: |
           # -m:1 serializes test assemblies: the staging test-env enforces a global
           # 10-session cap, and parallel assemblies (each holding sessions for shared
@@ -139,7 +139,7 @@ jobs:
 
       - name: Run regression tests
         env:
-          TEST_ENV_URL: https://staging.circlesubi.network/test-env
+          TEST_ENV_URL: https://rpc.staging.aboutcircles.com/test-env
         run: |
           # -m:1: see snapshot-tests — bounded by the test-env global session cap.
           dotnet test --no-build -c Release -m:1 \
