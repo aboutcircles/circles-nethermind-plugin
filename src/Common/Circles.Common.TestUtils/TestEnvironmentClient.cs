@@ -182,7 +182,12 @@ public class TestEnvironmentClient : IAsyncDisposable
     public static async Task<long> GetCurrentBlockAsync(string? testEnvUrl = null)
     {
         var baseUrl = (testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/') + "/";
-        using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        // 5-minute timeout (matches the instance _httpClient): under load the test-env is
+        // busy forking Anvil for other sessions, so even these lightweight health /
+        // block-exists probes can exceed HttpClient's 100s default. A 100s ceiling here
+        // surfaces as "Test environment not available: HttpClient.Timeout of 100 seconds"
+        // in scenario setup even though the env is healthy — just momentarily slow.
+        using var client = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromMinutes(5) };
 
         var response = await GetWithTransientRetryAsync<BlockInfo>(client, "api/v1/blocks/current");
         return response?.BlockNumber ?? 0;
@@ -194,7 +199,12 @@ public class TestEnvironmentClient : IAsyncDisposable
     public static async Task<bool> BlockExistsAsync(long blockNumber, string? testEnvUrl = null)
     {
         var baseUrl = (testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/') + "/";
-        using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        // 5-minute timeout (matches the instance _httpClient): under load the test-env is
+        // busy forking Anvil for other sessions, so even these lightweight health /
+        // block-exists probes can exceed HttpClient's 100s default. A 100s ceiling here
+        // surfaces as "Test environment not available: HttpClient.Timeout of 100 seconds"
+        // in scenario setup even though the env is healthy — just momentarily slow.
+        using var client = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromMinutes(5) };
 
         var response = await GetWithTransientRetryAsync<BlockExistsInfo>(
             client, $"api/v1/blocks/{blockNumber}/exists");
@@ -207,7 +217,12 @@ public class TestEnvironmentClient : IAsyncDisposable
     public static async Task<HealthResponse?> GetHealthAsync(string? testEnvUrl = null)
     {
         var baseUrl = (testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/') + "/";
-        using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        // 5-minute timeout (matches the instance _httpClient): under load the test-env is
+        // busy forking Anvil for other sessions, so even these lightweight health /
+        // block-exists probes can exceed HttpClient's 100s default. A 100s ceiling here
+        // surfaces as "Test environment not available: HttpClient.Timeout of 100 seconds"
+        // in scenario setup even though the env is healthy — just momentarily slow.
+        using var client = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromMinutes(5) };
 
         return await GetWithTransientRetryAsync<HealthResponse>(client, "health");
     }
