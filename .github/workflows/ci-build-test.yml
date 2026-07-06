@@ -74,6 +74,14 @@ jobs:
     runs-on: ubuntu-latest
     # Now runs on PRs too - test-env returns sanitized errors (no credential exposure)
     needs: build-and-test
+    # Serialize the session-consuming jobs across ALL workflow runs (any branch/PR).
+    # regression-tests shares this group, so at most one session-consuming job runs
+    # at a time fleet-wide — no two concurrent runs can starve the test-env's global
+    # 10-session cap (which manifests as 100s HttpClient timeouts in OneTimeSetUp).
+    # cancel-in-progress:false => queue rather than kill an in-flight run.
+    concurrency:
+      group: circles-test-env-session-pool
+      cancel-in-progress: false
 
     steps:
       - name: Check out code
@@ -119,6 +127,11 @@ jobs:
     # Chained after snapshot-tests (not just build-and-test) so the two jobs never
     # compete for the test-env's global 10-session cap.
     needs: [build-and-test, snapshot-tests]
+    # Same concurrency group as snapshot-tests: serializes session-consuming jobs
+    # across all runs (see snapshot-tests for rationale).
+    concurrency:
+      group: circles-test-env-session-pool
+      cancel-in-progress: false
 
     steps:
       - name: Check out code
@@ -168,6 +181,12 @@ jobs:
     # hostage to them. Still requires a successful build and a non-cancelled run.
     needs: [build-and-test, snapshot-tests, regression-tests]
     if: ${{ !cancelled() && needs.build-and-test.result == 'success' }}
+    # Same fleet-wide concurrency group as snapshot-tests/regression-tests: this job also
+    # consumes test-env sessions, so it must serialize with them across all runs to avoid
+    # starving the global 10-session cap.
+    concurrency:
+      group: circles-test-env-session-pool
+      cancel-in-progress: false
 
     steps:
       - name: Check out code
