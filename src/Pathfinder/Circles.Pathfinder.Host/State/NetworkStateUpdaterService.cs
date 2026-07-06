@@ -983,7 +983,7 @@ SELECT
                 if (reader.Read())
                 {
                     rowsUpserted = reader.GetInt64(0);
-                    rowsDeleted  = reader.GetInt64(1);
+                    rowsDeleted = reader.GetInt64(1);
                 }
             }
 
