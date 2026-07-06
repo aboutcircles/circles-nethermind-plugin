@@ -161,9 +161,13 @@ jobs:
   # the previously un-gated mint-along-path suite.
   anvil-regression:
     runs-on: ubuntu-latest
-    # Chained after the other test-env jobs (not just build-and-test) so the three
-    # jobs never compete for the test-env's global 10-session cap.
+    # Chained after the other test-env jobs so the four never compete for the test-env's
+    # global 10-session cap. `if` runs it regardless of whether snapshot-tests /
+    # regression-tests passed — those are flaky against the shared test-env (HttpClient
+    # timeouts under load), and this lightweight single-session gate must not be held
+    # hostage to them. Still requires a successful build and a non-cancelled run.
     needs: [build-and-test, snapshot-tests, regression-tests]
+    if: ${{ !cancelled() && needs.build-and-test.result == 'success' }}
 
     steps:
       - name: Check out code
