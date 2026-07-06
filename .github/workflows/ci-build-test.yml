@@ -154,3 +154,48 @@ jobs:
           name: regression-test-results
           path: TestResults/regression/
           retention-days: 30
+
+  # Anvil regression tests: execute pathfinder output on an Anvil fork of the pinned
+  # block and assert it does not revert (mint-along-path E2E). Complements the
+  # snapshot-tests differential check (ScenarioE2ETests, Category=Snapshot) by gating
+  # the previously un-gated mint-along-path suite.
+  anvil-regression:
+    runs-on: ubuntu-latest
+    # Chained after the other test-env jobs (not just build-and-test) so the three
+    # jobs never compete for the test-env's global 10-session cap.
+    needs: [build-and-test, snapshot-tests, regression-tests]
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build solution
+        run: dotnet build -c Release --no-restore
+
+      - name: Run Anvil regression tests
+        env:
+          TEST_ENV_URL: https://rpc.staging.aboutcircles.com/test-env
+        run: |
+          # -m:1: see snapshot-tests — bounded by the test-env global session cap.
+          dotnet test --no-build -c Release -m:1 \
+            --filter "Category=AnvilRegression" \
+            --logger "trx;LogFileName=anvil-regression-tests.trx" \
+            --results-directory TestResults/anvil-regression
+
+      - name: Upload Anvil regression test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: anvil-regression-test-results
+          path: TestResults/anvil-regression/
+          retention-days: 30
