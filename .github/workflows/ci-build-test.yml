@@ -181,6 +181,12 @@ jobs:
     # hostage to them. Still requires a successful build and a non-cancelled run.
     needs: [build-and-test, snapshot-tests, regression-tests]
     if: ${{ !cancelled() && needs.build-and-test.result == 'success' }}
+    # Same fleet-wide concurrency group as snapshot-tests/regression-tests: this job also
+    # consumes test-env sessions, so it must serialize with them across all runs to avoid
+    # starving the global 10-session cap.
+    concurrency:
+      group: circles-test-env-session-pool
+      cancel-in-progress: false
 
     steps:
       - name: Check out code
