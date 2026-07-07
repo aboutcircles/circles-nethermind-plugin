@@ -72,6 +72,13 @@ jobs:
   # These tests validate database queries and business logic against real blockchain state
   snapshot-tests:
     runs-on: ubuntu-latest
+    # Bound the blast radius. These session-consuming jobs share the
+    # circles-test-env-session-pool concurrency group with cancel-in-progress:false, so a
+    # single hung run (slow near-head queries + the deliberately-generous 5m probe timeouts)
+    # would otherwise hold the group for GitHub's 6h default and queue every other run behind
+    # it fleet-wide — the "chronically red for days" cascade. A healthy run finishes well
+    # inside this budget; anything longer is a hang and should fail fast to free the group.
+    timeout-minutes: 30
     # Now runs on PRs too - test-env returns sanitized errors (no credential exposure)
     needs: build-and-test
     # Serialize the session-consuming jobs across ALL workflow runs (any branch/PR).
@@ -123,6 +130,9 @@ jobs:
   # Regression tests specifically for known bug scenarios
   regression-tests:
     runs-on: ubuntu-latest
+    # Bound the blast radius — see snapshot-tests. A hang must not hold the shared
+    # session-pool concurrency group for GitHub's 6h default.
+    timeout-minutes: 25
     # Now runs on PRs too - test-env returns sanitized errors (no credential exposure)
     # Chained after snapshot-tests (not just build-and-test) so the two jobs never
     # compete for the test-env's global 10-session cap.
@@ -174,6 +184,9 @@ jobs:
   # the previously un-gated mint-along-path suite.
   anvil-regression:
     runs-on: ubuntu-latest
+    # Bound the blast radius — see snapshot-tests. This is the lightweight single-session gate
+    # (4 tests, ~18s); a run exceeding this budget is a hang, not slow work.
+    timeout-minutes: 20
     # Chained after the other test-env jobs so the four never compete for the test-env's
     # global 10-session cap. `if` runs it regardless of whether snapshot-tests /
     # regression-tests passed — those are flaky against the shared test-env (HttpClient

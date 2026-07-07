@@ -16,6 +16,7 @@ If you're developing the plugin, building packages, or running services locally,
 - **[Metrics Exporter](src/Metrics/Circles.Metrics.Exporter/README.md)** - Prometheus metrics exporter
 - **[Configuration Reference](docs/configuration.md)** - Every environment variable across all five services
 - **[Score-group mint along path](docs/score-group-mint-along-path.md)** - Score-group routing, cache graph fields, and mint-limit capacity
+- **[Test Environment & Simulation Boundaries](docs/test-environment-simulation.md)** - Block-pinned time-travel: what's pinned, routing-on-pinned-Postgres-vs-Anvil, `simulated*` for hypotheticals, pre-deploy gate
 - **[Reindexing Guide](docs/partial-table-reindexing.md)** - Full and selected-table reindex/backfill procedures
 
 Quick commands for developers:
