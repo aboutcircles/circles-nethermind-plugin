@@ -54,6 +54,7 @@ public static class RpcMethodClassifier
         "circles_getAffiliateGroupFeesPercentage",
         "circles_getTransactionHistory", "circles_getTransferData", "circles_getTokenHolders",
         "circlesV2_findPath",
+        "circles_getScoreGroupMintLimits", "circles_findScoreGroupRedeemPath",
         "circles_getBlockByTimestamp",
         "circles_events", "circles_events_paginated",
         "circles_health", "circles_tables", "circles_query", "circles_paginated_query",

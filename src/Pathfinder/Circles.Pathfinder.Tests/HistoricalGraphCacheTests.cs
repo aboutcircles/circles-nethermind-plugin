@@ -1,7 +1,11 @@
+using Circles.Common;
+using Circles.Common.Dto;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.State;
+using Circles.Pathfinder.Tests.Helpers;
 using Microsoft.Extensions.Logging.Abstractions;
+using Nethermind.Int256;
 using Npgsql;
 
 namespace Circles.Pathfinder.Tests;
@@ -133,5 +137,74 @@ public class HistoricalGraphCacheTests
         }
 
         Assert.That(cache.CachedBlockNumbers, Is.EquivalentTo(new[] { 7L, 8L }));
+    }
+
+    /// <summary>
+    /// Guards the wiring by which "what-if" overlays reach the HISTORICAL request path:
+    /// FindPathHandler.ExecuteHistorical obtains the factory from the historical cache and
+    /// then calls CreateCapacityGraph(request) (FindPathHandler.cs — GetOrLoadFactoryAsync
+    /// followed by CreateCapacityGraph). This test reproduces those two steps and asserts a
+    /// simulated overlay changes the outcome, so a refactor that dropped `request` in the
+    /// historical branch (silently ignoring overlays at a pinned block) would fail here.
+    ///
+    /// NOTE: LoadGraphOverride substitutes an in-memory factory, so this does NOT exercise
+    /// the block-pinned SQL loader (HistoricalLoadGraph / blockNumber filtering) — that is
+    /// covered by the staging-backed scenario suites. Scope here is strictly the overlay
+    /// wiring, mirroring the other tests in this fixture.
+    /// </summary>
+    [Test]
+    public async Task HistoricalFactory_ThreadsSimulatedOverlayThroughRequest()
+    {
+        const string router = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+        int Id(int i) => AddressIdPool.IdOf($"0x{i:X40}");
+        string Addr(int i) => AddressIdPool.StringOf(Id(i));
+
+        Environment.SetEnvironmentVariable(MaxEntriesVar, "3");
+        var dataSource = NpgsqlDataSource.Create(
+            "Host=localhost;Database=never_connected;Username=never;Password=never");
+
+        // The graph the (overridden) historical factory returns: sink trusts source and the
+        // token, but source holds nothing → no path from this state alone.
+        var mock = new MockLoadGraph();
+        mock.AddTrust(Id(2), Id(1)); // sink trusts source
+        mock.AddTrust(Id(2), Id(10)); // sink trusts token
+
+        var cache = new HistoricalGraphCache(dataSource, new Host.Settings(),
+            NullLogger<HistoricalGraphCache>.Instance)
+        {
+            LoadGraphOverride = _ => new GraphFactory(router, mock)
+        };
+
+        // ExecuteHistorical step 1: factory from the historical cache.
+        var factory = await cache.GetOrLoadFactoryAsync(43_193_632);
+        var target = UInt256.Parse("1000000000000000000");
+
+        // Without overlay → no path at the pinned block.
+        var baseRequest = new FlowRequest { Source = Addr(1), Sink = Addr(2) };
+        var baseCg = factory.CreateCapacityGraph(
+            factory.V2BalanceGraph(), GraphFactory.BuildTrustLookup(factory.V2TrustGraph()), baseRequest);
+        var baseResult = new V2Pathfinder().ComputeMaxFlowWithPath(baseCg, baseRequest, target);
+        Assert.That(
+            baseResult.Transfers is null || baseResult.Transfers.Count == 0
+            || string.IsNullOrEmpty(baseResult.MaxFlow) || UInt256.Parse(baseResult.MaxFlow!) == UInt256.Zero,
+            Is.True, "Block-pinned state alone must yield no path");
+
+        // ExecuteHistorical step 2: CreateCapacityGraph(request-with-overlay) on the same
+        // historical factory → the overlay must compose with the pinned graph.
+        var overlayRequest = new FlowRequest
+        {
+            Source = Addr(1),
+            Sink = Addr(2),
+            SimulatedBalances = new List<SimulatedBalance>
+            {
+                new() { Holder = Addr(1), Token = Addr(10), Amount = "100000000000000000000" } // 100 CRC
+            }
+        };
+        var overlayCg = factory.CreateCapacityGraph(
+            factory.V2BalanceGraph(), GraphFactory.BuildTrustLookup(factory.V2TrustGraph()), overlayRequest);
+        var overlayResult = new V2Pathfinder().ComputeMaxFlowWithPath(overlayCg, overlayRequest, target);
+        Assert.That(overlayResult.Transfers, Is.Not.Null.And.Not.Empty,
+            "simulated overlay must compose with the block-pinned historical factory");
+        Assert.That(UInt256.Parse(overlayResult.MaxFlow!) > UInt256.Zero, Is.True);
     }
 }

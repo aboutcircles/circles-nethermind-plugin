@@ -76,6 +76,7 @@ public static class RpcDispatcher
                 "circles_getTokenHolders" => await RpcHandlers.ReflectionHandler(request, rpcModule),
                 "circlesV2_findPath" => await RpcHandlers.HandleV2FindPath(request, rpcModule),
                 "circles_getScoreGroupMintLimits" => await RpcHandlers.ReflectionHandler(request, rpcModule),
+                "circles_findScoreGroupRedeemPath" => await RpcHandlers.ReflectionHandler(request, rpcModule),
                 // System & Query Methods
                 "circles_getBlockByTimestamp" => await RpcHandlers.HandleGetBlockByTimestamp(request, rpcModule),
                 "circles_events" => await RpcHandlers.HandleEventsLegacy(request, rpcModule),

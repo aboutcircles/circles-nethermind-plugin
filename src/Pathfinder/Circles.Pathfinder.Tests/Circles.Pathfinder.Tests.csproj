@@ -36,6 +36,7 @@
         </PackageReference>
         <PackageReference Include="NUnit3TestAdapter" />
         <PackageReference Include="BenchmarkDotNet" />
+        <PackageReference Include="Testcontainers.PostgreSql" />
     </ItemGroup>
 
     <ItemGroup>

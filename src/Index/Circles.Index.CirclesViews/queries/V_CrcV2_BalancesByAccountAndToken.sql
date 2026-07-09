@@ -29,21 +29,43 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
--- Migration guard: drop matview if it exists without _maxBlock column
+-- Migration guard: this object used to be a MATERIALIZED VIEW refreshed with
+-- REFRESH ... CONCURRENTLY. It is now a plain TABLE maintained incrementally by the
+-- pathfinder (INSERT ... ON CONFLICT / DELETE keyed on the _maxBlock watermark) — a
+-- materialized view cannot support that (PostgreSQL forbids DML on matviews). Drop the
+-- old object so the CREATE TABLE below can take over:
+--   * if it still exists as a materialized view -> drop it (one-time upgrade), or
+--   * if it exists as a table missing _maxBlock   -> drop it (schema upgrade).
+-- CASCADE transitively drops the dependent views: V_CrcV2_BalancesByAccountAndToken (recreated
+-- at the end of this file) -> V_CrcV2_GroupTokenHoldersBalance -> V_CrcV2_GroupTokenSupply. Those
+-- last two are recreated by the indexer's Migrate() in the SAME transaction, later in
+-- ViewDependencyOrder, so this is safe ONLY as part of the full schema apply. Do not run this
+-- file standalone, and keep GroupTokenHoldersBalance/GroupTokenSupply after Balances in
+-- ViewDependencyOrder, or those two views are left dropped.
 DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM pg_matviews WHERE matviewname = 'M_CrcV2_BalancesByAccountAndToken')
-       AND NOT EXISTS (
-           SELECT 1 FROM pg_attribute a
-           JOIN pg_class c ON c.oid = a.attrelid
-           WHERE c.relname = 'M_CrcV2_BalancesByAccountAndToken'
-             AND a.attname = '_maxBlock'
-       ) THEN
+    IF EXISTS (
+        SELECT 1 FROM pg_class c
+        WHERE c.relname = 'M_CrcV2_BalancesByAccountAndToken' AND c.relkind = 'm'
+    ) THEN
         DROP MATERIALIZED VIEW "M_CrcV2_BalancesByAccountAndToken" CASCADE;
+    ELSIF EXISTS (
+        SELECT 1 FROM pg_class c
+        WHERE c.relname = 'M_CrcV2_BalancesByAccountAndToken' AND c.relkind = 'r'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        WHERE c.relname = 'M_CrcV2_BalancesByAccountAndToken' AND a.attname = '_maxBlock'
+    ) THEN
+        DROP TABLE "M_CrcV2_BalancesByAccountAndToken" CASCADE;
     END IF;
 END $$;
 
--- Materialized view: pre-aggregated balances without demurrage (refreshed periodically)
-CREATE MATERIALIZED VIEW IF NOT EXISTS "M_CrcV2_BalancesByAccountAndToken"
+-- Pre-aggregated balances without demurrage. Maintained incrementally by the pathfinder
+-- (Circles.Pathfinder.Host NetworkStateUpdaterService.IncrementalRefreshBalancesMatView):
+-- each cycle folds in only transfers with blockNumber > MAX("_maxBlock"). On first creation
+-- the table is fully populated (WITH DATA) so the watermark starts at the current chain tip;
+-- if it already exists this statement is a no-op (the SELECT is not re-run).
+CREATE TABLE IF NOT EXISTS "M_CrcV2_BalancesByAccountAndToken"
     (account, "tokenId", "tokenAddress", "lastActivity", "totalBalance", "_maxBlock") AS
 with
     tx as (
@@ -81,7 +103,7 @@ from agg
 where account <> '0x0000000000000000000000000000000000000000'
   and balance > 0::numeric;
 
--- Unique index required for REFRESH MATERIALIZED VIEW CONCURRENTLY
+-- Unique index required for the incremental ON CONFLICT (account, tokenId, tokenAddress) upsert
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_M_CrcV2_BalancesByAccountAndToken_pk"
     ON "M_CrcV2_BalancesByAccountAndToken" (account, "tokenId", "tokenAddress");
 

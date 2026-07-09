@@ -6,8 +6,11 @@ namespace Circles.Common.Tests;
 
 /// <summary>
 /// Integration tests that verify <see cref="ScoreGroupMintLimitReader.BaseRowsSqlHistorical"/>
-/// produces numerically identical results to the original view-based query that used
-/// V_CrcV2_BalancesByAccountAndToken directly (before the predicate-pushdown optimisation).
+/// produces numerically identical results to a view-based oracle query built from
+/// V_CrcV2_TrustRelations / V_CrcV2_Avatars / V_CrcV2_BalancesByAccountAndToken directly. The
+/// historical query resolves trusted tokens via Fix A (truster-pushdown + register EXISTS) rather
+/// than the view joins; set + value parity of that resolution was validated directly against
+/// staging, and the numeric treasury/supply math is what these tests pin against the oracle.
 ///
 /// Both queries execute through the test-environment HTTP query proxy, which pins
 /// search_path = circles_at_block, public and circles.max_block_number = N for every
@@ -96,6 +99,8 @@ public sealed class ScoreGroupBaseRowsQueryParityTests
     // BaseRowsSqlHistorical with the test values inlined for proxy execution.
     // @maxBlock → literal 46406058
     // @scoreMintPolicies → ARRAY literal
+    // __AVATAR_WM__ → the avatar-watermark subquery ReadBaseRows inlines as a literal (Fix A's
+    //   register-tail EXISTS boundary). A subquery gives the same value the runtime computes.
     // Optional filters cleared to NULL / empty-array defaults
     private static readonly string HistoricalBaseRowsSql =
         ScoreGroupMintLimitReader.BaseRowsSqlHistorical
@@ -107,14 +112,17 @@ public sealed class ScoreGroupBaseRowsQueryParityTests
                 "@groupAddressFilter::text IS NULL OR LOWER(g.\"group\") = @groupAddressFilter",
                 "TRUE")
             .Replace(
-                "@collateralTokenFilter::text IS NULL OR t.trustee = @collateralTokenFilter",
+                "@collateralTokenFilter::text IS NULL OR gt.trustee = @collateralTokenFilter",
                 "TRUE")
             .Replace(
                 "@subTreasuryAggregators::text[]",
                 "ARRAY[]::text[]")
             .Replace(
                 "@subTreasuryLists::text[]",
-                "ARRAY[]::text[]");
+                "ARRAY[]::text[]")
+            .Replace(
+                "__AVATAR_WM__",
+                "(SELECT COALESCE(MAX(\"blockNumber\"),0) FROM \"M_CrcV2_Avatars\")");
 
     private static bool TestEnvAvailable =>
         !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TEST_ENV_URL"));
@@ -197,6 +205,43 @@ public sealed class ScoreGroupBaseRowsQueryParityTests
             "Historical SQL must aggregate treasury balances via a join, not a correlated subquery");
         Assert.That(ScoreGroupMintLimitReader.BaseRowsSqlHistorical, Does.Not.Contain("b.account = ANY(gt.treasuries)"),
             "Historical SQL must not retain the per-row correlated treasury subquery");
+
+        // Fix A: the historical query resolves trusted tokens the same fast way the live query does
+        // — a truster-pushdown group_trust CTE + indexed avatar-registration EXISTS — instead of
+        // joining V_CrcV2_TrustRelations (windows all ~760K trust rows) and the un-indexed
+        // V_CrcV2_Avatars. Those view joins were the ~40s+ near-head hang. Set + value parity of the
+        // pushdown vs the views was validated directly against staging (11452 rows, symmetric diff
+        // 0). These guards prevent a future edit from silently reintroducing the view joins.
+        Assert.That(ScoreGroupMintLimitReader.BaseRowsSqlHistorical, Does.Contain("group_trust"),
+            "Historical SQL must resolve trust via the pushed-down group_trust CTE (Fix A)");
+        Assert.That(ScoreGroupMintLimitReader.BaseRowsSqlHistorical, Does.Not.Contain("\"V_CrcV2_TrustRelations\""),
+            "Historical SQL must not window the whole V_CrcV2_TrustRelations view");
+        Assert.That(ScoreGroupMintLimitReader.BaseRowsSqlHistorical, Does.Not.Contain("\"V_CrcV2_Avatars\""),
+            "Historical SQL must not join the un-indexed V_CrcV2_Avatars view");
+        Assert.That(ScoreGroupMintLimitReader.BaseRowsSqlHistorical, Does.Contain("__AVATAR_WM__"),
+            "Historical SQL must carry the avatar-watermark literal placeholder (inlined by ReadBaseRows)");
+
+        // token_supply is DELIBERATELY retained on the historical path. It is the all-holders
+        // supply fallback ReadFromBaseRows uses for every (group, collateral) pair lacking a
+        // HistoricalSupply event — the majority of pairs (staging: 11309 of 11452 have nonzero
+        // current_supply). Dropping it would zero those pairs' mint headroom = a routing-capacity
+        // regression. Fix A only sped up trusted-token resolution; supply math is untouched.
+        Assert.That(ScoreGroupMintLimitReader.BaseRowsSqlHistorical, Does.Contain("token_supply"),
+            "Historical SQL must retain the all-holders token_supply fallback (no supply regression)");
+    }
+
+    [Test]
+    public void ReadBaseRows_HistoricalSql_AvatarWatermarkFullySubstituted()
+    {
+        // Guard Fix A's runtime substitution: ReadBaseRows replaces __AVATAR_WM__ in the historical
+        // SQL before executing (mirroring the live builder). If a future rename leaves the
+        // placeholder behind, the generated SQL carries a literal "__…__" token → a Postgres parse
+        // error, or a silently-dropped register-EXISTS branch that would feed a wrong trusted-token
+        // set into the treasury/supply sums. Mirror the exact .Replace() ReadBaseRows performs and
+        // assert no placeholder survives.
+        var historical = ScoreGroupMintLimitReader.BaseRowsSqlHistorical.Replace("__AVATAR_WM__", "46000001");
+        Assert.That(historical, Does.Not.Contain("__"),
+            "After avatar-watermark substitution the historical SQL must contain no residual '__…__' placeholder");
     }
 
     [Test]

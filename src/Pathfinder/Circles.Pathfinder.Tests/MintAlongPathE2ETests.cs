@@ -20,12 +20,13 @@ namespace Circles.Pathfinder.Tests;
 /// - Tests create sessions with Anvil fork for contract execution
 ///
 /// The tests run by default but gracefully skip when TEST_ENV_URL is not set.
-/// Not selected by any CI job — run them explicitly (e.g.
-/// --filter "TestCategory=RequiresAnvil") with TEST_ENV_URL set.
+/// Gated in CI by the "anvil-regression" job (Category=AnvilRegression), which runs
+/// against the staging test environment on PRs and pushes to dev/staging/master.
 /// </summary>
 [TestFixture]
 [Category("RequiresTestEnv")]
 [Category("RequiresAnvil")]
+[Category("AnvilRegression")]
 public class MintAlongPathE2ETests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -49,7 +50,7 @@ public class MintAlongPathE2ETests
         if (string.IsNullOrEmpty(testEnvUrl))
         {
             Assert.Ignore(
-                "TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run E2E tests.");
+                "TEST_ENV_URL not set. Set to https://rpc.staging.aboutcircles.com/test-env to run E2E tests.");
             return;
         }
 
@@ -103,57 +104,32 @@ public class MintAlongPathE2ETests
     }
 
     /// <summary>
-    /// Verify that the pathfinder finds a path for the bug scenario.
-    /// This test uses the Query API which works from anywhere.
+    /// The mint-along-path regression gate. At the bug-repro block it: (1) computes the
+    /// path via the block-pinned query proxy — so it runs from CI where no direct DB
+    /// connection is available, not just on a node with local Postgres; (2) verifies the
+    /// collateral-before-mint edge ordering the original bug violated; (3) executes the
+    /// resulting operateFlowMatrix on the Anvil fork and asserts it does not revert.
+    /// State mutations are isolated by an evm_snapshot/revert so the other fixture tests
+    /// are order-independent.
     /// </summary>
     [Test]
-    public async Task ComputePath_BugScenario_FindsPath()
+    public async Task MintAlongPath_ComputeOrderAndExecuteOnFork_NoRevert()
     {
         Assert.That(_session, Is.Not.Null, "Session should be created in setup");
+        Assert.That(_anvil, Is.Not.Null, "Anvil should be available");
 
-        // Use ExecuteQueryAsync for external access (proxied through test-env)
-        var countResult = await _session!.ExecuteScalarAsync(
-            "SELECT COUNT(*) FROM \"CrcV2_Trust\" WHERE \"blockNumber\" <= @block",
-            new Dictionary<string, object?> { { "block", BugReproBlock } });
-
-        TestContext.Out.WriteLine($"Trust relationships at block {BugReproBlock}: {countResult}");
-
-        // For pathfinding, we need direct database access or to use the Pathfinder service
-        // Since direct access may not be available externally, we test what we can
-        if (!_session.IsDirectConnectionAvailable)
-        {
-            // Verify we can query trust data through the proxy
-            var trustResult = await _session.ExecuteQueryAsync(
-                @"SELECT truster, trustee FROM ""CrcV2_Trust""
-                  WHERE truster = @source OR trustee = @source
-                  LIMIT 10",
-                new Dictionary<string, object?>
-                {
-                    { "source", BugSource }
-                });
-
-            Assert.That(trustResult.RowCount, Is.GreaterThan(0),
-                "Source address should have trust relationships");
-
-            TestContext.Out.WriteLine($"Found {trustResult.RowCount} trust relationships for source");
-            Assert.Pass("Query API working - full path computation requires direct DB access");
-            return;
-        }
-
-        // Direct connection available - run full pathfinding test
-        var loadGraph = new LoadGraph(_session.PostgresConnectionString!, _settings!);
+        // Works from anywhere: direct DB when available, else the block-pinned query proxy
+        // (mirrors ScenarioTests' loader selection so the path is computed even in CI).
+        ILoadGraph loadGraph = _session!.IsDirectConnectionAvailable
+            ? new LoadGraph(_session.PostgresConnectionString!, _settings!)
+            : new ProxyLoadGraph(_session, _settings!);
         var factory = new GraphFactory(RouterAddress, loadGraph);
 
         var trustGraph = factory.V2TrustGraph();
         var balanceGraph = factory.V2BalanceGraph();
         var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
 
-        var request = new FlowRequest
-        {
-            Source = BugSource,
-            Sink = BugSink
-        };
-
+        var request = new FlowRequest { Source = BugSource, Sink = BugSink };
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
         var pathfinder = new V2Pathfinder();
 
@@ -161,77 +137,39 @@ public class MintAlongPathE2ETests
         var response = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, targetFlow);
 
         Assert.That(response.Transfers, Is.Not.Null.And.Not.Empty,
-            "Should find a path for the bug scenario");
+            "Should find a path for the mint-along-path bug scenario");
+        TestContext.Out.WriteLine($"Found path with {response.Transfers!.Count} steps, maxFlow {response.MaxFlow}");
 
-        TestContext.Out.WriteLine($"Found path with {response.Transfers!.Count} steps");
-        TestContext.Out.WriteLine($"Max flow: {response.MaxFlow}");
-    }
-
-    /// <summary>
-    /// Integration test: Verify that sorted paths have correct edge ordering.
-    /// Requires direct database connection for full path computation.
-    /// </summary>
-    [Test]
-    public void SortedPath_HasCorrectEdgeOrdering()
-    {
-        Assert.That(_session, Is.Not.Null);
-
-        if (!_session!.IsDirectConnectionAvailable)
-        {
-            Assert.Ignore("Test requires direct database connection. Run on staging CI.");
-            return;
-        }
-
-        var loadGraph = new LoadGraph(_session.PostgresConnectionString!, _settings!);
-        var factory = new GraphFactory(RouterAddress, loadGraph);
-
-        var trustGraph = factory.V2TrustGraph();
-        var balanceGraph = factory.V2BalanceGraph();
-        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
-
-        var request = new FlowRequest
-        {
-            Source = BugSource,
-            Sink = BugSink
-        };
-
-        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
-        var pathfinder = new V2Pathfinder();
-
-        var targetFlow = UInt256.Parse("1000000000000000000000"); // 1000 CRC
-        var response = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, targetFlow);
-
-        if (response.Transfers == null || response.Transfers.Count == 0)
-        {
-            Assert.Ignore("No path found at this block state");
-            return;
-        }
-
-        // Verify edge ordering: for each group, collateral edges must come before mint edges
+        // Collateral-before-mint ordering: every Group→Avatar mint must be preceded by a
+        // Router→Group collateral deposit for that group (the invariant the bug broke).
         var groupsWithCollateral = new HashSet<string>();
         var routerAddr = RouterAddress.ToLowerInvariant();
-
         foreach (var step in response.Transfers)
         {
             var from = step.From?.ToLowerInvariant() ?? "";
             var to = step.To?.ToLowerInvariant() ?? "";
-
-            // Check if this is a Router → Group edge (collateral deposit)
             if (from == routerAddr && capacityGraph.IsGroup(AddressIdPool.IdOf(to)))
-            {
                 groupsWithCollateral.Add(to);
-            }
 
-            // Check if this is a Group → Avatar edge (minting)
             var fromId = AddressIdPool.IdOf(from);
             if (capacityGraph.IsGroup(fromId) && !capacityGraph.IsGroup(AddressIdPool.IdOf(to)) && to != routerAddr)
-            {
                 Assert.That(groupsWithCollateral.Contains(from), Is.True,
                     $"Group {from} minted before receiving collateral");
-            }
         }
 
-        TestContext.Out.WriteLine("Edge ordering verified successfully");
+        // Execute the computed flow matrix on the fork — must not revert.
+        var snapshotId = await _anvil!.SnapshotAsync();
+        try
+        {
+            var result = await _anvil.ExecuteTransferPathAsync(BugSource, BugSink, response.Transfers);
+            Assert.That(result.Success, Is.True,
+                $"operateFlowMatrix reverted on the fork: {result.Error}");
+            TestContext.Out.WriteLine($"Executed on fork without revert: gas {result.GasUsed}, tx {result.TxHash}");
+        }
+        finally
+        {
+            await _anvil.RevertAsync(snapshotId);
+        }
     }
 
     /// <summary>
