@@ -6,13 +6,25 @@ namespace Circles.Pathfinder.Host;
 
 public sealed class RequestTimingMiddleware(RequestDelegate next, ILogger<RequestTimingMiddleware> log)
 {
+    // Header an upstream proxy may set to attribute traffic to a logical source. The
+    // circles-test-environment session proxy sets it to "testenv" so its (deliberately slow,
+    // near-head, block-pinned) time-travel calls can be excluded from the /findPath latency alerts
+    // — they share this pathfinder process with real staging traffic and would otherwise page.
+    private const string RequestSourceHeader = "X-Request-Source";
+
+    // Only "testenv" is recognised; every other value (and absence) collapses to "default". The
+    // header is client-settable on a public endpoint, so this allowlist bounds the `source` label
+    // to two series and prevents cardinality abuse.
+    private const string DefaultSource = "default";
+    private const string TestEnvSource = "testenv";
+
     private static readonly Histogram RequestDuration =
         Metrics.CreateHistogram(
             "circles_http_request_duration_seconds",
             "Total HTTP request duration",
             new HistogramConfiguration
             {
-                LabelNames = new[] { "route", "status" },
+                LabelNames = new[] { "route", "status", "source" },
                 Buckets = Constants.RequestDurationBuckets
             });
 
@@ -29,9 +41,15 @@ public sealed class RequestTimingMiddleware(RequestDelegate next, ILogger<Reques
 
         var traceId = Activity.Current?.TraceId.ToString() ?? ctx.TraceIdentifier;
 
-        // Use the path template for low-cardinality labels
+        // Raw request path as the route label. Safe here — the pathfinder's routes are fixed
+        // (/findPath, /findMaxFlow, /snapshot, /health, …) with no path parameters, so this stays
+        // low-cardinality without needing a route template.
         var route = path.HasValue ? path.Value! : "unknown";
-        RequestDuration.WithLabels(route, statusCode.ToString()).Observe(sw.Elapsed.TotalSeconds);
+        var source = ctx.Request.Headers.TryGetValue(RequestSourceHeader, out var sourceHeader)
+                     && string.Equals(sourceHeader, TestEnvSource, StringComparison.OrdinalIgnoreCase)
+            ? TestEnvSource
+            : DefaultSource;
+        RequestDuration.WithLabels(route, statusCode.ToString(), source).Observe(sw.Elapsed.TotalSeconds);
 
         using (log.BeginScope("traceId:{TraceId}", traceId))
         {

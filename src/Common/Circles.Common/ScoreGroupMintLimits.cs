@@ -22,6 +22,18 @@ public static class ScoreGroupMintLimitReader
 {
     private const uint InflationDayZeroUnix = 1_602_720_000;
 
+    /// <summary>
+    /// Fail-fast ceiling (seconds) for the block-pinned <see cref="BaseRowsSqlHistorical"/> query,
+    /// applied on top of the caller's (group/solver) timeout. After Fix A the query resolves the
+    /// trusted-token set in ~60ms and the remaining cost is the block-pinned <c>token_supply</c>
+    /// scan (~12s near head); this ceiling sits well above that but below the ~60s solver deadline,
+    /// so a future regression that reintroduces a hang surfaces as a fast, clearly labelled timeout
+    /// instead of a ~60s stall that spikes the <c>/findPath</c> p95 (the near-head incident this
+    /// change fixes). The margin (~3.6x the measured cost) keeps healthy near-head traffic from
+    /// false-tripping under transient DB load.
+    /// </summary>
+    internal const int HistoricalBaseRowsTimeoutSeconds = 45;
+
     /// <summary>Session-local temp table holding the materialized group_tokens set on the live
     /// path. Built + ANALYZEd by <see cref="ReadBaseRows"/> from <see cref="LiveGroupTokensSql"/>,
     /// consumed by <see cref="LiveBalancesTailSql"/>. See Fix D on <see cref="LiveGroupTokensSql"/>.</summary>
@@ -256,6 +268,18 @@ public static class ScoreGroupMintLimitReader
     /// timestamp from <c>System_Block</c>, mirroring the <c>circles_at_block</c> schema's
     /// <c>pin_timestamp()</c> function. This makes parity tests and any future historical
     /// point-in-time queries produce correct results.
+    ///
+    /// <b>Fix A</b> (mirrors <see cref="LiveGroupTokensSql"/>): the <c>group_tokens</c> CTE resolves
+    /// the score groups' trusted collateral tokens the same fast way the live query does — a
+    /// truster-pushdown over <c>CrcV2_Trust</c> plus an indexed avatar-registration <c>EXISTS</c> —
+    /// instead of joining <c>V_CrcV2_TrustRelations</c> (which windows all ~760K trust rows) and the
+    /// unindexed <c>V_CrcV2_Avatars</c>. Those two view joins were the dominant cost (~40s+ hang that
+    /// pushed near-head block-pinned findPath past the solver/group timeout → -32603); the pushdown
+    /// is ~60ms and returns the byte-identical head trust/avatar set (proven equivalent to the views;
+    /// see their definitions). Everything downstream — the block-pinned <c>raw_tx</c> balances,
+    /// <c>token_supply</c> and <c>treasury_balances</c> — is UNCHANGED, so results are identical to
+    /// the pre-Fix-A query; only the trusted-token resolution got faster. <c>__AVATAR_WM__</c> is
+    /// inlined by <see cref="ReadBaseRows"/> exactly as on the live path.
     /// </summary>
     internal const string BaseRowsSqlHistorical = """
         WITH latest_score_group AS (
@@ -296,16 +320,45 @@ public static class ScoreGroupMintLimitReader
             FROM score_groups sg
             LEFT JOIN treasury_overrides o ON o.aggregator = sg.treasury
         ),
+        -- Fix A, part 1: reproduce V_CrcV2_TrustRelations by pushing the truster filter into
+        -- CrcV2_Trust BEFORE the row_number() window, so it runs over only the score groups' trust
+        -- rows (idx_CrcV2_Trust_truster) instead of windowing all ~760K rows. row_number()
+        -- partitions by (truster, trustee), so pre-filtering trusters does not change any kept
+        -- truster's rn — the result is identical to the view. Head-expiry filter matches the view.
+        group_trust AS (
+            SELECT truster, trustee
+            FROM (
+                SELECT t.truster, t.trustee, t."expiryTime",
+                       row_number() OVER (
+                           PARTITION BY t.truster, t.trustee
+                           ORDER BY t."blockNumber" DESC, t."transactionIndex" DESC, t."logIndex" DESC
+                       ) AS rn
+                FROM "CrcV2_Trust" t
+                WHERE t.truster IN (SELECT DISTINCT group_address FROM effective_treasuries)
+            ) d
+            WHERE d.rn = 1
+              AND d."expiryTime" > COALESCE((SELECT MAX("timestamp") FROM "System_Block"), 0)::numeric
+        ),
+        -- Fix A, part 2: reproduce V_CrcV2_Avatars membership (matview + registrations since its
+        -- watermark) with an indexed EXISTS instead of joining the unindexed view (~18s). This is
+        -- the exact structure of the V_CrcV2_Avatars view definition (M_CrcV2_Avatars UNION the
+        -- three register tables > watermark). __AVATAR_WM__ is inlined by ReadBaseRows as
+        -- MAX("blockNumber") of M_CrcV2_Avatars.
         group_tokens AS (
             SELECT
                 et.group_address,
                 et.treasuries,
                 et.policy,
-                t.trustee AS trusted_token
+                gt.trustee AS trusted_token
             FROM effective_treasuries et
-            INNER JOIN "V_CrcV2_TrustRelations" t ON t.truster = et.group_address
-            INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = t.trustee
-            WHERE (@collateralTokenFilter::text IS NULL OR t.trustee = @collateralTokenFilter)
+            INNER JOIN group_trust gt ON gt.truster = et.group_address
+            WHERE (@collateralTokenFilter::text IS NULL OR gt.trustee = @collateralTokenFilter)
+              AND (
+                  EXISTS (SELECT 1 FROM "M_CrcV2_Avatars" a WHERE a.avatar = gt.trustee)
+                  OR EXISTS (SELECT 1 FROM "CrcV2_RegisterHuman" r WHERE r.avatar = gt.trustee AND r."blockNumber" > __AVATAR_WM__)
+                  OR EXISTS (SELECT 1 FROM "CrcV2_RegisterOrganization" r WHERE r.organization = gt.trustee AND r."blockNumber" > __AVATAR_WM__)
+                  OR EXISTS (SELECT 1 FROM "CrcV2_RegisterGroup" r WHERE r."group" = gt.trustee AND r."blockNumber" > __AVATAR_WM__)
+              )
         ),
         block_ts AS (
             SELECT MAX("timestamp") AS ts
@@ -531,11 +584,14 @@ public static class ScoreGroupMintLimitReader
     //                       LiveBalancesTailSql: matview + delta tail, demurrage at NOW().
     //                       Used by the live pathfinder + RPC (HEAD state queries).
     //   maxBlock IS NOT NULL → BaseRowsSqlHistorical: aggregates raw transfer tables with
-    //                       blockNumber <= @maxBlock, demurrage anchored to the block's
-    //                       own timestamp. Used by HistoricalLoadGraph (snapshot/historical-graph
-    //                       endpoint) and parity tests. NOTE: raw-table scan cost scales with
-    //                       transfer volume at the pinned block; acceptable for snapshot use-case
-    //                       but avoid using for tight latency paths.
+    //                       blockNumber <= @maxBlock, demurrage anchored to the block's own
+    //                       timestamp. Used by HistoricalLoadGraph (snapshot/historical-graph
+    //                       endpoint), block-pinned findPath, and parity tests. Fix A resolves the
+    //                       trusted-token set via a truster-pushdown + indexed avatar EXISTS (the
+    //                       __AVATAR_WM__ watermark is inlined below, mirroring the live path),
+    //                       replacing the V_CrcV2_TrustRelations/V_CrcV2_Avatars view joins that
+    //                       hung ~40s+ near head. Result is byte-identical; only the token
+    //                       resolution got faster. A fail-fast timeout guards against regressions.
     internal static IReadOnlyList<ScoreGroupMintLimitBaseRow> ReadBaseRows(
         NpgsqlConnection connection,
         string[] policies,
@@ -572,18 +628,30 @@ public static class ScoreGroupMintLimitReader
             AddTextFilterParameter(command, "collateralTokenFilter", collateralTokenFilter);
         }
 
-        // Historical/snapshot path: one self-contained query carrying all parameters.
+        // Historical/snapshot path: one self-contained query carrying all parameters. The
+        // fail-fast CommandTimeout (see HistoricalBaseRowsTimeoutSeconds) bounds it below the
+        // caller's group/solver deadline so a regression fails fast and clear instead of hanging.
         List<ScoreGroupMintLimitBaseRow> Execute(string sql, NpgsqlTransaction? tx)
         {
             using var command = new NpgsqlCommand(sql, connection, tx);
             AddBaseRowParameters(command);
+            command.CommandTimeout = Math.Min(commandTimeoutSeconds, HistoricalBaseRowsTimeoutSeconds);
             return MaterializeBaseRows(command);
         }
 
-        // Historical/snapshot path bounds every table on blockNumber <= @maxBlock, so the
-        // planner already has a real value to estimate — no watermark inlining needed.
+        // Historical/snapshot path bounds the balance tables on blockNumber <= @maxBlock. Its
+        // group_tokens CTE mirrors the live Fix A (truster-pushdown + avatar-registration EXISTS),
+        // so it needs the same __AVATAR_WM__ (M_CrcV2_Avatars max blockNumber) inlined as a literal
+        // — read here and substituted before the query runs. Head-consistent, matching the
+        // V_CrcV2_TrustRelations/V_CrcV2_Avatars head views the pre-Fix-A query joined.
         if (maxBlock.HasValue)
-            return Execute(BaseRowsSqlHistorical, transaction);
+        {
+            var (_, avatarWatermark) =
+                ReadMatviewWatermarks(connection, transaction, commandTimeoutSeconds);
+            var historicalSql = BaseRowsSqlHistorical
+                .Replace("__AVATAR_WM__", avatarWatermark.ToString(CultureInfo.InvariantCulture));
+            return Execute(historicalSql, transaction);
+        }
 
         // Live path: inline the matview watermarks as integer literals so the planner uses the
         // blockNumber indexes for the post-refresh delta tail (Fix C). The inlined balance

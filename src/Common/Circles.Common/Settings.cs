@@ -227,6 +227,12 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_AFFILIATE_GROUP_REGISTRY_ADDRESS")?.ToLowerInvariant()
         ?? "0xca8222e780d046707083f51377b5fd85e2866014";
 
+    // Multi-affiliate-group registry. First on-chain event (initialize seeding) is at Gnosis block
+    // ~46,892,308 (~2026-06-26); a targeted backfill can start there (REINDEX_FROM_BLOCK=46892308).
+    public readonly string MultiAffiliateGroupRegistry =
+        Environment.GetEnvironmentVariable("V2_MULTI_AFFILIATE_GROUP_REGISTRY_ADDRESS")?.ToLowerInvariant()
+        ?? "0x4a25a7cf216351963f1637ad965d77b3ae277ef3";
+
     public readonly string OICContractAddress =
         Environment.GetEnvironmentVariable("V2_OIC_ADDRESS")?.ToLowerInvariant()
         ?? "0x6fff09332ae273ba7095a2a949a7f4b89eb37c52";

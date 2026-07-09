@@ -439,6 +439,17 @@ public class KpiCollectorService : BackgroundService
             _logger.LogWarning(ex, "Failed to collect group mint volume metric");
             BusinessKpiMetrics.CollectionErrors.WithLabels("group_mint_volume").Inc();
         }
+
+        try
+        {
+            var seedConflicts = await _repository.GetAffiliateSeedConflictsAsync(ct);
+            BusinessKpiMetrics.AffiliateSeedConflicts.Set(seedConflicts);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect affiliate seed-conflicts metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("affiliate_seed_conflicts").Inc();
+        }
     }
 
     private async Task CollectProfileMetricsAsync(CancellationToken ct)

@@ -53,6 +53,20 @@ public class KpiRepository
         return await ExecuteScalarAsync<long>(sql, ct);
     }
 
+    public async Task<long> GetAffiliateSeedConflictsAsync(CancellationToken ct = default)
+    {
+        // Avatars whose affiliate willingness was overwritten by a later initialize() seed (expected 0).
+        // The view is created by the indexer migration (registered in CirclesViews ViewDependencyOrder).
+        // On an environment that predates it the query throws "relation does not exist"; the caller's
+        // try/catch (KpiCollectorService) turns that into a logged warning + CollectionErrors counter.
+        // A to_regclass/CASE guard does NOT help here — Postgres resolves the relation at parse time
+        // regardless of which branch executes.
+        const string sql = """
+            SELECT COUNT(*) FROM "V_CrcV2_AffiliateGroupSeedConflicts"
+            """;
+        return await ExecuteScalarAsync<long>(sql, ct);
+    }
+
     public async Task<long> GetNewUsersAsync(TimeSpan window, CancellationToken ct = default)
     {
         var sql = $"""

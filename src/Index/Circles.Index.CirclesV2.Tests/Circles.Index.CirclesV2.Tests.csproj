@@ -22,6 +22,7 @@
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.ScoreGroup\Circles.Index.CirclesV2.ScoreGroup.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesV2.MultiAffiliateGroupRegistry\Circles.Index.CirclesV2.MultiAffiliateGroupRegistry.csproj" />
       <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
     </ItemGroup>
 
