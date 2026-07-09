@@ -72,6 +72,13 @@ jobs:
   # These tests validate database queries and business logic against real blockchain state
   snapshot-tests:
     runs-on: ubuntu-latest
+    # Bound the blast radius. These session-consuming jobs share the
+    # circles-test-env-session-pool concurrency group with cancel-in-progress:false, so a
+    # single hung run (slow near-head queries + the deliberately-generous 5m probe timeouts)
+    # would otherwise hold the group for GitHub's 6h default and queue every other run behind
+    # it fleet-wide — the "chronically red for days" cascade. A healthy run finishes well
+    # inside this budget; anything longer is a hang and should fail fast to free the group.
+    timeout-minutes: 30
     # Now runs on PRs too - test-env returns sanitized errors (no credential exposure)
     needs: build-and-test
     # Serialize the session-consuming jobs across ALL workflow runs (any branch/PR).
@@ -123,6 +130,9 @@ jobs:
   # Regression tests specifically for known bug scenarios
   regression-tests:
     runs-on: ubuntu-latest
+    # Bound the blast radius — see snapshot-tests. A hang must not hold the shared
+    # session-pool concurrency group for GitHub's 6h default.
+    timeout-minutes: 25
     # Now runs on PRs too - test-env returns sanitized errors (no credential exposure)
     # Chained after snapshot-tests (not just build-and-test) so the two jobs never
     # compete for the test-env's global 10-session cap.
@@ -166,4 +176,62 @@ jobs:
         with:
           name: regression-test-results
           path: TestResults/regression/
+          retention-days: 30
+
+  # Anvil regression tests: execute pathfinder output on an Anvil fork of the pinned
+  # block and assert it does not revert (mint-along-path E2E). Complements the
+  # snapshot-tests differential check (ScenarioE2ETests, Category=Snapshot) by gating
+  # the previously un-gated mint-along-path suite.
+  anvil-regression:
+    runs-on: ubuntu-latest
+    # Bound the blast radius — see snapshot-tests. This is the lightweight single-session gate
+    # (4 tests, ~18s); a run exceeding this budget is a hang, not slow work.
+    timeout-minutes: 20
+    # Chained after the other test-env jobs so the four never compete for the test-env's
+    # global 10-session cap. `if` runs it regardless of whether snapshot-tests /
+    # regression-tests passed — those are flaky against the shared test-env (HttpClient
+    # timeouts under load), and this lightweight single-session gate must not be held
+    # hostage to them. Still requires a successful build and a non-cancelled run.
+    needs: [build-and-test, snapshot-tests, regression-tests]
+    if: ${{ !cancelled() && needs.build-and-test.result == 'success' }}
+    # Same fleet-wide concurrency group as snapshot-tests/regression-tests: this job also
+    # consumes test-env sessions, so it must serialize with them across all runs to avoid
+    # starving the global 10-session cap.
+    concurrency:
+      group: circles-test-env-session-pool
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build solution
+        run: dotnet build -c Release --no-restore
+
+      - name: Run Anvil regression tests
+        env:
+          TEST_ENV_URL: https://rpc.staging.aboutcircles.com/test-env
+        run: |
+          # -m:1: see snapshot-tests — bounded by the test-env global session cap.
+          dotnet test --no-build -c Release -m:1 \
+            --filter "Category=AnvilRegression" \
+            --logger "trx;LogFileName=anvil-regression-tests.trx" \
+            --results-directory TestResults/anvil-regression
+
+      - name: Upload Anvil regression test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: anvil-regression-test-results
+          path: TestResults/anvil-regression/
           retention-days: 30

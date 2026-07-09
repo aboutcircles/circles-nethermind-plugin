@@ -90,6 +90,7 @@ public class Plugin : INethermindPlugin
             new CirclesV1.NameRegistry.LogParser(new(settings.CirclesV1NameRegistry)),
             new CirclesV2.BaseGroupDeployer.LogParser(new(settings.BaseGroupDeployer)),
             new CirclesV2.AffiliateGroupRegistry.LogParser(new(settings.AffiliateGroupRegistry)),
+            new CirclesV2.MultiAffiliateGroupRegistry.LogParser(new(settings.MultiAffiliateGroupRegistry)),
             new CirclesV2.InvitationEscrow.LogParser(
                 settings.InvitationEscrowContract.Select(a => new Address(a)).ToImmutableHashSet()),
             new CirclesV2.PaymentGateway.LogParser(settings.PaymentGatewayFactoryAddresses.Select(o => new Address(o))

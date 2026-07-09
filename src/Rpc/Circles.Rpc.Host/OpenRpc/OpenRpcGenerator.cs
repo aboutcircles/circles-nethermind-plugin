@@ -117,9 +117,34 @@ public static class OpenRpcGenerator
             "Get groups an avatar is a member of",
             "Inverse of `circles_getGroupMembers` — returns all groups that trust a given avatar address.\n\n**Common use case**: Show which groups a user belongs to in their profile view."),
 
+        // ── Multi-Affiliate Groups (community willingness) ────────────────────
+        ("circles_getAffiliateGroupWishlist", "GetAffiliateGroupWishlist", "Groups",
+            "Get the groups an avatar wants to join (intent), with fees",
+            "Returns the groups an avatar has signalled on-chain *intent* to join via the MultiAffiliateGroupRegistry (the wishlist), each with its `membershipFee` (% of daily gCRC mint, read from the group profile), plus the summed `totalFeePercentage`.\n\nIntent only — a group appearing here does NOT mean the group trusts the avatar yet. For the confirmed (bilateral) subset use `circles_getAffiliateGroups`.\n\n**Common use case**: Show a user the communities they have asked to join and the fee they've committed.\n\n**Note**: `membershipFee` is null until the group profile carries the field; absent fees contribute 0 to the total."),
+
+        ("circles_getAffiliateGroups", "GetAffiliateGroups", "Groups",
+            "Get an avatar's confirmed affiliate groups (bilateral)",
+            "Returns the confirmed-membership subset of an avatar's wishlist: groups that currently trust the avatar on-chain (the bilateral handshake from the GA 2.0 community model). Same shape as `circles_getAffiliateGroupWishlist`, filtered to trusted groups; `totalFeePercentage` is summed over the confirmed subset.\n\nReflects TMS delay — a wished group only appears here once the group trusts the avatar.\n\n**Common use case**: Show the communities a user is actually a member of."),
+
+        ("circles_getAffiliateGroupMembersWishlist", "GetAffiliateGroupMembersWishlist", "Groups",
+            "Get avatars that want to join a group (intent)",
+            "Returns the avatars that have signalled intent to join the given group (the group's members wishlist), cursor-paginated. This is the endpoint the Trust Management Service reads to reconcile trust.\n\nIntent only — for the subset the group actually trusts use `circles_getAffiliateGroupMembers`.\n\n**Common use case**: TMS reconciliation; admin tooling listing pending community join requests."),
+
+        ("circles_getAffiliateGroupMembers", "GetAffiliateGroupMembers", "Groups",
+            "Get a group's confirmed affiliate members (bilateral)",
+            "Returns the confirmed-membership subset of a group's wishlist: avatars the group actually trusts on-chain, cursor-paginated. Reflects TMS delay.\n\n**Common use case**: Display a community's confirmed member roster."),
+
+        ("circles_getAffiliateGroupFeesPercentage", "GetAffiliateGroupFeesPercentage", "Groups",
+            "Get an avatar's total committed affiliate fee %",
+            "Returns an avatar's total committed fee percentage across all groups it has signalled intent to join (the wishlist/intent set). Used by the Gnosis App to block joins that would exceed the 100% cap and by the TMS to enforce the cap off-chain.\n\n**Note**: sums the per-group `membershipFee` profile values; groups without the field contribute 0."),
+
         ("circles_getScoreGroupMintLimits", "GetScoreGroupMintLimits", "Groups",
             "Get per-collateral mint limits for a score-weighted group",
             "Returns the available mint limit for each (group, collateral) pair governed by an on-chain score-weighted group mint policy. Server applies the on-chain demurrage policy at query time; clients may subtract their own safety margin before minting.\n\n**Common use case**: Pre-flight check before invoking a score-group mint — discover how much of the group token can be minted from each collateral the caller holds.\n\n**Params**:\n- `groupAddress` (required): The group token address.\n- `collateralToken` (optional): Restrict to a single collateral token; omit to return all collaterals."),
+
+        ("circles_findScoreGroupRedeemPath", "FindScoreGroupRedeemPath", "Groups",
+            "Compute redeem capacity for a score group's gCRC into its collateral",
+            "Computes how much of a score group's gCRC a holder can redeem back into the backing collateral (source==sink==holder, fromToken=gCRC), decomposed per collateral. Output matches `circlesV2_findPath` (a `MaxFlowResponse` with `maxFlow` + `transfers`) so SDKs consume it unchanged.\n\nPer collateral the redeemable amount is `MIN(holder entitlement, ScoreTreasury.balanceOfCollateral(c))`, where the entitlement is the holder's demurraged gCRC balance (capped by `amount`) allocated greedily — largest treasury holding first — across collaterals. `transfers` is one collateral leg (treasury → holder) per allocated collateral; `maxFlow` is the total redeemable gCRC (== sum of the collateral legs, 1:1). No gCRC burn leg is emitted — `maxFlow` already states how much gCRC to redeem.\n\n**Note**: no on-chain redeem path is deployed yet, so the collateral-selection order is a greedy placeholder, finalized once the redeem contract ships. The amounts/clamping are final.\n\n**Params**:\n- `group` (required): Score group address whose gCRC is being redeemed.\n- `holder` (required): Holder/redeemer address.\n- `amount` (optional): uint256 decimal cap on gCRC to redeem; omit to redeem up to the full balance."),
 
         // ── Transaction Methods ──────────────────────────────────────────────
         ("circles_getTransactionHistory", "GetTransactionHistory", "Transactions",
@@ -426,6 +451,44 @@ public static class OpenRpcGenerator
             Param("cursor", false, "string",
                 "Cursor from a previous response's nextCursor field for pagination.")
         ],
+        ["circles_getAffiliateGroupWishlist"] =
+        [
+            Param("avatar", true, "string",
+                "Avatar address to query. Returns the groups this avatar has signalled intent to join, each with its membershipFee, plus the summed totalFeePercentage.",
+                pattern: AddrPattern)
+        ],
+        ["circles_getAffiliateGroups"] =
+        [
+            Param("avatar", true, "string",
+                "Avatar address to query. Returns the confirmed subset of the wishlist — groups that currently trust the avatar on-chain.",
+                pattern: AddrPattern)
+        ],
+        ["circles_getAffiliateGroupMembersWishlist"] =
+        [
+            Param("groupAddress", true, "string",
+                "Group address to query. Returns the avatars that have signalled intent to join this group (the endpoint the TMS reconciles against).",
+                pattern: AddrPattern),
+            Param("limit", false, "integer",
+                "Maximum number of members to return. Default: 100."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination.")
+        ],
+        ["circles_getAffiliateGroupMembers"] =
+        [
+            Param("groupAddress", true, "string",
+                "Group address to query. Returns the confirmed subset — avatars the group actually trusts on-chain.",
+                pattern: AddrPattern),
+            Param("limit", false, "integer",
+                "Maximum number of members to return. Default: 100."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination.")
+        ],
+        ["circles_getAffiliateGroupFeesPercentage"] =
+        [
+            Param("avatar", true, "string",
+                "Avatar address to query. Returns the total committed fee percentage across all groups this avatar has signalled intent to join.",
+                pattern: AddrPattern)
+        ],
         ["circles_getScoreGroupMintLimits"] =
         [
             Param("groupAddress", true, "string",
@@ -434,6 +497,17 @@ public static class OpenRpcGenerator
             Param("collateralToken", false, "string",
                 "Optional collateral-token filter. When provided, restricts the response to the single (group, collateral) row matching this token. When omitted, returns all collaterals governed by the group's on-chain mint policy.",
                 pattern: AddrPattern)
+        ],
+        ["circles_findScoreGroupRedeemPath"] =
+        [
+            Param("group", true, "string",
+                "Score group address whose gCRC is being redeemed back into collateral.",
+                pattern: AddrPattern),
+            Param("holder", true, "string",
+                "Holder/redeemer address (acts as both source and sink of the redeem).",
+                pattern: AddrPattern),
+            Param("amount", false, "string",
+                "Optional uint256 decimal cap (CRC wei) on the gCRC to redeem. Omit to redeem up to the holder's full balance.")
         ],
         ["circles_getTransactionHistory"] =
         [
@@ -765,6 +839,68 @@ public static class OpenRpcGenerator
                 [
                     new() { Name = "groupAddress", Value = ExampleGroup },
                     new() { Name = "limit", Value = 100 },
+                ],
+            }
+        ],
+        ["circles_getAffiliateGroupWishlist"] =
+        [
+            new()
+            {
+                Name = "Get an avatar's affiliate-group wishlist",
+                Description = "List the groups an avatar wants to join, with fees and total",
+                Params =
+                [
+                    new() { Name = "avatar", Value = ExampleAddr1 },
+                ],
+            }
+        ],
+        ["circles_getAffiliateGroups"] =
+        [
+            new()
+            {
+                Name = "Get an avatar's confirmed affiliate groups",
+                Description = "List the groups that actually trust the avatar (bilateral membership)",
+                Params =
+                [
+                    new() { Name = "avatar", Value = ExampleAddr1 },
+                ],
+            }
+        ],
+        ["circles_getAffiliateGroupMembersWishlist"] =
+        [
+            new()
+            {
+                Name = "List a group's intended members",
+                Description = "Get the first 100 avatars that want to join a group (TMS reconciliation)",
+                Params =
+                [
+                    new() { Name = "groupAddress", Value = ExampleGroup },
+                    new() { Name = "limit", Value = 100 },
+                ],
+            }
+        ],
+        ["circles_getAffiliateGroupMembers"] =
+        [
+            new()
+            {
+                Name = "List a group's confirmed members",
+                Description = "Get the avatars a group actually trusts among its intended members",
+                Params =
+                [
+                    new() { Name = "groupAddress", Value = ExampleGroup },
+                    new() { Name = "limit", Value = 100 },
+                ],
+            }
+        ],
+        ["circles_getAffiliateGroupFeesPercentage"] =
+        [
+            new()
+            {
+                Name = "Get an avatar's total committed fee %",
+                Description = "Total fee percentage committed across all of an avatar's affiliate groups",
+                Params =
+                [
+                    new() { Name = "avatar", Value = ExampleAddr1 },
                 ],
             }
         ],
@@ -1148,6 +1284,30 @@ public static class OpenRpcGenerator
                 [
                     new() { Name = "groupAddress", Value = ExampleGroup },
                     new() { Name = "collateralToken", Value = ExampleToken },
+                ],
+            }
+        ],
+        ["circles_findScoreGroupRedeemPath"] =
+        [
+            new()
+            {
+                Name = "Redeem up to the full gCRC balance",
+                Description = "Decompose a holder's entire gCRC balance into redeemable collateral, clamped by treasury holdings",
+                Params =
+                [
+                    new() { Name = "group", Value = ExampleGroup },
+                    new() { Name = "holder", Value = ExampleAddr1 },
+                ],
+            },
+            new()
+            {
+                Name = "Redeem a capped amount",
+                Description = "Redeem at most the given gCRC amount (CRC wei)",
+                Params =
+                [
+                    new() { Name = "group", Value = ExampleGroup },
+                    new() { Name = "holder", Value = ExampleAddr1 },
+                    new() { Name = "amount", Value = "1000000000000000000" },
                 ],
             }
         ],

@@ -40,6 +40,7 @@ public static class EventRegistry
         var paymentGatewayFactory = "0x186725d8fe10a573dc73144f7a317fcae5314f19";
         var tokenOfferFactory = "0x43c8e7cb2fea3a55b52867bb521ebf8cb072feca";
         var affiliateGroupRegistry = "0xca8222e780d046707083f51377b5fd85e2866014";
+        var multiAffiliateGroupRegistry = "0x4a25a7cf216351963f1637ad965d77b3ae277ef3";
         var oicContract = "0x6fff09332ae273ba7095a2a949a7f4b89eb37c52";
         var baseGroupDeployer = "0xd0b5bd9962197beac4cba24244ec3587f19bd06d";
         var invitationModule = "0x00738aca013b7b2e6cfe1690f0021c3182fa40b5";
@@ -538,6 +539,18 @@ public static class EventRegistry
         RegisterEvent("CrcV2_NotificationSuccessful",
             "event NotificationSuccessful(address indexed group, address indexed human)",
             affiliateGroupRegistry);
+
+        // ============================================================
+        // MultiAffiliateGroupRegistry Events
+        // Both parameters are NON-indexed (affiliateGroup, avatar live in log.Data).
+        // ============================================================
+        RegisterEvent("CrcV2_AffiliateGroupAdded",
+            "event AffiliateGroupAdded(address affiliateGroup, address avatar)",
+            multiAffiliateGroupRegistry);
+
+        RegisterEvent("CrcV2_AffiliateGroupRemoved",
+            "event AffiliateGroupRemoved(address affiliateGroup, address avatar)",
+            multiAffiliateGroupRegistry);
 
         // ============================================================
         // OIC Events

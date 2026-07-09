@@ -61,6 +61,10 @@ public class DatabaseSchema : IDatabaseSchema
         ("V_CrcV2", "AffiliateMembersCount_1h"),
         ("V_CrcV2", "AffiliateMembersCount_1d"),
 
+        // Current affiliate-group membership (multi-affiliate willingness set) + seeding safety net
+        ("V_CrcV2", "AffiliateGroupMembers"),
+        ("V_CrcV2", "AffiliateGroupSeedConflicts"),
+
         // Trust score materialized view (depends on V_Crc_Avatars and V_CrcV2_TrustRelations)
         ("V_TrustScores", "Current")
     };
