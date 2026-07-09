@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Text.Json;
 using Circles.Common.TestUtils;
 using NUnit.Framework;
@@ -122,26 +123,39 @@ public class RpcScenarioTests
 
         try
         {
-            var health = await TestEnvironmentClient.GetHealthAsync();
-            if (health?.Status != "healthy")
+            // The shared, capacity-capped test environment occasionally drops a
+            // connection mid-request (transient HttpRequestException), which would
+            // otherwise hard-fail an unrelated scenario. Retry the setup probes on
+            // transient network errors only; NUnit control-flow (Assert.Ignore for
+            // un-indexed blocks, Assert.Fail for an unhealthy env) is not transient
+            // and propagates immediately without retry.
+            session = await RetryTransientAsync(async () =>
             {
-                Assert.Fail("Test environment not healthy");
-            }
+                var health = await TestEnvironmentClient.GetHealthAsync();
+                if (health?.Status != "healthy")
+                {
+                    Assert.Fail("Test environment not healthy");
+                }
 
-            var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
-            if (!exists)
-            {
-                Assert.Ignore($"Block {scenario.Block} not indexed");
-            }
+                var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
+                if (!exists)
+                {
+                    Assert.Ignore($"Block {scenario.Block} not indexed");
+                }
 
-            session = await TestEnvironmentClient.CreateSessionAsync(
-                scenario.Block,
-                features: ["db"],
-                ttl: "15m");
+                return await TestEnvironmentClient.CreateSessionAsync(
+                    scenario.Block,
+                    features: ["db"],
+                    ttl: "15m");
+            });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not ResultStateException)
         {
-            Assert.Fail($"Test environment not available: {ex.Message}");
+            // Only genuine connectivity failures reach here (after retries are
+            // exhausted). NUnit's own Ignore/Fail/Inconclusive exceptions are
+            // ResultStateException subclasses and are let through unchanged so
+            // their intended result is preserved.
+            Assert.Fail($"Test environment not available after retries: {ex.Message}");
             return;
         }
 
@@ -157,6 +171,37 @@ public class RpcScenarioTests
             }
         }
     }
+
+    /// <summary>
+    /// Retries a test-environment operation on transient network failures
+    /// (dropped connections, socket resets, client timeouts) with linear backoff.
+    /// Non-transient exceptions — including NUnit control-flow (Ignore/Fail) —
+    /// propagate immediately so intended test outcomes are preserved.
+    /// </summary>
+    private static async Task<T> RetryTransientAsync<T>(Func<Task<T>> operation, int maxAttempts = 3)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (Exception ex) when (attempt < maxAttempts && IsTransient(ex))
+            {
+                TestContext.Progress.WriteLine(
+                    $"Transient test-env error (attempt {attempt}/{maxAttempts}), retrying: {ex.Message}");
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt));
+            }
+        }
+    }
+
+    private static bool IsTransient(Exception ex) =>
+        ex is HttpRequestException
+            or TaskCanceledException
+            or TimeoutException
+            or IOException
+            or SocketException
+        || (ex.InnerException is { } inner && IsTransient(inner));
 
     private async Task ValidateAddressData(RpcScenario scenario, TestEnvironmentClient session)
     {

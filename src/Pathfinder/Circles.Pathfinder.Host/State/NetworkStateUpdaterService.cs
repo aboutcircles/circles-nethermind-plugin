@@ -802,9 +802,11 @@ public class NetworkStateUpdaterService : BackgroundService
 
         if (fastDue)
         {
+            // Balances use an incremental upsert path — avoids full table scan (10-24s → <1s).
+            IncrementalRefreshBalancesMatView(conn);
+
             var fastViews = new[]
             {
-                "M_CrcV2_BalancesByAccountAndToken",
                 "M_CrcV2_Avatars",
                 "M_CrcV2_ReceiveCount",
                 "M_CrcV2_Groups"
@@ -822,6 +824,204 @@ public class NetworkStateUpdaterService : BackgroundService
             RefreshSingleMatView(conn, "V_TrustScores_Current");
             _lastSlowMatViewRefreshBlock = currentBlock;
             GraphUpdateMetrics.LastMatViewRefreshBlock.WithLabels("slow").Set(currentBlock);
+        }
+    }
+
+    /// <summary>
+    /// Incrementally maintains the <c>M_CrcV2_BalancesByAccountAndToken</c> table without a full
+    /// table scan. (This object is a plain table — created + bootstrap-populated in
+    /// <c>V_CrcV2_BalancesByAccountAndToken.sql</c> — precisely so it can be written incrementally;
+    /// a materialized view cannot be, since PostgreSQL forbids DML on matviews.)
+    ///
+    /// Strategy:
+    ///   1. Read the <c>_maxBlock</c> watermark (global MAX; COALESCE 0 when empty). This is the
+    ///      same cutoff the <c>V_</c> live view and ScoreGroupMintLimits use for their delta tails.
+    ///   2. Aggregate balance deltas only for transfers with <c>blockNumber &gt; watermark</c>
+    ///      (PK index <c>(blockNumber, transactionIndex, logIndex)</c> serves the range scan).
+    ///   3. In a single transaction, driving from the delta (so only (account, token) pairs that
+    ///      actually changed are touched — no full-table rewrite):
+    ///      a. UPSERT rows whose new running total is &gt; 0 (update existing or insert new).
+    ///      b. DELETE rows whose running total dropped to ≤ 0 (zero/negative balance, burn).
+    ///   Both mutations and the watermark advance commit together, so a crash mid-refresh leaves
+    ///   the watermark behind (safe: the additive delta is re-applied next cycle) never ahead.
+    ///
+    /// First-boot path: when the table is empty (_maxBlock = 0) the delta covers all rows, i.e. a
+    /// full build. In practice the table is bootstrap-populated at creation, so the first cycle
+    /// starts at the chain tip. Either way no blocking REFRESH fallback is needed.
+    /// </summary>
+    internal void IncrementalRefreshBalancesMatView(NpgsqlConnection conn)
+    {
+        const string viewName = "M_CrcV2_BalancesByAccountAndToken";
+        var sw = Stopwatch.StartNew();
+
+        try
+        {
+            using var txn = conn.BeginTransaction();
+
+            // ── Step 1: read current watermark ──────────────────────────────
+            long watermark;
+            using (var wmCmd = conn.CreateCommand())
+            {
+                wmCmd.Transaction = txn;
+                wmCmd.CommandText = @"SELECT COALESCE(MAX(""_maxBlock""), 0) FROM ""M_CrcV2_BalancesByAccountAndToken""";
+                wmCmd.CommandTimeout = 60;
+                watermark = wmCmd.ExecuteScalar() is long wm ? wm : 0L;
+            }
+
+            // ── Step 2 + 3: delta upsert + delete in one statement ───────────
+            // Uses CTEs to avoid re-reading the delta twice.
+            //
+            // delta_tx:  flatten (from/to) legs for blockNumber > watermark from both tables.
+            //            The PK (blockNumber, transactionIndex, logIndex) index makes this a
+            //            fast index range scan even on tens of millions of rows.
+            //
+            // delta_agg: sum deltas per (account, tokenId::text, tokenAddress) + per-pair max block.
+            //
+            // merged:    delta_agg LEFT JOIN the existing table — driven by the delta, so ONLY
+            //            (account, token) pairs with activity since the watermark are produced
+            //            (existing balance folded in additively). No full-table rewrite.
+            //
+            // upserted:  INSERT ... ON CONFLICT DO UPDATE for rows with new total > 0.
+            //
+            // deleted:   DELETE table rows whose new running total ≤ 0 (burn / full spend).
+            //
+            // Note: account <> zero-address filter mirrors the table definition.
+
+            using var upsertCmd = conn.CreateCommand();
+            upsertCmd.Transaction = txn;
+            upsertCmd.CommandTimeout = 300;
+            upsertCmd.Parameters.AddWithValue("watermark", watermark);
+
+            // language=sql
+            upsertCmd.CommandText = @"
+WITH delta_tx AS (
+    SELECT ""blockNumber"", ""timestamp"", ""from"" AS account, ""tokenAddress"", id, -value AS delta
+    FROM ""CrcV2_TransferSingle""
+    WHERE ""blockNumber"" > @watermark
+      AND ""from"" <> '0x0000000000000000000000000000000000000000'
+    UNION ALL
+    SELECT ""blockNumber"", ""timestamp"", ""to""   AS account, ""tokenAddress"", id,  value AS delta
+    FROM ""CrcV2_TransferSingle""
+    WHERE ""blockNumber"" > @watermark
+      AND ""to""   <> '0x0000000000000000000000000000000000000000'
+    UNION ALL
+    SELECT ""blockNumber"", ""timestamp"", ""from"" AS account, ""tokenAddress"", id, -value AS delta
+    FROM ""CrcV2_TransferBatch""
+    WHERE ""blockNumber"" > @watermark
+      AND ""from"" <> '0x0000000000000000000000000000000000000000'
+    UNION ALL
+    SELECT ""blockNumber"", ""timestamp"", ""to""   AS account, ""tokenAddress"", id,  value AS delta
+    FROM ""CrcV2_TransferBatch""
+    WHERE ""blockNumber"" > @watermark
+      AND ""to""   <> '0x0000000000000000000000000000000000000000'
+),
+delta_agg AS (
+    SELECT
+        account,
+        id::text                AS ""tokenId"",
+        ""tokenAddress"",
+        SUM(delta)              AS delta_balance,
+        MAX(""timestamp"")      AS delta_last_ts,
+        MAX(""blockNumber"")    AS delta_max_block
+    FROM delta_tx
+    GROUP BY account, id, ""tokenAddress""
+),
+merged AS (
+    -- Driven by delta_agg (LEFT JOIN), so every row here is an (account, token) pair that
+    -- changed since the watermark. Unchanged rows are never selected → never rewritten.
+    SELECT
+        d.account                                        AS account,
+        d.""tokenId""                                    AS ""tokenId"",
+        d.""tokenAddress""                               AS ""tokenAddress"",
+        GREATEST(COALESCE(m.""lastActivity"", 0), d.delta_last_ts)
+                                                         AS ""lastActivity"",
+        COALESCE(m.""totalBalance"", 0) + d.delta_balance AS ""totalBalance"",
+        -- Advance watermark for this (account, token) pair to the highest block seen.
+        GREATEST(COALESCE(m.""_maxBlock"", 0), d.delta_max_block)
+                                                         AS ""_maxBlock""
+    FROM delta_agg d
+    LEFT JOIN ""M_CrcV2_BalancesByAccountAndToken"" m
+        ON m.account          = d.account
+       AND m.""tokenId""      = d.""tokenId""
+       AND m.""tokenAddress"" = d.""tokenAddress""
+),
+-- UPSERT rows with positive balance
+upserted AS (
+    INSERT INTO ""M_CrcV2_BalancesByAccountAndToken""
+        (account, ""tokenId"", ""tokenAddress"", ""lastActivity"", ""totalBalance"", ""_maxBlock"")
+    SELECT account, ""tokenId"", ""tokenAddress"", ""lastActivity"", ""totalBalance"", ""_maxBlock""
+    FROM merged
+    WHERE ""totalBalance"" > 0
+    ON CONFLICT (account, ""tokenId"", ""tokenAddress"")
+    DO UPDATE SET
+        ""lastActivity"" = EXCLUDED.""lastActivity"",
+        ""totalBalance"" = EXCLUDED.""totalBalance"",
+        ""_maxBlock""    = EXCLUDED.""_maxBlock""
+    RETURNING 1
+),
+-- DELETE rows that now have zero / negative balance
+deleted AS (
+    DELETE FROM ""M_CrcV2_BalancesByAccountAndToken"" m
+    USING merged merged_alias
+    WHERE m.account          = merged_alias.account
+      AND m.""tokenId""      = merged_alias.""tokenId""
+      AND m.""tokenAddress"" = merged_alias.""tokenAddress""
+      AND merged_alias.""totalBalance"" <= 0
+    RETURNING 1
+)
+SELECT
+    (SELECT COUNT(*) FROM upserted) AS rows_upserted,
+    (SELECT COUNT(*) FROM deleted)  AS rows_deleted;
+";
+
+            long rowsUpserted = 0;
+            long rowsDeleted = 0;
+            long newWatermark = watermark;
+
+            using (var reader = upsertCmd.ExecuteReader())
+            {
+                if (reader.Read())
+                {
+                    rowsUpserted = reader.GetInt64(0);
+                    rowsDeleted = reader.GetInt64(1);
+                }
+            }
+
+            // ── Step 4: read back the new watermark after upsert ────────────
+            // The upsert already wrote the per-row delta_max_block into _maxBlock.
+            // Read the global max to report the watermark advance in metrics/logs.
+            // Only query if rows were actually touched to avoid an extra round-trip on idle cycles.
+            if (rowsUpserted > 0 || rowsDeleted > 0)
+            {
+                using var wmReadCmd = conn.CreateCommand();
+                wmReadCmd.Transaction = txn;
+                wmReadCmd.CommandTimeout = 60;
+                wmReadCmd.CommandText = @"SELECT COALESCE(MAX(""_maxBlock""), 0) FROM ""M_CrcV2_BalancesByAccountAndToken""";
+                newWatermark = wmReadCmd.ExecuteScalar() is long nw ? nw : watermark;
+            }
+
+            txn.Commit();
+
+            sw.Stop();
+            GraphUpdateMetrics.MatViewRefreshDuration.WithLabels(viewName).Observe(sw.Elapsed.TotalSeconds);
+            GraphUpdateMetrics.MatViewRefreshTotal.WithLabels(viewName).Inc();
+            GraphUpdateMetrics.BalanceMatViewIncrementalRows.WithLabels("upsert").Inc(rowsUpserted);
+            GraphUpdateMetrics.BalanceMatViewIncrementalRows.WithLabels("delete").Inc(rowsDeleted);
+            GraphUpdateMetrics.BalanceMatViewWatermarkAdvance.Set(newWatermark - watermark);
+            GraphUpdateMetrics.BalanceMatViewWatermark.Set(newWatermark);
+
+            _log.LogInformation(
+                "Incremental refresh of {View} in {Ms} ms — watermark {Old} → {New}, " +
+                "upserted {Ups} rows, deleted {Del} rows",
+                viewName, sw.ElapsedMilliseconds, watermark, newWatermark, rowsUpserted, rowsDeleted);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            GraphUpdateMetrics.MatViewRefreshErrors.WithLabels(viewName).Inc();
+            _log.LogWarning(ex,
+                "Incremental refresh of {View} failed in {Ms} ms — stale data until next refresh",
+                viewName, sw.ElapsedMilliseconds);
         }
     }
 
