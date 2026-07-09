@@ -103,7 +103,7 @@ jobs:
         # Only run path detection for push events (direct or via workflow_call)
         # For workflow_dispatch, user must select components manually via checkboxes
         if: github.event.before != ''
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         id: filter
         with:
           # Compare files changed in this push/merge
