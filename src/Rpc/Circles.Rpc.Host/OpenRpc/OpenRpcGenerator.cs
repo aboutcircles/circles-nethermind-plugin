@@ -142,10 +142,6 @@ public static class OpenRpcGenerator
             "Get per-collateral mint limits for a score-weighted group",
             "Returns the available mint limit for each (group, collateral) pair governed by an on-chain score-weighted group mint policy. Server applies the on-chain demurrage policy at query time; clients may subtract their own safety margin before minting.\n\n**Common use case**: Pre-flight check before invoking a score-group mint — discover how much of the group token can be minted from each collateral the caller holds.\n\n**Params**:\n- `groupAddress` (required): The group token address.\n- `collateralToken` (optional): Restrict to a single collateral token; omit to return all collaterals."),
 
-        ("circles_findScoreGroupRedeemPath", "FindScoreGroupRedeemPath", "Groups",
-            "Compute redeem capacity for a score group's gCRC into its collateral",
-            "Computes how much of a score group's gCRC a holder can redeem back into the backing collateral (source==sink==holder, fromToken=gCRC), decomposed per collateral. Output matches `circlesV2_findPath` (a `MaxFlowResponse` with `maxFlow` + `transfers`) so SDKs consume it unchanged.\n\nPer collateral the redeemable amount is `MIN(holder entitlement, ScoreTreasury.balanceOfCollateral(c))`, where the entitlement is the holder's demurraged gCRC balance (capped by `amount`) allocated greedily — largest treasury holding first — across collaterals. `transfers` is one collateral leg (treasury → holder) per allocated collateral; `maxFlow` is the total redeemable gCRC (== sum of the collateral legs, 1:1). No gCRC burn leg is emitted — `maxFlow` already states how much gCRC to redeem.\n\n**Note**: no on-chain redeem path is deployed yet, so the collateral-selection order is a greedy placeholder, finalized once the redeem contract ships. The amounts/clamping are final.\n\n**Params**:\n- `group` (required): Score group address whose gCRC is being redeemed.\n- `holder` (required): Holder/redeemer address.\n- `amount` (optional): uint256 decimal cap on gCRC to redeem; omit to redeem up to the full balance."),
-
         // ── Transaction Methods ──────────────────────────────────────────────
         ("circles_getTransactionHistory", "GetTransactionHistory", "Transactions",
             "Get transaction history for an avatar",
@@ -497,17 +493,6 @@ public static class OpenRpcGenerator
             Param("collateralToken", false, "string",
                 "Optional collateral-token filter. When provided, restricts the response to the single (group, collateral) row matching this token. When omitted, returns all collaterals governed by the group's on-chain mint policy.",
                 pattern: AddrPattern)
-        ],
-        ["circles_findScoreGroupRedeemPath"] =
-        [
-            Param("group", true, "string",
-                "Score group address whose gCRC is being redeemed back into collateral.",
-                pattern: AddrPattern),
-            Param("holder", true, "string",
-                "Holder/redeemer address (acts as both source and sink of the redeem).",
-                pattern: AddrPattern),
-            Param("amount", false, "string",
-                "Optional uint256 decimal cap (CRC wei) on the gCRC to redeem. Omit to redeem up to the holder's full balance.")
         ],
         ["circles_getTransactionHistory"] =
         [
@@ -1284,30 +1269,6 @@ public static class OpenRpcGenerator
                 [
                     new() { Name = "groupAddress", Value = ExampleGroup },
                     new() { Name = "collateralToken", Value = ExampleToken },
-                ],
-            }
-        ],
-        ["circles_findScoreGroupRedeemPath"] =
-        [
-            new()
-            {
-                Name = "Redeem up to the full gCRC balance",
-                Description = "Decompose a holder's entire gCRC balance into redeemable collateral, clamped by treasury holdings",
-                Params =
-                [
-                    new() { Name = "group", Value = ExampleGroup },
-                    new() { Name = "holder", Value = ExampleAddr1 },
-                ],
-            },
-            new()
-            {
-                Name = "Redeem a capped amount",
-                Description = "Redeem at most the given gCRC amount (CRC wei)",
-                Params =
-                [
-                    new() { Name = "group", Value = ExampleGroup },
-                    new() { Name = "holder", Value = ExampleAddr1 },
-                    new() { Name = "amount", Value = "1000000000000000000" },
                 ],
             }
         ],

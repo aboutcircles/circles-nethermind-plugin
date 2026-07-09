@@ -521,46 +521,6 @@ public static class ScoreGroupMintLimitReader
         return value.Trim().ToLowerInvariant();
     }
 
-    /// <summary>
-    /// Returns the per-(group, collateral) demurraged treasury collateral balance — i.e. the on-chain
-    /// <c>ScoreTreasury.balanceOfCollateral(c)</c> aggregated across the HIGH+LOW sub-treasuries (via the
-    /// <c>SCORE_TREASURY_SUBTREASURIES</c> override map). This is the raw treasury-side cap used by the
-    /// gCRC redeem-capacity computation: how much of each collateral the treasury can actually hand back.
-    /// Unlike <see cref="Read"/> it does NOT subtract historical/personal supply — that subtraction is the
-    /// remaining MINT headroom, the inverse of what a redeem can withdraw. The <see cref="ScoreGroupMintLimitBaseRow.TreasuryBalance"/>
-    /// field carries the demurraged balance (demurrage basis = live NOW(), matching the holder's
-    /// demurraged gCRC balance used as the redeem entitlement).
-    /// </summary>
-    public static IReadOnlyList<ScoreGroupMintLimitBaseRow> ReadTreasuryBalances(
-        NpgsqlConnection connection,
-        string[] scoreMintPolicies,
-        int commandTimeoutSeconds,
-        long? maxBlock = null,
-        NpgsqlTransaction? transaction = null,
-        string? groupAddressFilter = null,
-        string? collateralTokenFilter = null,
-        IReadOnlyDictionary<string, string[]>? subTreasuryOverrides = null)
-    {
-        var policies = scoreMintPolicies
-            .Select(x => x.Trim().ToLowerInvariant())
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct()
-            .ToArray();
-
-        if (policies.Length == 0)
-            return [];
-
-        return ReadBaseRows(
-            connection,
-            policies,
-            commandTimeoutSeconds,
-            maxBlock,
-            transaction,
-            NormalizeFilter(groupAddressFilter),
-            NormalizeFilter(collateralTokenFilter),
-            subTreasuryOverrides);
-    }
-
     public static IReadOnlyList<ScoreGroupMintLimitRow> ReadFromBaseRows(
         NpgsqlConnection connection,
         string[] scoreMintPolicies,
