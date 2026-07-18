@@ -7,13 +7,14 @@ using Testcontainers.PostgreSql;
 namespace Circles.Rpc.Host.Tests;
 
 /// <summary>
-/// DB-level tests for the multi-affiliate-group feature, run against a real Postgres (Testcontainers).
+/// DB-level tests for the community (multi-affiliate-group) feature, run against a real Postgres
+/// (Testcontainers). The underlying DB objects keep the contract-derived "affiliate" name.
 ///
 /// Validates the parts that carry the logic:
 ///  • the <c>V_CrcV2_AffiliateGroupMembers</c> view (loaded verbatim from its embedded resource, so the
 ///    latest-event-wins / re-add / remove semantics are tested with zero drift), and
 ///  • the trusted-subset filter and the <c>membershipFee</c> jsonb fee aggregation that the RPC methods in
-///    <c>CirclesRpcModule.Affiliate.cs</c> apply on top of the view.
+///    <c>CirclesRpcModule.Community.cs</c> apply on top of the view.
 ///
 /// These do NOT construct <see cref="CirclesRpcModule"/> — that needs the Nethermind runtime, which is
 /// absent in CI (see CirclesRpcModuleTests). The SQL below mirrors the method bodies; the view is the
@@ -21,7 +22,7 @@ namespace Circles.Rpc.Host.Tests;
 /// </summary>
 [TestFixture]
 [Category("RequiresDocker")]
-public class AffiliateGroupSqlTests
+public class CommunitySqlTests
 {
     private const string Avatar = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private const string AvatarB = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"; // self-adds G1,G2 then seeded with G3
@@ -30,7 +31,7 @@ public class AffiliateGroupSqlTests
     private const string G3 = "0x3333333333333333333333333333333333333333"; // trusts A, no fee
     private const string G4 = "0x4444444444444444444444444444444444444444"; // added then removed → gone
 
-    // Mirrors LoadAffiliateGroupRowsAsync in CirclesRpcModule.Affiliate.cs. {0} is the trusted-only join.
+    // Mirrors LoadAvatarCommunityRowsAsync in CirclesRpcModule.Community.cs. {0} is the trusted-only join.
     private const string GroupRowsSql = @"
         SELECT m.""affiliateGroup"", g.name AS group_name,
                f.payload->'membershipCriteria'->>'membershipFee' AS membership_fee, m.""timestamp""
@@ -42,7 +43,7 @@ public class AffiliateGroupSqlTests
         WHERE m.avatar = @avatar
         ORDER BY m.""timestamp"" DESC, m.""affiliateGroup""";
 
-    // Mirrors GetAffiliateGroupMembersInternal in CirclesRpcModule.Affiliate.cs: a MATERIALIZED page
+    // Mirrors GetCommunityMembersInternal in CirclesRpcModule.Community.cs: a MATERIALIZED page
     // (filter + order + limit off the view) enriched with names scoped to that page's avatars. {0} is
     // the trusted-only join. (LIMIT is a constant here; the method binds @limit.)
     private const string MembersSql = @"
