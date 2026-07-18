@@ -117,26 +117,26 @@ public static class OpenRpcGenerator
             "Get groups an avatar is a member of",
             "Inverse of `circles_getGroupMembers` — returns all groups that trust a given avatar address.\n\n**Common use case**: Show which groups a user belongs to in their profile view."),
 
-        // ── Multi-Affiliate Groups (community willingness) ────────────────────
-        ("circles_getAffiliateGroupWishlist", "GetAffiliateGroupWishlist", "Groups",
-            "Get the groups an avatar wants to join (intent), with fees",
-            "Returns the groups an avatar has signalled on-chain *intent* to join via the MultiAffiliateGroupRegistry (the wishlist), each with its `membershipFee` (% of daily gCRC mint, read from the group profile), plus the summed `totalFeePercentage`.\n\nIntent only — a group appearing here does NOT mean the group trusts the avatar yet. For the confirmed (bilateral) subset use `circles_getAffiliateGroups`.\n\n**Common use case**: Show a user the communities they have asked to join and the fee they've committed.\n\n**Note**: `membershipFee` is null until the group profile carries the field; absent fees contribute 0 to the total."),
+        // ── Communities (multi-affiliate-group willingness) ────────────────────
+        ("circles_getAvatarCommunitiesWishlist", "GetAvatarCommunitiesWishlist", "Groups",
+            "Get the communities an avatar wants to join (intent), with fees",
+            "Returns the communities an avatar has signalled on-chain *intent* to join via the MultiAffiliateGroupRegistry (the wishlist), each with its `membershipFee` (% of daily gCRC mint, read from the community's group profile), plus the summed `totalFeePercentage`.\n\nIntent only — a community appearing here does NOT mean it trusts the avatar yet. For the confirmed (bilateral) subset use `circles_getAvatarCommunities`.\n\n**Common use case**: Show a user the communities they have asked to join and the fee they've committed.\n\n**Note**: `membershipFee` is null until the community profile carries the field; absent fees contribute 0 to the total."),
 
-        ("circles_getAffiliateGroups", "GetAffiliateGroups", "Groups",
-            "Get an avatar's confirmed affiliate groups (bilateral)",
-            "Returns the confirmed-membership subset of an avatar's wishlist: groups that currently trust the avatar on-chain (the bilateral handshake from the GA 2.0 community model). Same shape as `circles_getAffiliateGroupWishlist`, filtered to trusted groups; `totalFeePercentage` is summed over the confirmed subset.\n\nReflects TMS delay — a wished group only appears here once the group trusts the avatar.\n\n**Common use case**: Show the communities a user is actually a member of."),
+        ("circles_getAvatarCommunities", "GetAvatarCommunities", "Groups",
+            "Get an avatar's confirmed communities (bilateral)",
+            "Returns the confirmed-membership subset of an avatar's wishlist: communities that currently trust the avatar on-chain (the bilateral handshake from the GA 2.0 community model). Same shape as `circles_getAvatarCommunitiesWishlist`, filtered to trusted communities; `totalFeePercentage` is summed over the confirmed subset.\n\nReflects TMS delay — a wished community only appears here once it trusts the avatar.\n\n**Common use case**: Show the communities a user is actually a member of."),
 
-        ("circles_getAffiliateGroupMembersWishlist", "GetAffiliateGroupMembersWishlist", "Groups",
-            "Get avatars that want to join a group (intent)",
-            "Returns the avatars that have signalled intent to join the given group (the group's members wishlist), cursor-paginated. This is the endpoint the Trust Management Service reads to reconcile trust.\n\nIntent only — for the subset the group actually trusts use `circles_getAffiliateGroupMembers`.\n\n**Common use case**: TMS reconciliation; admin tooling listing pending community join requests."),
+        ("circles_getCommunityMembersWishlist", "GetCommunityMembersWishlist", "Groups",
+            "Get avatars that want to join a community (intent)",
+            "Returns the avatars that have signalled intent to join the given community (the community's members wishlist), cursor-paginated. This is the endpoint the Trust Management Service reads to reconcile trust.\n\nIntent only — for the subset the community actually trusts use `circles_getCommunityMembers`.\n\n**Common use case**: TMS reconciliation; admin tooling listing pending community join requests."),
 
-        ("circles_getAffiliateGroupMembers", "GetAffiliateGroupMembers", "Groups",
-            "Get a group's confirmed affiliate members (bilateral)",
-            "Returns the confirmed-membership subset of a group's wishlist: avatars the group actually trusts on-chain, cursor-paginated. Reflects TMS delay.\n\n**Common use case**: Display a community's confirmed member roster."),
+        ("circles_getCommunityMembers", "GetCommunityMembers", "Groups",
+            "Get a community's confirmed members (bilateral)",
+            "Returns the confirmed-membership subset of a community's wishlist: avatars the community actually trusts on-chain, cursor-paginated. Reflects TMS delay.\n\n**Common use case**: Display a community's confirmed member roster."),
 
-        ("circles_getAffiliateGroupFeesPercentage", "GetAffiliateGroupFeesPercentage", "Groups",
-            "Get an avatar's total committed affiliate fee %",
-            "Returns an avatar's total committed fee percentage across all groups it has signalled intent to join (the wishlist/intent set). Used by the Gnosis App to block joins that would exceed the 100% cap and by the TMS to enforce the cap off-chain.\n\n**Note**: sums the per-group `membershipFee` profile values; groups without the field contribute 0."),
+        ("circles_getAvatarCommunityFeesPercentage", "GetAvatarCommunityFeesPercentage", "Groups",
+            "Get an avatar's total committed community fee %",
+            "Returns an avatar's total committed fee percentage across all communities it has signalled intent to join (the wishlist/intent set). Used by the Gnosis App to block joins that would exceed the 100% cap and by the TMS to enforce the cap off-chain.\n\n**Note**: sums the per-community `membershipFee` profile values; communities without the field contribute 0."),
 
         ("circles_getScoreGroupMintLimits", "GetScoreGroupMintLimits", "Groups",
             "Get per-collateral mint limits for a score-weighted group",
@@ -447,42 +447,42 @@ public static class OpenRpcGenerator
             Param("cursor", false, "string",
                 "Cursor from a previous response's nextCursor field for pagination.")
         ],
-        ["circles_getAffiliateGroupWishlist"] =
+        ["circles_getAvatarCommunitiesWishlist"] =
         [
             Param("avatar", true, "string",
-                "Avatar address to query. Returns the groups this avatar has signalled intent to join, each with its membershipFee, plus the summed totalFeePercentage.",
+                "Avatar address to query. Returns the communities this avatar has signalled intent to join, each with its membershipFee, plus the summed totalFeePercentage.",
                 pattern: AddrPattern)
         ],
-        ["circles_getAffiliateGroups"] =
+        ["circles_getAvatarCommunities"] =
         [
             Param("avatar", true, "string",
-                "Avatar address to query. Returns the confirmed subset of the wishlist — groups that currently trust the avatar on-chain.",
+                "Avatar address to query. Returns the confirmed subset of the wishlist — communities that currently trust the avatar on-chain.",
                 pattern: AddrPattern)
         ],
-        ["circles_getAffiliateGroupMembersWishlist"] =
+        ["circles_getCommunityMembersWishlist"] =
         [
-            Param("groupAddress", true, "string",
-                "Group address to query. Returns the avatars that have signalled intent to join this group (the endpoint the TMS reconciles against).",
+            Param("communityAddress", true, "string",
+                "Community address to query. Returns the avatars that have signalled intent to join this community (the endpoint the TMS reconciles against).",
                 pattern: AddrPattern),
             Param("limit", false, "integer",
                 "Maximum number of members to return. Default: 100."),
             Param("cursor", false, "string",
                 "Cursor from a previous response's nextCursor field for pagination.")
         ],
-        ["circles_getAffiliateGroupMembers"] =
+        ["circles_getCommunityMembers"] =
         [
-            Param("groupAddress", true, "string",
-                "Group address to query. Returns the confirmed subset — avatars the group actually trusts on-chain.",
+            Param("communityAddress", true, "string",
+                "Community address to query. Returns the confirmed subset — avatars the community actually trusts on-chain.",
                 pattern: AddrPattern),
             Param("limit", false, "integer",
                 "Maximum number of members to return. Default: 100."),
             Param("cursor", false, "string",
                 "Cursor from a previous response's nextCursor field for pagination.")
         ],
-        ["circles_getAffiliateGroupFeesPercentage"] =
+        ["circles_getAvatarCommunityFeesPercentage"] =
         [
             Param("avatar", true, "string",
-                "Avatar address to query. Returns the total committed fee percentage across all groups this avatar has signalled intent to join.",
+                "Avatar address to query. Returns the total committed fee percentage across all communities this avatar has signalled intent to join.",
                 pattern: AddrPattern)
         ],
         ["circles_getScoreGroupMintLimits"] =
@@ -827,62 +827,62 @@ public static class OpenRpcGenerator
                 ],
             }
         ],
-        ["circles_getAffiliateGroupWishlist"] =
+        ["circles_getAvatarCommunitiesWishlist"] =
         [
             new()
             {
-                Name = "Get an avatar's affiliate-group wishlist",
-                Description = "List the groups an avatar wants to join, with fees and total",
+                Name = "Get an avatar's community wishlist",
+                Description = "List the communities an avatar wants to join, with fees and total",
                 Params =
                 [
                     new() { Name = "avatar", Value = ExampleAddr1 },
                 ],
             }
         ],
-        ["circles_getAffiliateGroups"] =
+        ["circles_getAvatarCommunities"] =
         [
             new()
             {
-                Name = "Get an avatar's confirmed affiliate groups",
-                Description = "List the groups that actually trust the avatar (bilateral membership)",
+                Name = "Get an avatar's confirmed communities",
+                Description = "List the communities that actually trust the avatar (bilateral membership)",
                 Params =
                 [
                     new() { Name = "avatar", Value = ExampleAddr1 },
                 ],
             }
         ],
-        ["circles_getAffiliateGroupMembersWishlist"] =
+        ["circles_getCommunityMembersWishlist"] =
         [
             new()
             {
-                Name = "List a group's intended members",
-                Description = "Get the first 100 avatars that want to join a group (TMS reconciliation)",
+                Name = "List a community's intended members",
+                Description = "Get the first 100 avatars that want to join a community (TMS reconciliation)",
                 Params =
                 [
-                    new() { Name = "groupAddress", Value = ExampleGroup },
+                    new() { Name = "communityAddress", Value = ExampleGroup },
                     new() { Name = "limit", Value = 100 },
                 ],
             }
         ],
-        ["circles_getAffiliateGroupMembers"] =
+        ["circles_getCommunityMembers"] =
         [
             new()
             {
-                Name = "List a group's confirmed members",
-                Description = "Get the avatars a group actually trusts among its intended members",
+                Name = "List a community's confirmed members",
+                Description = "Get the avatars a community actually trusts among its intended members",
                 Params =
                 [
-                    new() { Name = "groupAddress", Value = ExampleGroup },
+                    new() { Name = "communityAddress", Value = ExampleGroup },
                     new() { Name = "limit", Value = 100 },
                 ],
             }
         ],
-        ["circles_getAffiliateGroupFeesPercentage"] =
+        ["circles_getAvatarCommunityFeesPercentage"] =
         [
             new()
             {
                 Name = "Get an avatar's total committed fee %",
-                Description = "Total fee percentage committed across all of an avatar's affiliate groups",
+                Description = "Total fee percentage committed across all of an avatar's communities",
                 Params =
                 [
                     new() { Name = "avatar", Value = ExampleAddr1 },

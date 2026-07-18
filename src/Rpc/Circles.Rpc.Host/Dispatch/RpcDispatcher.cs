@@ -65,12 +65,12 @@ public static class RpcDispatcher
                 "circles_findGroups" => await RpcHandlers.ReflectionHandler(request, rpcModule),
                 "circles_getGroupMembers" => await RpcHandlers.ReflectionHandler(request, rpcModule),
                 "circles_getGroupMemberships" => await RpcHandlers.ReflectionHandler(request, rpcModule),
-                // Multi-affiliate-group (community willingness) Methods
-                "circles_getAffiliateGroupWishlist" => await RpcHandlers.ReflectionHandler(request, rpcModule),
-                "circles_getAffiliateGroups" => await RpcHandlers.ReflectionHandler(request, rpcModule),
-                "circles_getAffiliateGroupMembersWishlist" => await RpcHandlers.ReflectionHandler(request, rpcModule),
-                "circles_getAffiliateGroupMembers" => await RpcHandlers.ReflectionHandler(request, rpcModule),
-                "circles_getAffiliateGroupFeesPercentage" => await RpcHandlers.ReflectionHandler(request, rpcModule),
+                // Communities (multi-affiliate-group willingness) Methods
+                "circles_getAvatarCommunitiesWishlist" => await RpcHandlers.ReflectionHandler(request, rpcModule),
+                "circles_getAvatarCommunities" => await RpcHandlers.ReflectionHandler(request, rpcModule),
+                "circles_getCommunityMembersWishlist" => await RpcHandlers.ReflectionHandler(request, rpcModule),
+                "circles_getCommunityMembers" => await RpcHandlers.ReflectionHandler(request, rpcModule),
+                "circles_getAvatarCommunityFeesPercentage" => await RpcHandlers.ReflectionHandler(request, rpcModule),
                 "circles_getTransactionHistory" => await RpcHandlers.ReflectionHandler(request, rpcModule),
                 "circles_getTransferData" => await RpcHandlers.ReflectionHandler(request, rpcModule),
                 "circles_getTokenHolders" => await RpcHandlers.ReflectionHandler(request, rpcModule),
