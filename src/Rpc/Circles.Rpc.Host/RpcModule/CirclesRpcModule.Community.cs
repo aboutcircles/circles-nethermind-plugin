@@ -5,23 +5,24 @@ using Npgsql;
 namespace Circles.Rpc.Host;
 
 /// <summary>
-/// Multi-affiliate-group ("community willingness") methods for CirclesRpcModule.
+/// Community ("multi-affiliate-group willingness") methods for CirclesRpcModule.
 ///
-/// Backed by the MultiAffiliateGroupRegistry contract: an avatar signals on-chain *intent*
-/// to join a group via AffiliateGroupAdded / AffiliateGroupRemoved. The registry stores intent
-/// only — it does NOT enforce the membership-fee cap or any group criteria. Those are computed
-/// off-chain here (fee % from the group profile) and in the TMS (trust reconciliation).
+/// A community = an underlying Circles group + a bilateral handshake (GA 2.0). Backed by the
+/// MultiAffiliateGroupRegistry contract: an avatar signals on-chain *intent* to join a community
+/// via AffiliateGroupAdded / AffiliateGroupRemoved. The registry stores intent only — it does NOT
+/// enforce the membership-fee cap or any criteria. Those are computed off-chain here (fee % from
+/// the community's group profile) and in the TMS (trust reconciliation).
 ///
-/// Current membership ("wishlist") is read from the latest-event-wins view
-/// V_CrcV2_AffiliateGroupMembers. The "trusted" subset additionally requires the group to trust
-/// the avatar on-chain (V_CrcV2_TrustRelations: truster=group, trustee=avatar, not expired) —
-/// i.e. the bilateral handshake from GA 2.0. Each group's membership fee is the group profile's
-/// `membershipCriteria.membershipFee` (a percent in [0,100] of daily gCRC mint, enforced by the
-/// profile pinning service), resolved through the ipfs_files jsonb payload and summed into a
-/// totalFeePercentage for the 100%-cap check. The fee is null when a group profile carries no
+/// Current intent ("wishlist") is read from the latest-event-wins view V_CrcV2_AffiliateGroupMembers
+/// (the DB objects keep the contract-derived "affiliate" name). The "trusted" subset additionally
+/// requires the community to trust the avatar on-chain (V_CrcV2_TrustRelations: truster=community,
+/// trustee=avatar, not expired) — i.e. the bilateral handshake. Each community's membership fee is the
+/// group profile's `membershipCriteria.membershipFee` (a percent in [0,100] of daily gCRC mint,
+/// enforced by the profile pinning service), resolved through the ipfs_files jsonb payload and summed
+/// into a totalFeePercentage for the 100%-cap check. The fee is null when a profile carries no
 /// membershipCriteria; absent fees contribute 0 to the total.
 ///
-/// Recompute-per-request (no cache-service path). NOTE: the new V_CrcV2_AffiliateGroupMembers /
+/// Recompute-per-request (no cache-service path). NOTE: the V_CrcV2_AffiliateGroupMembers /
 /// V_CrcV2_AffiliateGroupSeedConflicts views have no circles_at_block twins yet, so X-Max-Block-Number
 /// is currently a NO-OP for these endpoints — they always read head. Add twins in the test-env repo to
 /// make them block-pinnable (the trusted-subset join to V_CrcV2_TrustRelations is also head-only here).
@@ -33,77 +34,77 @@ public partial class CirclesRpcModule
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Returns the groups an avatar has signalled intent to join (the wishlist), each with its
+    /// Returns the communities an avatar has signalled intent to join (the wishlist), each with its
     /// membership fee, plus the total committed fee percentage across all of them.
     /// </summary>
-    public async Task<AffiliateGroupListResponse> GetAffiliateGroupWishlist(string avatar)
+    public async Task<AvatarCommunityListResponse> GetAvatarCommunitiesWishlist(string avatar)
     {
         avatar = ValidateAndNormalizeAddress(avatar, nameof(avatar));
         await using var connection = await CreateConnectionAsync();
-        var rows = await LoadAffiliateGroupRowsAsync(connection, avatar, trustedOnly: false);
-        return new AffiliateGroupListResponse(SumFees(rows), rows.ToArray());
+        var rows = await LoadAvatarCommunityRowsAsync(connection, avatar, trustedOnly: false);
+        return new AvatarCommunityListResponse(SumFees(rows), rows.ToArray());
     }
 
     /// <summary>
-    /// Returns the confirmed-membership subset of the wishlist: groups that currently trust the
-    /// avatar on-chain. Reflects TMS delay (a wished group only appears once the group trusts the
+    /// Returns the confirmed-membership subset of the wishlist: communities that currently trust the
+    /// avatar on-chain. Reflects TMS delay (a wished community only appears once it trusts the
     /// avatar). The totalFeePercentage is summed over this confirmed subset.
     /// </summary>
-    public async Task<AffiliateGroupListResponse> GetAffiliateGroups(string avatar)
+    public async Task<AvatarCommunityListResponse> GetAvatarCommunities(string avatar)
     {
         avatar = ValidateAndNormalizeAddress(avatar, nameof(avatar));
         await using var connection = await CreateConnectionAsync();
-        var rows = await LoadAffiliateGroupRowsAsync(connection, avatar, trustedOnly: true);
-        return new AffiliateGroupListResponse(SumFees(rows), rows.ToArray());
+        var rows = await LoadAvatarCommunityRowsAsync(connection, avatar, trustedOnly: true);
+        return new AvatarCommunityListResponse(SumFees(rows), rows.ToArray());
     }
 
     /// <summary>
-    /// Returns the avatar's current total committed fee percentage across all groups it has
+    /// Returns the avatar's current total committed fee percentage across all communities it has
     /// signalled intent to join (the wishlist/intent set). Used by GA to block joins that would
     /// exceed 100% and by the TMS to enforce the cap off-chain.
     /// </summary>
-    public async Task<AffiliateFeesPercentageResponse> GetAffiliateGroupFeesPercentage(string avatar)
+    public async Task<CommunityFeesPercentageResponse> GetAvatarCommunityFeesPercentage(string avatar)
     {
         avatar = ValidateAndNormalizeAddress(avatar, nameof(avatar));
         await using var connection = await CreateConnectionAsync();
-        var rows = await LoadAffiliateGroupRowsAsync(connection, avatar, trustedOnly: false);
-        return new AffiliateFeesPercentageResponse(SumFees(rows));
+        var rows = await LoadAvatarCommunityRowsAsync(connection, avatar, trustedOnly: false);
+        return new CommunityFeesPercentageResponse(SumFees(rows));
     }
 
     // ------------------------------------------------------------------
-    // Per-group endpoints
+    // Per-community endpoints
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Returns the avatars that have signalled intent to join the given group (the group's
-    /// members wishlist). This is the endpoint the TMS reads to reconcile trust. Paginated.
+    /// Returns the avatars that have signalled intent to join the given community (the members
+    /// wishlist). This is the endpoint the TMS reads to reconcile trust. Paginated.
     /// </summary>
-    public async Task<PagedResponse<AffiliateGroupMemberRow>> GetAffiliateGroupMembersWishlist(
-        string groupAddress, int limit = 100, string? cursor = null)
+    public async Task<PagedResponse<CommunityMemberRow>> GetCommunityMembersWishlist(
+        string communityAddress, int limit = 100, string? cursor = null)
     {
-        groupAddress = ValidateAndNormalizeAddress(groupAddress, nameof(groupAddress));
-        return await GetAffiliateGroupMembersInternal(groupAddress, limit, cursor, trustedOnly: false);
+        communityAddress = ValidateAndNormalizeAddress(communityAddress, nameof(communityAddress));
+        return await GetCommunityMembersInternal(communityAddress, limit, cursor, trustedOnly: false);
     }
 
     /// <summary>
-    /// Returns the confirmed-membership subset of a group's wishlist: avatars the group actually
-    /// trusts on-chain. Reflects TMS delay. Paginated.
+    /// Returns the confirmed-membership subset of a community's wishlist: avatars the community
+    /// actually trusts on-chain. Reflects TMS delay. Paginated.
     /// </summary>
-    public async Task<PagedResponse<AffiliateGroupMemberRow>> GetAffiliateGroupMembers(
-        string groupAddress, int limit = 100, string? cursor = null)
+    public async Task<PagedResponse<CommunityMemberRow>> GetCommunityMembers(
+        string communityAddress, int limit = 100, string? cursor = null)
     {
-        groupAddress = ValidateAndNormalizeAddress(groupAddress, nameof(groupAddress));
-        return await GetAffiliateGroupMembersInternal(groupAddress, limit, cursor, trustedOnly: true);
+        communityAddress = ValidateAndNormalizeAddress(communityAddress, nameof(communityAddress));
+        return await GetCommunityMembersInternal(communityAddress, limit, cursor, trustedOnly: true);
     }
 
     // ------------------------------------------------------------------
     // Internals
     // ------------------------------------------------------------------
 
-    private async Task<List<AffiliateGroupRow>> LoadAffiliateGroupRowsAsync(
+    private async Task<List<AvatarCommunityRow>> LoadAvatarCommunityRowsAsync(
         NpgsqlConnection connection, string avatar, bool trustedOnly)
     {
-        // trustedOnly: require the group to currently trust the avatar (bilateral handshake).
+        // trustedOnly: require the community to currently trust the avatar (bilateral handshake).
         var trustJoin = trustedOnly
             ? @"INNER JOIN ""V_CrcV2_TrustRelations"" t
                     ON t.truster = m.""affiliateGroup"" AND t.trustee = m.avatar"
@@ -112,7 +113,7 @@ public partial class CirclesRpcModule
         var sql = $@"
             SELECT
                 m.""affiliateGroup"",
-                g.name AS group_name,
+                g.name AS community_name,
                 f.payload->'membershipCriteria'->>'membershipFee' AS membership_fee,
                 m.""timestamp""
             FROM ""V_CrcV2_AffiliateGroupMembers"" m
@@ -127,23 +128,23 @@ public partial class CirclesRpcModule
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.Add(new NpgsqlParameter("avatar", avatar));
 
-        var rows = new List<AffiliateGroupRow>();
+        var rows = new List<AvatarCommunityRow>();
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            var groupAddress = reader.GetString(0);
-            var groupName = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var communityAddress = reader.GetString(0);
+            var communityName = reader.IsDBNull(1) ? null : reader.GetString(1);
             var feeRaw = reader.IsDBNull(2) ? null : reader.GetString(2);
             var timestamp = reader.GetInt64(3);
 
-            rows.Add(new AffiliateGroupRow(groupName, groupAddress, ParseFee(feeRaw), timestamp));
+            rows.Add(new AvatarCommunityRow(communityName, communityAddress, ParseFee(feeRaw), timestamp));
         }
 
         return rows;
     }
 
-    private async Task<PagedResponse<AffiliateGroupMemberRow>> GetAffiliateGroupMembersInternal(
-        string groupAddress, int limit, string? cursor, bool trustedOnly)
+    private async Task<PagedResponse<CommunityMemberRow>> GetCommunityMembersInternal(
+        string communityAddress, int limit, string? cursor, bool trustedOnly)
     {
         // Clamp to a sane page size — an unbounded LIMIT would be a result-set DoS (matches the
         // clamping convention used by the other paginated circles_* endpoints).
@@ -157,7 +158,7 @@ public partial class CirclesRpcModule
                     ON t.truster = m.""affiliateGroup"" AND t.trustee = m.avatar"
             : "";
 
-        var parameters = new List<NpgsqlParameter> { new("group", groupAddress) };
+        var parameters = new List<NpgsqlParameter> { new("community", communityAddress) };
 
         // Keyset cursor predicate lives INSIDE the page CTE so the LIMIT bounds the page before any
         // name enrichment runs.
@@ -179,13 +180,13 @@ public partial class CirclesRpcModule
         //     `= ANY(ARRAY(SELECT avatar FROM page))`, so the expensive (un-indexable) V_CrcV2_Avatars
         //     view is touched once via its PK index instead of being re-scanned per member.
         // Without this fence the planner mis-estimates the view at 1 row and nested-loops V_CrcV2_Avatars
-        // once per member (measured 37s for a ~2.8k-member group; this rewrite: ~0.2s).
+        // once per member (measured 37s for a ~2.8k-member community; this rewrite: ~0.2s).
         var sql = $@"
             WITH page AS MATERIALIZED (
                 SELECT m.""blockNumber"", m.""timestamp"", m.""transactionIndex"", m.""logIndex"", m.avatar
                 FROM ""V_CrcV2_AffiliateGroupMembers"" m
                 {trustJoin}
-                WHERE m.""affiliateGroup"" = @group{cursorPredicate}
+                WHERE m.""affiliateGroup"" = @community{cursorPredicate}
                 ORDER BY m.""blockNumber"" DESC, m.""transactionIndex"" DESC, m.""logIndex"" DESC
                 LIMIT @limit
             ),
@@ -204,7 +205,7 @@ public partial class CirclesRpcModule
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddRange(parameters.ToArray());
 
-        var results = new List<AffiliateGroupMemberRow>();
+        var results = new List<CommunityMemberRow>();
         var cursorData = new List<(long blockNumber, int txIndex, int logIndex)>();
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -216,7 +217,7 @@ public partial class CirclesRpcModule
             var avatar = reader.GetString(4);
             var avatarName = reader.IsDBNull(5) ? null : reader.GetString(5);
 
-            results.Add(new AffiliateGroupMemberRow(avatarName, avatar, timestamp));
+            results.Add(new CommunityMemberRow(avatarName, avatar, timestamp));
             cursorData.Add((blockNumber, txIndex, logIndex));
         }
 
@@ -234,20 +235,20 @@ public partial class CirclesRpcModule
             nextCursor = CursorUtils.EncodeCursor(last.blockNumber, last.txIndex, last.logIndex);
         }
 
-        return new PagedResponse<AffiliateGroupMemberRow>(results.ToArray(), hasMore, nextCursor);
+        return new PagedResponse<CommunityMemberRow>(results.ToArray(), hasMore, nextCursor);
     }
 
-    private static decimal SumFees(IEnumerable<AffiliateGroupRow> rows) =>
+    private static decimal SumFees(IEnumerable<AvatarCommunityRow> rows) =>
         rows.Aggregate(0m, (acc, r) => acc + (r.MembershipFee ?? 0m));
 
     /// <summary>
-    /// Parses a group-profile <c>membershipFee</c> value defensively.
+    /// Parses a community profile's <c>membershipFee</c> value defensively.
     ///
-    /// By the profile schema the field is a JSON number, but a group could publish a malformed profile
+    /// By the profile schema the field is a JSON number, but a community could publish a malformed profile
     /// document directly to IPFS. <c>payload->&gt;'membershipFee'</c> yields the value's text form whether
     /// it was stored as a JSON number (<c>0.1</c>) or a JSON string (<c>"0.1"</c>), so both shapes parse.
     /// A stray trailing '%' is tolerated. Anything else — non-numeric, negative, or absent — is treated as
-    /// "no fee" (null → contributes 0 to <c>totalFeePercentage</c>), so a single mis-published group can
+    /// "no fee" (null → contributes 0 to <c>totalFeePercentage</c>), so a single mis-published community can
     /// never break or under-count the 100%-cap sum.
     ///
     /// The value is a percent in [0,100] per the profile pinning service's schema (MIN/MAX 0..100),
@@ -265,41 +266,41 @@ public partial class CirclesRpcModule
 }
 
 // ========================================================================
-// Affiliate-group DTOs
+// Community DTOs
 // ========================================================================
 
 /// <summary>
-/// One affiliate group in a per-avatar wishlist / confirmed-membership list.
-/// <c>membershipFee</c> is the group profile's membershipCriteria.membershipFee — a percent in
-/// [0,100] of daily gCRC mint — or null when the group sets no membership criteria.
+/// One community in a per-avatar wishlist / confirmed-membership list.
+/// <c>membershipFee</c> is the community group profile's membershipCriteria.membershipFee — a percent
+/// in [0,100] of daily gCRC mint — or null when the community sets no membership criteria.
 /// </summary>
-public record AffiliateGroupRow(
-    [property: JsonPropertyName("groupName")] string? GroupName,
-    [property: JsonPropertyName("groupAddress")] string GroupAddress,
+public record AvatarCommunityRow(
+    [property: JsonPropertyName("communityName")] string? CommunityName,
+    [property: JsonPropertyName("communityAddress")] string CommunityAddress,
     [property: JsonPropertyName("membershipFee")] decimal? MembershipFee,
     [property: JsonPropertyName("timestamp")] long Timestamp
 );
 
 /// <summary>
-/// Per-avatar wishlist / confirmed-membership response: the groups plus the summed total fee.
+/// Per-avatar wishlist / confirmed-membership response: the communities plus the summed total fee.
 /// </summary>
-public record AffiliateGroupListResponse(
+public record AvatarCommunityListResponse(
     [property: JsonPropertyName("totalFeePercentage")] decimal TotalFeePercentage,
-    [property: JsonPropertyName("groups")] AffiliateGroupRow[] Groups
+    [property: JsonPropertyName("communities")] AvatarCommunityRow[] Communities
 );
 
 /// <summary>
-/// One member in a per-group members wishlist / confirmed-members list.
+/// One member in a per-community members wishlist / confirmed-members list.
 /// </summary>
-public record AffiliateGroupMemberRow(
+public record CommunityMemberRow(
     [property: JsonPropertyName("avatarName")] string? AvatarName,
     [property: JsonPropertyName("avatarAddress")] string AvatarAddress,
     [property: JsonPropertyName("timestamp")] long Timestamp
 );
 
 /// <summary>
-/// Response for circles_getAffiliateGroupFeesPercentage: the avatar's total committed fee %.
+/// Response for circles_getAvatarCommunityFeesPercentage: the avatar's total committed fee %.
 /// </summary>
-public record AffiliateFeesPercentageResponse(
+public record CommunityFeesPercentageResponse(
     [property: JsonPropertyName("totalFeePercentage")] decimal TotalFeePercentage
 );
