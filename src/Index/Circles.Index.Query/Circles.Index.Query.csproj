@@ -17,6 +17,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Nethermind.Numerics.Int256" />
       <PackageReference Include="Npgsql" />
     </ItemGroup>
 
