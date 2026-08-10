@@ -25,6 +25,17 @@ services:
       - ../.state/jwtsecret-gnosis/jwt.hex:/jwt.hex
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
+    # NOTE: `command` below is a literal block scalar — every line is passed to the
+    # binary verbatim, so a `#` line inside it becomes an argument and Nethermind
+    # exits printing its help text. Keep comments about individual flags out here.
+    #
+    # JsonRpc.EnabledModules must include `Health`: Nethermind 1.37.x served the
+    # /health HTTP endpoint regardless of this list, but 1.39.x gates the endpoint on
+    # the module being enabled and returns 404 when it is not. The node still logs
+    # "HealthChecks by Nethermind Enabled" and reports HealthChecks.Enabled = true
+    # either way, so requesting the route is the only way to tell. Verified against a
+    # clean nethermind/nethermind:1.39.3 image with all other arguments held
+    # identical: 404 without the module, 200 with it.
     command: |
       --config=gnosis
       --datadir=/data
@@ -43,14 +54,6 @@ services:
       --JsonRpc.Host=0.0.0.0
       --JsonRpc.Port=8545
       --JsonRpc.CorsOrigins=*
-      # `Health` is required for the /health HTTP endpoint to be mapped at all.
-      # Nethermind 1.37.x served /health regardless of this list; 1.39.x gates the
-      # endpoint on the module being enabled, and simply returns 404 when it is not.
-      # The node still logs "HealthChecks by Nethermind Enabled" and reports
-      # HealthChecks.Enabled = true either way, so the only way to detect the
-      # difference is to request the route. Verified against a clean
-      # nethermind/nethermind:1.39.3 image: without `Health` /health is 404, with it
-      # 200, all other arguments held identical.
       --JsonRpc.EnabledModules=[Web3,Eth,Subscribe,Net,Circles,Health]
       --JsonRpc.JwtSecretFile=/jwt.hex
       --JsonRpc.EngineHost=0.0.0.0
