@@ -24,7 +24,16 @@
 
   <ItemGroup>
     <PackageReference Include="Autofac" />
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+    <!-- Microsoft.Extensions.Diagnostics.HealthChecks was referenced here but never
+         used — no HealthCheck symbol appears anywhere in this project. Its only
+         effect was that `dotnet publish` dropped a private NuGet copy of a
+         Microsoft.AspNetCore.App shared-framework assembly into /nethermind/plugins/,
+         the directory Nethermind loads its OWN plugins from. A private copy there
+         becomes a separate assembly identity inside the plugin load context, which is
+         a latent way to break a framework feature with no crash and no log line.
+         This was NOT the cause of the /health 404 on 1.39.3 (that was Nethermind
+         gating the endpoint on the Health RPC module) — it is removed as hygiene.
+         scripts/check-plugin-assembly-versions.sh now guards the class generally. -->
   </ItemGroup>
 
 
