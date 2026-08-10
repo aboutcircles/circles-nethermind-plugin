@@ -36,6 +36,20 @@ services:
     # either way, so requesting the route is the only way to tell. Verified against a
     # clean nethermind/nethermind:1.39.3 image with all other arguments held
     # identical: 404 without the module, 200 with it.
+    #
+    # Receipt.MaxBlockDepth=0 disables the eth_getLogs range cap that 1.39.2 introduced
+    # with a default of 10000. Despite the name it caps the RANGE WIDTH
+    # (toBlock - fromBlock + 1) of a single request, not depth from head; over-limit
+    # requests are rejected -32602. 1.37.x had no cap at all, so 0 reproduces the
+    # previous behaviour exactly and keeps the runtime bump a single-variable change.
+    # This is load-bearing: group-tms requests 100_000-block ranges in
+    # apps/community-new/multiRegistry.ts and apps/group-affiliates/realtime.ts, ten
+    # times the default cap. Those paths run only on first boot / history catch-up /
+    # WebSocket reconnect, never in steady state, so with the cap on, an upgrade looks
+    # clean and then fails on the next group-tms restart — which the infra maintenance
+    # procedure forces by stopping group-tms before gnosis work. Remove this flag only
+    # after group-tms chunks at <= 10000; its backfill path already sits exactly on the
+    # boundary at 10_000.
     command: |
       --config=gnosis
       --datadir=/data
@@ -46,6 +60,7 @@ services:
       --Sync.AncientReceiptsBarrier=12500000
       --Receipt.StoreReceipts=true
       --Receipt.TxLookupLimit=${NETHERMIND_RECEIPT_TX_LOOKUP_LIMIT:-0}
+      --Receipt.MaxBlockDepth=0
       --Pruning.Mode=Hybrid
       --Pruning.FullPruningTrigger=StateDbSize
       --Pruning.FullPruningThresholdMb=100000
