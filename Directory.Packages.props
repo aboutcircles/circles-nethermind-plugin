@@ -3,7 +3,10 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Autofac" Version="9.1.0" />
+    <!-- Floor is set by Nethermind.Api: 1.39.3 binds against Autofac 9.3.1, and a
+         lower pin fails the build with CS1705 (referenced assembly older than the
+         one Nethermind.Api uses). Keep at or above the Nethermind runtime's Autofac. -->
+    <PackageVersion Include="Autofac" Version="9.3.2" />
     <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="coverlet.collector" Version="8.0.0" />
@@ -21,12 +24,20 @@
     <PackageVersion Include="Moq" Version="4.20.72" />
     <PackageVersion Include="Nethereum.Util" Version="5.8.0" />
     <PackageVersion Include="Nethereum.Web3" Version="6.1.0" />
+    <!-- Do NOT bump independently of the runtime image. The Nethermind image bundles
+         its own /nethermind/Nethermind.Int256.dll, and the plugin publishes a copy into
+         /nethermind/plugins/. If the two assembly versions differ the node does not
+         start: it aborts with a FileLoadException ("manifest definition does not match
+         the assembly reference") before any Circles code runs. nethermind:1.39.3 ships
+         assembly version 1.5.0.0, so this stays 1.5.0. Verify against the image, not
+         against nuget's latest, whenever the runtime image moves. -->
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.5.0" />
     <!-- Must stay compatible with the Nethermind runtime image in docker/Index.Dockerfile
-         (currently nethermind/nethermind:1.37.2). The ref-assemblies package may trail the
-         runtime image by a patch release (currently 1.37.1 vs image 1.37.2); keep both within
-         the same minor and bump together once the matching ref-assemblies release exists. -->
-    <PackageVersion Include="Nethermind.ReferenceAssemblies" Version="1.37.1" />
+         (currently nethermind/nethermind:1.39.3). Both are on 1.39.3 exactly — the
+         ref-assemblies package has historically trailed the runtime image by a patch
+         (it was 1.37.1 against image 1.37.2), but a matching 1.39.3 release exists, so
+         there is no skew to carry. Keep them equal, and bump them in the same commit. -->
+    <PackageVersion Include="Nethermind.ReferenceAssemblies" Version="1.39.3" />
     <PackageVersion Include="Npgsql" Version="10.0.1" />
     <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.1" />
     <PackageVersion Include="NUnit" Version="4.6.0" />
