@@ -1,8 +1,21 @@
+# Dependency updates target `staging`, not the default branch.
+#
+# `master` is the branch production builds from. Without an explicit
+# `target-branch`, dependabot opens every PR against the default branch —
+# `master` — so a merged bump ships straight to production without ever
+# running on staging. That inverts the staging -> master promote model the
+# rest of the repo follows.
+#
+# `target-branch` is a per-update key, so it has to be repeated for each
+# ecosystem below; there is no top-level form. Dependabot reads this file
+# from the DEFAULT branch only, so this config must stay on `master` to take
+# effect — a copy on `staging` alone does nothing.
 version: 2
 updates:
   # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "staging"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -17,6 +30,7 @@ updates:
   # .NET NuGet dependencies
   - package-ecosystem: "nuget"
     directory: "/"
+    target-branch: "staging"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -43,6 +57,7 @@ updates:
   # Docker dependencies
   - package-ecosystem: "docker"
     directory: "/docker"
+    target-branch: "staging"
     schedule:
       interval: "weekly"
       day: "monday"
