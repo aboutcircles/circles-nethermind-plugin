@@ -41,11 +41,27 @@ updates:
     commit-message:
       prefix: "deps"
       include: "scope"
+    # Assemblies the Nethermind runtime image already ships in /nethermind/.
+    # These are NOT ordinary dependencies: the plugin publishes its copy into
+    # /nethermind/plugins/, and if the two assembly identities differ the CLR
+    # refuses to load ours and the node dies during init, restarting forever
+    # (System.IO.FileLoadException, 0x80131040). They must EQUAL the image's
+    # version, not merely satisfy a range — so "newer" is a downgrade in
+    # correctness and dependabot cannot reason about it.
+    #
+    # Both of these have already caused it while moving the image 1.37.2 ->
+    # 1.39.3: Nethermind.Numerics.Int256 1.6.0 aborted before any Circles code
+    # ran, and Autofac 9.3.2 killed the node during plugin init.
+    #
+    # Bump these only together with the runtime image, and verify with
+    # scripts/check-plugin-assembly-versions.sh against the image itself
+    # rather than against nuget's latest.
+    ignore:
+      - dependency-name: "Nethermind.*"
+      - dependency-name: "Autofac"
+      - dependency-name: "Autofac.Extensions.DependencyInjection"
     # Group minor and patch updates together
     groups:
-      nethermind:
-        patterns:
-          - "Nethermind.*"
       test-dependencies:
         patterns:
           - "*.Test*"
