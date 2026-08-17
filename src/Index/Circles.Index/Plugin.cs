@@ -42,7 +42,9 @@ public class Plugin : INethermindPlugin
 
     public Task Init(INethermindApi nethermindApi)
     {
-        ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
+        // Nethermind 1.39 dropped the parameterless GetClassLogger() overload that
+        // inferred the calling type; only GetClassLogger<T>() remains.
+        ILogger baseLogger = nethermindApi.LogManager.GetClassLogger<Plugin>();
         InterfaceLogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
 
         if (!Enabled)

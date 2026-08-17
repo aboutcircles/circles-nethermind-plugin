@@ -10,11 +10,26 @@ For real-time balance data, the **Cache Service** is the primary source — mate
 
 | Matview | Wraps View | Purpose | Refresh Tier |
 |---------|-----------|---------|-------------|
-| `M_CrcV2_BalancesByAccountAndToken` | `V_CrcV2_BalancesByAccountAndToken` | Pre-aggregated token balances (demurrage applied at query time) | Fast (5 min) |
+| `M_CrcV2_BalancesByAccountAndToken` | `V_CrcV2_BalancesByAccountAndToken` | Pre-aggregated token balances (demurrage applied at query time) | **Not refreshed** — see below |
 | `M_CrcV2_Avatars` | — | Avatar registry (3-way UNION + LATERAL CID lookup) | Fast (5 min) |
 | `M_CrcV2_ReceiveCount` | — | Transfer receive counts for profile search ranking | Fast (5 min) |
 | `M_CrcV2_Groups` | `V_CrcV2_Groups` | Group details (8 LEFT JOINs + ROW_NUMBER member counts) | Fast (5 min) |
 | `V_TrustScores_Current` | — | Trust scores (network position, reciprocity, age) | Slow (1 hour) |
+
+> **`M_CrcV2_BalancesByAccountAndToken` is an ordinary table, not a materialized
+> view.** It is created and bootstrap-populated by
+> `V_CrcV2_BalancesByAccountAndToken.sql` and then maintained incrementally by
+> `NetworkStateUpdaterService.IncrementalRefreshBalancesMatView()` — a watermarked
+> delta upsert on every fast cycle, which replaced a full `REFRESH` (10-24s → <1s).
+> PostgreSQL forbids DML on a matview, which is exactly why it was converted.
+>
+> `REFRESH MATERIALIZED VIEW` against it therefore fails with
+> `"M_CrcV2_BalancesByAccountAndToken" is not a materialized view`. That failure is
+> not free: the relation-kind check happens *after* the lock is taken, so a
+> blocking `REFRESH` still queues for `ACCESS EXCLUSIVE` first. If a long reader
+> holds `ACCESS SHARE` at the time (a nightly `pg_dump`, say), the pending
+> `ACCESS EXCLUSIVE` blocks every later `ACCESS SHARE` request and stalls all
+> readers of the table until that reader finishes.
 
 ### Wrapping Pattern
 
@@ -82,6 +97,17 @@ The `matview-refresh` Docker container runs an independent cron loop:
 - Outer loop: refreshes trust scores every 60 minutes
 
 This ensures matviews stay fresh even if the Pathfinder is down or restarting.
+
+It covers `M_CrcV2_Avatars`, `M_CrcV2_ReceiveCount`, `M_CrcV2_Groups` and
+`V_TrustScores_Current` only. Balances are not in the list — that table has no
+`REFRESH` path (see the note under Materialized Views above), so during a
+pathfinder outage balances go stale rather than being covered by this backup.
+
+The container sets `PGOPTIONS=-c lock_timeout=3s`. `REFRESH ... CONCURRENTLY`
+takes `EXCLUSIVE` and does not block readers, but the non-concurrent fallback
+takes `ACCESS EXCLUSIVE` and does. The timeout means a fallback that cannot get
+its lock quickly aborts and retries on the next cycle, instead of parking a lock
+queue in front of every reader for as long as the conflicting session runs.
 
 ## Operational Notes
 
