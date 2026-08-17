@@ -340,10 +340,16 @@ services:
       start_period: 1s
 
   # Two-tier materialized view refresh cron:
-  #   Fast tier (every 5 min): balances, avatars, groups, receive counts
+  #   Fast tier (every 5 min): avatars, groups, receive counts
   #   Slow tier (every 60 min): trust scores (expensive)
-  # Uses CONCURRENTLY to avoid blocking reads during refresh.
-  # Fallback to blocking refresh for initial population (WITH NO DATA state).
+  # Prefers CONCURRENTLY, which takes EXCLUSIVE and leaves readers alone. The
+  # fallback exists for initial population (WITH NO DATA state) and does block —
+  # it takes ACCESS EXCLUSIVE — so PGOPTIONS below caps how long it may queue.
+  #
+  # Balances are NOT refreshed here; NetworkStateUpdaterService maintains that
+  # table incrementally. This cron is the documented backup for the in-process
+  # refresher (see docs/materialized-views.md) and covers the case where the
+  # pathfinder is down or restarting — it is not a duplicate to be removed.
   matview-refresh:
     container_name: matview-refresh
     image: postgres:17-alpine
@@ -354,6 +360,19 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - PGPASSWORD=${POSTGRES_PASSWORD}
+      # Bound how long a REFRESH may queue for its table lock. libpq applies
+      # PGOPTIONS to every psql spawned below.
+      #
+      # The non-CONCURRENTLY fallback takes ACCESS EXCLUSIVE. If it queues
+      # behind a long reader that holds ACCESS SHARE — a nightly pg_dump, say —
+      # then the *pending* ACCESS EXCLUSIVE blocks every later ACCESS SHARE
+      # request, and readers of that table stall for as long as the dump runs.
+      # Observed in production on 2026-08-17: 100+ RPC queries timed out over
+      # four minutes while a REFRESH waited on a 5-minute backup.
+      #
+      # 3s means a refresh that loses the race gives up and retries on the next
+      # cycle instead of parking a lock queue in front of readers.
+      - PGOPTIONS=-c lock_timeout=3s
     depends_on:
       postgres-gnosis:
         condition: service_healthy
@@ -366,7 +385,14 @@ services:
         while true; do
           # Fast tier — 12 iterations x 300s = 3600s (1 hour)
           for i in $$(seq 1 12); do
-            for VIEW in M_CrcV2_BalancesByAccountAndToken M_CrcV2_Avatars M_CrcV2_ReceiveCount M_CrcV2_Groups; do
+            # M_CrcV2_BalancesByAccountAndToken is deliberately absent: it is an
+            # ordinary table, not a materialized view, created and maintained by
+            # NetworkStateUpdaterService.IncrementalRefreshBalancesMatView via a
+            # delta upsert (PostgreSQL forbids DML on a matview, which is why it
+            # was converted). REFRESH against it can only ever fail — and the
+            # blocking fallback below still takes its lock before checking the
+            # relation kind, so the failure was not free. Do not add it back.
+            for VIEW in M_CrcV2_Avatars M_CrcV2_ReceiveCount M_CrcV2_Groups; do
               echo "[$(date)] [fast] Refreshing $${VIEW}..."
               psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres \
                 -c "REFRESH MATERIALIZED VIEW CONCURRENTLY \"$${VIEW}\";" 2>&1 \
