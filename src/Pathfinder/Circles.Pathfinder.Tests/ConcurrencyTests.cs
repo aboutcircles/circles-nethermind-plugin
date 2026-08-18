@@ -26,7 +26,16 @@ public class ConcurrencyTests
         var violations = new List<string>();
         var violationLock = new object();
 
-        // Start reader threads that continuously sample the state
+        // Start reader threads that continuously sample the state.
+        //
+        // The cancellation token is deliberately NOT passed to Task.Run. Doing so
+        // makes the task transition straight to Canceled if the token fires before
+        // the thread pool has dequeued it, and Task.WaitAll below then throws
+        // TaskCanceledException instead of observing the readers' results. On a
+        // 2-core CI runner the pool can leave a reader unstarted until after the
+        // writer loop finishes and cancels — which is a property of the scheduler,
+        // not of NetworkState. The loop already exits on cancellation via the
+        // IsCancellationRequested check, so the token argument bought nothing.
         var readers = Enumerable.Range(0, readerCount).Select(readerId => Task.Run(() =>
         {
             while (!cts.Token.IsCancellationRequested)
@@ -53,7 +62,7 @@ public class ConcurrencyTests
                     }
                 }
             }
-        }, cts.Token)).ToArray();
+        })).ToArray();
 
         // Writer: rapidly swap states
         for (int i = 1; i <= writerIterations; i++)
