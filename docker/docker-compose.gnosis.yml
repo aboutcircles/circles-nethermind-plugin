@@ -103,7 +103,12 @@ services:
 
   consensus-gnosis:
     container_name: consensus-gnosis
-    image: sigp/lighthouse:v8.2.1
+    # v8.2.2 is a high-priority release fixing several undisclosed security
+    # vulnerabilities; beacon-node update priority is "High". No schema
+    # migration and no breaking CLI changes, so the tag swap is a drop-in and
+    # must NOT trigger a resync — data-column backfill can OOM on Gnosis until
+    # v8.3.0, and that affects every release including the one we run today.
+    image: sigp/lighthouse:v8.2.2
     restart: always
     depends_on:
       nethermind-gnosis:
