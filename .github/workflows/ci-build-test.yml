@@ -109,7 +109,15 @@ jobs:
 
       - name: Run snapshot tests
         env:
-          TEST_ENV_URL: https://rpc.staging.aboutcircles.com/test-env
+          # Pinned to a single node, NOT the pooled rpc.staging domain. Test
+          # environment sessions are in-memory and node-local, while the pooled
+          # domain round-robins both staging nodes, so a session created on one
+          # node 404s ("Session <id> not found") on requests that land on the
+          # other. TestEnvironmentClient uses this value as its HttpClient
+          # BaseAddress and builds relative URLs from it, so it never follows the
+          # absolute per-node queryUrl the API returns — pinning here is what
+          # actually makes a session sticky.
+          TEST_ENV_URL: https://rpc.staging1.aboutcircles.com/test-env
         run: |
           # -m:1 serializes test assemblies: the staging test-env enforces a global
           # 10-session cap, and parallel assemblies (each holding sessions for shared
@@ -162,7 +170,15 @@ jobs:
 
       - name: Run regression tests
         env:
-          TEST_ENV_URL: https://rpc.staging.aboutcircles.com/test-env
+          # Pinned to a single node, NOT the pooled rpc.staging domain. Test
+          # environment sessions are in-memory and node-local, while the pooled
+          # domain round-robins both staging nodes, so a session created on one
+          # node 404s ("Session <id> not found") on requests that land on the
+          # other. TestEnvironmentClient uses this value as its HttpClient
+          # BaseAddress and builds relative URLs from it, so it never follows the
+          # absolute per-node queryUrl the API returns — pinning here is what
+          # actually makes a session sticky.
+          TEST_ENV_URL: https://rpc.staging1.aboutcircles.com/test-env
         run: |
           # -m:1: see snapshot-tests — bounded by the test-env global session cap.
           dotnet test --no-build -c Release -m:1 \
@@ -220,7 +236,15 @@ jobs:
 
       - name: Run Anvil regression tests
         env:
-          TEST_ENV_URL: https://rpc.staging.aboutcircles.com/test-env
+          # Pinned to a single node, NOT the pooled rpc.staging domain. Test
+          # environment sessions are in-memory and node-local, while the pooled
+          # domain round-robins both staging nodes, so a session created on one
+          # node 404s ("Session <id> not found") on requests that land on the
+          # other. TestEnvironmentClient uses this value as its HttpClient
+          # BaseAddress and builds relative URLs from it, so it never follows the
+          # absolute per-node queryUrl the API returns — pinning here is what
+          # actually makes a session sticky.
+          TEST_ENV_URL: https://rpc.staging1.aboutcircles.com/test-env
         run: |
           # -m:1: see snapshot-tests — bounded by the test-env global session cap.
           dotnet test --no-build -c Release -m:1 \
