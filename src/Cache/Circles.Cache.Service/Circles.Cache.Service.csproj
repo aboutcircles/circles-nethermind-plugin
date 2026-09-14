@@ -44,8 +44,16 @@
     <!-- Numerics for Circles calculations -->
     <PackageReference Include="Nethermind.Numerics.Int256" />
 
-    <!-- OpenAPI documentation -->
+    <!-- OpenAPI documentation.
+         Microsoft.OpenApi is listed explicitly even though nothing here uses it
+         directly: Microsoft.AspNetCore.OpenApi pulls it transitively at a
+         version carrying GHSA-v5pm-xwqc-g5wc (high), and central package
+         management does not reach a transitive dependency. Naming it here is
+         what lets Directory.Packages.props set the version, and it matches what
+         Circles.Pathfinder.Host already does. Drop it once
+         Microsoft.AspNetCore.OpenApi itself depends on a patched version. -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.OpenApi" />
     <PackageReference Include="Scalar.AspNetCore" />
   </ItemGroup>
 
