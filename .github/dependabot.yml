@@ -60,6 +60,20 @@ updates:
       - dependency-name: "Nethermind.*"
       - dependency-name: "Autofac"
       - dependency-name: "Autofac.Extensions.DependencyInjection"
+      # FluentAssertions changed licence at 8.0.0. 6.12.2 (what we pin) and the
+      # whole 7.x line carry `<license type="expression">Apache-2.0</license>`;
+      # 8.0.0 replaced that with a licence FILE and the package description
+      # states commercial use requires a paid Xceed licence. Dependabot reads
+      # neither, so it reopened the 8.x bump every week (#570, #597) against a
+      # build that also cannot compile it: v7 renamed BeGreaterOrEqualTo and
+      # BeLessOrEqualTo, which we call in three tests.
+      #
+      # 7.x is deliberately still allowed. It is Apache-2.0 and is the exit
+      # route if a newer assertion library is wanted; taking it means fixing
+      # those three call sites. AwesomeAssertions is the Apache-2.0 fork of 7.x
+      # if the project is ever abandoned upstream.
+      - dependency-name: "FluentAssertions"
+        versions: [">=8.0.0"]
     # Group minor and patch updates together
     groups:
       test-dependencies:
