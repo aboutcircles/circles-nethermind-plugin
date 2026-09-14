@@ -15,8 +15,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- ASP.NET Core -->
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+    <!-- ASP.NET Core health checks come from the Microsoft.AspNetCore.App shared
+         framework, so this project carries no package reference for them. See the
+         note in src/Cache/Circles.Cache.Service/Circles.Cache.Service.csproj. -->
 
     <!-- PostgreSQL -->
     <PackageReference Include="Npgsql" />

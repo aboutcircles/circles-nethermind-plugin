@@ -20,8 +20,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- ASP.NET Core and Health Checks -->
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+    <!-- Microsoft.Extensions.Diagnostics.HealthChecks is deliberately absent, even
+         though Program.cs calls AddHealthChecks and MapHealthChecks. This is an
+         Sdk="Microsoft.NET.Sdk.Web" project, so the Microsoft.AspNetCore.App shared
+         framework already supplies both. The .NET 10 SDK prunes the package reference
+         (NU1510) and the assembly never reaches the publish output, so a PackageVersion
+         pin for it is silently discarded. Measured rather than assumed: publishing this
+         project produces no entry for it in Circles.Cache.Service.deps.json. Same
+         reasoning as the removal recorded in src/Index/Circles.Index/Circles.Index.csproj. -->
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
 
     <!-- PostgreSQL -->
@@ -44,8 +50,16 @@
     <!-- Numerics for Circles calculations -->
     <PackageReference Include="Nethermind.Numerics.Int256" />
 
-    <!-- OpenAPI documentation -->
+    <!-- OpenAPI documentation.
+         Microsoft.OpenApi is listed explicitly even though nothing here uses it
+         directly: Microsoft.AspNetCore.OpenApi pulls it transitively at a
+         version carrying GHSA-v5pm-xwqc-g5wc (high), and central package
+         management does not reach a transitive dependency. Naming it here is
+         what lets Directory.Packages.props set the version, and it matches what
+         Circles.Pathfinder.Host already does. Drop it once
+         Microsoft.AspNetCore.OpenApi itself depends on a patched version. -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.OpenApi" />
     <PackageReference Include="Scalar.AspNetCore" />
   </ItemGroup>
 
