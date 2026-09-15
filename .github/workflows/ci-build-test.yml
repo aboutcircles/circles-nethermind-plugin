@@ -118,6 +118,7 @@ jobs:
           # absolute per-node queryUrl the API returns — pinning here is what
           # actually makes a session sticky.
           TEST_ENV_URL: https://rpc.staging1.aboutcircles.com/test-env
+          TEST_ENV_BASIC_AUTH: ${{ secrets.TEST_ENV_BASIC_AUTH }}
         run: |
           # -m:1 serializes test assemblies: the staging test-env enforces a global
           # 10-session cap, and parallel assemblies (each holding sessions for shared
@@ -179,6 +180,7 @@ jobs:
           # absolute per-node queryUrl the API returns — pinning here is what
           # actually makes a session sticky.
           TEST_ENV_URL: https://rpc.staging1.aboutcircles.com/test-env
+          TEST_ENV_BASIC_AUTH: ${{ secrets.TEST_ENV_BASIC_AUTH }}
         run: |
           # -m:1: see snapshot-tests — bounded by the test-env global session cap.
           dotnet test --no-build -c Release -m:1 \
@@ -245,6 +247,7 @@ jobs:
           # absolute per-node queryUrl the API returns — pinning here is what
           # actually makes a session sticky.
           TEST_ENV_URL: https://rpc.staging1.aboutcircles.com/test-env
+          TEST_ENV_BASIC_AUTH: ${{ secrets.TEST_ENV_BASIC_AUTH }}
         run: |
           # -m:1: see snapshot-tests — bounded by the test-env global session cap.
           dotnet test --no-build -c Release -m:1 \

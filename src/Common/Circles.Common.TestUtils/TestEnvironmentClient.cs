@@ -1,4 +1,6 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Npgsql;
 
@@ -19,6 +21,34 @@ public class TestEnvironmentClient : IAsyncDisposable
 {
     private static readonly string DefaultTestEnvUrl =
         Environment.GetEnvironmentVariable("TEST_ENV_URL") ?? "http://localhost:5200";
+
+    // Basic auth for the gated public test-env (staging serves 401 without it).
+    // Format "user:password" in TEST_ENV_BASIC_AUTH; null when unset so local runs
+    // against an ungated localhost test-env are unaffected.
+    private static readonly AuthenticationHeaderValue? BasicAuthHeader = BuildBasicAuthHeader();
+
+    private static AuthenticationHeaderValue? BuildBasicAuthHeader()
+    {
+        var raw = Environment.GetEnvironmentVariable("TEST_ENV_BASIC_AUTH");
+        if (string.IsNullOrEmpty(raw))
+        {
+            return null;
+        }
+
+        var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(raw));
+        return new AuthenticationHeaderValue("Basic", token);
+    }
+
+    private static HttpClient CreateHttpClient(string baseUrl)
+    {
+        var client = new HttpClient
+        {
+            BaseAddress = new Uri(baseUrl),
+            Timeout = TimeSpan.FromMinutes(5)
+        };
+        client.DefaultRequestHeaders.Authorization = BasicAuthHeader;
+        return client;
+    }
 
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
@@ -132,11 +162,7 @@ public class TestEnvironmentClient : IAsyncDisposable
         _baseUrl = baseUrl.TrimEnd('/');
         // Must end with / for relative URLs to work correctly with BaseAddress
         // 5-minute timeout for heavy queries (trust graph = 2M rows via HTTP proxy)
-        _httpClient = new HttpClient
-        {
-            BaseAddress = new Uri(_baseUrl + "/"),
-            Timeout = TimeSpan.FromMinutes(5)
-        };
+        _httpClient = CreateHttpClient(_baseUrl + "/");
     }
 
     /// <summary>
@@ -187,7 +213,7 @@ public class TestEnvironmentClient : IAsyncDisposable
         // block-exists probes can exceed HttpClient's 100s default. A 100s ceiling here
         // surfaces as "Test environment not available: HttpClient.Timeout of 100 seconds"
         // in scenario setup even though the env is healthy — just momentarily slow.
-        using var client = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromMinutes(5) };
+        using var client = CreateHttpClient(baseUrl);
 
         var response = await GetWithTransientRetryAsync<BlockInfo>(client, "api/v1/blocks/current");
         return response?.BlockNumber ?? 0;
@@ -204,7 +230,7 @@ public class TestEnvironmentClient : IAsyncDisposable
         // block-exists probes can exceed HttpClient's 100s default. A 100s ceiling here
         // surfaces as "Test environment not available: HttpClient.Timeout of 100 seconds"
         // in scenario setup even though the env is healthy — just momentarily slow.
-        using var client = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromMinutes(5) };
+        using var client = CreateHttpClient(baseUrl);
 
         var response = await GetWithTransientRetryAsync<BlockExistsInfo>(
             client, $"api/v1/blocks/{blockNumber}/exists");
@@ -222,7 +248,7 @@ public class TestEnvironmentClient : IAsyncDisposable
         // block-exists probes can exceed HttpClient's 100s default. A 100s ceiling here
         // surfaces as "Test environment not available: HttpClient.Timeout of 100 seconds"
         // in scenario setup even though the env is healthy — just momentarily slow.
-        using var client = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromMinutes(5) };
+        using var client = CreateHttpClient(baseUrl);
 
         return await GetWithTransientRetryAsync<HealthResponse>(client, "health");
     }
