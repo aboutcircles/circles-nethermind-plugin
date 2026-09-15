@@ -327,6 +327,11 @@ public class RpcMethodSnapshotTests
 
         var addressBearingTxs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var flowScopeTxs = new List<string>();
+        // The response is newest-first (DESC) and capped at the default 100-row
+        // limit with no explicit window, so the last row is the oldest returned
+        // event. Its transaction is the only one the limit can truncate
+        // mid-transaction, so track it and exclude it from the invariant below.
+        string? oldestTxHash = null;
 
         foreach (var element in result.EnumerateArray())
         {
@@ -337,6 +342,8 @@ public class RpcMethodSnapshotTests
             var eventName = eventNameProp.GetString() ?? string.Empty;
             var txHash = txHashProp.GetString() ?? string.Empty;
             if (string.IsNullOrEmpty(txHash)) continue;
+
+            oldestTxHash = txHash; // DESC order: the final assignment is the oldest row.
 
             if (eventName.StartsWith("CrcV2_FlowEdgesScope", StringComparison.Ordinal))
             {
@@ -350,6 +357,13 @@ public class RpcMethodSnapshotTests
 
         foreach (var txHash in flowScopeTxs)
         {
+            // Skip the boundary tx: a flow-scope event carries a higher logIndex
+            // than its address-bearing siblings in the same tx, so when the limit
+            // slices through the oldest returned tx the flow-scope row survives
+            // while its siblings fall past row 100. That is a legitimate
+            // truncation, not the over-return this test guards against.
+            if (txHash.Equals(oldestTxHash, StringComparison.OrdinalIgnoreCase)) continue;
+
             Assert.That(addressBearingTxs, Does.Contain(txHash),
                 $"Flow-scope event in tx {txHash} has no address-bearing event for {KnownV2Human} in the same response");
         }
