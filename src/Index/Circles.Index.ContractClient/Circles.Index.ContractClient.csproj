@@ -17,6 +17,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
       <PackageReference Include="Nethereum.Web3" />
     </ItemGroup>
 
