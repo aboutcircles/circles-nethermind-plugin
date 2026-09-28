@@ -53,10 +53,10 @@ public class PoolToSolverIntegrationTests
 
         // Build and publish the base snapshot (same as NetworkStateUpdaterService does)
         var baseCap = CapacityGraphPool.BuildFullGraph(balanceGraph, trustLookup, mock, RouterAddr).Result;
-        pool.UpdateSnapshot(new CapacityGraphSnapshot(1, baseCap));
+        pool.UpdateSnapshot(new CapacityGraphSnapshot(1, baseCap, balanceGraph, trustLookup));
 
         // Rent the graph for this specific request
-        var handle = pool.Rent(request, balanceGraph, trustLookup).Result;
+        var handle = pool.Rent(request).Result;
 
         var pathfinder = new V2Pathfinder();
         return pathfinder.ComputeMaxFlowWithPath(handle.Graph, request, targetFlow ?? HundredCrc);
@@ -210,11 +210,11 @@ public class PoolToSolverIntegrationTests
 
         var pool = new CapacityGraphPool(RouterAddr, mock);
         var baseCap = CapacityGraphPool.BuildFullGraph(balanceGraph, trustLookup, mock, RouterAddr).Result;
-        pool.UpdateSnapshot(new CapacityGraphSnapshot(1, baseCap));
+        pool.UpdateSnapshot(new CapacityGraphSnapshot(1, baseCap, balanceGraph, trustLookup));
 
         var request = new FlowRequest { Source = SourceAddr, Sink = SinkAddr };
-        var handle1 = pool.Rent(request, balanceGraph, trustLookup).Result;
-        var handle2 = pool.Rent(request, balanceGraph, trustLookup).Result;
+        var handle1 = pool.Rent(request).Result;
+        var handle2 = pool.Rent(request).Result;
 
         Assert.That(handle1.Graph, Is.SameAs(handle2.Graph),
             "Unfiltered requests should return the exact same shared snapshot object");

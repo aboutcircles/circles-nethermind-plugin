@@ -227,9 +227,11 @@ public class NetworkStateUpdaterService : BackgroundService
 
         await Task.WhenAll(trustTask, balanceTask);
 
+        var balanceGraph = _networkState.BalanceGraph ?? throw new InvalidOperationException("Balance graph is null");
+        var accountTrusts = _networkState.AccountTrusts ?? throw new InvalidOperationException("Account trusts is null");
         var cap = await CapacityGraphPool.BuildFullGraph(
-            _networkState.BalanceGraph ?? throw new InvalidOperationException("Balance graph is null"),
-            _networkState.AccountTrusts ?? throw new InvalidOperationException("Account trusts is null"),
+            balanceGraph,
+            accountTrusts,
             loadGraph,
             _settings.BaseGroupRouter);
 
@@ -246,7 +248,7 @@ public class NetworkStateUpdaterService : BackgroundService
             new HashSet<int>(cap.ScoreRouterIds),
             new HashSet<int>(cap.InflationaryWrappers));
 
-        _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
+        _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap, balanceGraph, accountTrusts), groupData);
 
         // NOTE: Pre-built wrapped snapshot disabled — IsWrapOnly() always returns false.
         // The snapshot lacks source-specific wrapped supply edges, causing maxFlow=0.
@@ -499,7 +501,7 @@ public class NetworkStateUpdaterService : BackgroundService
             new HashSet<int>(cap.ScoreRouterIds),
             new HashSet<int>(cap.InflationaryWrappers));
 
-        _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
+        _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap, balanceGraph, trustLookup), groupData);
 
         // NOTE: Pre-built wrapped snapshot disabled — IsWrapOnly() always returns false.
         // See CapacityGraphPool.IsWrapOnly() for details.
@@ -734,7 +736,7 @@ public class NetworkStateUpdaterService : BackgroundService
             new HashSet<int>(cap.ScoreRouterIds),
             new HashSet<int>(cap.InflationaryWrappers));
 
-        _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
+        _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap, balanceGraph, trustLookup), groupData);
 
         // NOTE: Pre-built wrapped snapshot disabled — IsWrapOnly() always returns false.
         // The snapshot lacks source-specific wrapped supply edges, causing maxFlow=0.
@@ -766,7 +768,7 @@ public class NetworkStateUpdaterService : BackgroundService
                 balanceGraph, accountTrusts, loadGraph, _settings.BaseGroupRouter, groupData).Result;
             sw.Stop();
 
-            _pool.UpdateWrappedSnapshot(new CapacityGraphSnapshot(lastBlock, wrappedCap));
+            _pool.UpdateWrappedSnapshot(new CapacityGraphSnapshot(lastBlock, wrappedCap, balanceGraph, accountTrusts));
 
             _log.LogInformation("Pre-built wrapped graph snapshot in {Ms} ms – {Nodes} nodes, {Edges} edges",
                 sw.ElapsedMilliseconds, wrappedCap.Nodes.Count, wrappedCap.Edges.Count);

@@ -75,6 +75,13 @@ public class CapacityGraphPoolTests
         return (balances, trust);
     }
 
+    /// <summary>A snapshot of <paramref name="graph"/> built from <see cref="BuildMinimalInputs"/>.</summary>
+    private static CapacityGraphSnapshot Snapshot(long block, CapacityGraph graph)
+    {
+        var (balances, trust) = BuildMinimalInputs();
+        return new CapacityGraphSnapshot(block, graph, balances, trust);
+    }
+
     // ----------------------------------------------------------------
     // 1. HasCurrentSnapshot before any update
     // ----------------------------------------------------------------
@@ -95,7 +102,7 @@ public class CapacityGraphPoolTests
     {
         var pool = CreatePool();
         var graph = BuildMinimalGraph();
-        var snap = new CapacityGraphSnapshot(1, graph);
+        var snap = Snapshot(1, graph);
 
         pool.UpdateSnapshot(snap);
 
@@ -111,12 +118,11 @@ public class CapacityGraphPoolTests
     public void Rent_BeforeSnapshotLoaded_ThrowsGraphNotReady()
     {
         var pool = CreatePool();
-        var (balances, trust) = BuildMinimalInputs();
         var request = new FlowRequest();
 
         var ex = Assert.ThrowsAsync<GraphNotReadyException>(async () =>
         {
-            await pool.Rent(request, balances, trust);
+            await pool.Rent(request);
         });
 
         Assert.That(ex!.Message, Does.Contain("No capacity graph available yet"));
@@ -131,13 +137,12 @@ public class CapacityGraphPoolTests
     {
         var pool = CreatePool();
         var graph = BuildMinimalGraph();
-        var snap = new CapacityGraphSnapshot(42, graph);
+        var snap = Snapshot(42, graph);
         pool.UpdateSnapshot(snap);
 
-        var (balances, trust) = BuildMinimalInputs();
         var request = new FlowRequest(); // empty => unfiltered
 
-        using var handle = await pool.Rent(request, balances, trust);
+        using var handle = await pool.Rent(request);
 
         Assert.That(handle.Graph, Is.SameAs(graph),
             "Unfiltered Rent should return the exact same CapacityGraph instance from the snapshot");
@@ -152,7 +157,7 @@ public class CapacityGraphPoolTests
     {
         var pool = CreatePool();
         var baseGraph = BuildMinimalGraph();
-        var snap = new CapacityGraphSnapshot(42, baseGraph);
+        var snap = Snapshot(42, baseGraph);
 
         // Provide cached group data so GraphFactory.CreateCapacityGraph skips DB queries
         var cachedGroups = new CachedGroupData(
@@ -165,7 +170,6 @@ public class CapacityGraphPoolTests
 
         pool.UpdateSnapshot(snap, cachedGroups);
 
-        var (balances, trust) = BuildMinimalInputs();
 
         // Request with FromTokens triggers filtering
         var request = new FlowRequest
@@ -175,7 +179,7 @@ public class CapacityGraphPoolTests
             FromTokens = new List<string> { AliceAddr }
         };
 
-        using var handle = await pool.Rent(request, balances, trust);
+        using var handle = await pool.Rent(request);
 
         Assert.That(handle.Graph, Is.Not.SameAs(baseGraph),
             "Filtered Rent should build a new CapacityGraph, not return the shared snapshot");
@@ -355,17 +359,16 @@ public class CapacityGraphPoolTests
         var pool = CreatePool();
 
         var graphOld = BuildMinimalGraph();
-        var snapOld = new CapacityGraphSnapshot(1, graphOld);
+        var snapOld = Snapshot(1, graphOld);
         pool.UpdateSnapshot(snapOld);
 
         var graphNew = BuildMinimalGraph();
-        var snapNew = new CapacityGraphSnapshot(2, graphNew);
+        var snapNew = Snapshot(2, graphNew);
         pool.UpdateSnapshot(snapNew);
 
-        var (balances, trust) = BuildMinimalInputs();
         var request = new FlowRequest(); // unfiltered => returns shared base
 
-        using var handle = await pool.Rent(request, balances, trust);
+        using var handle = await pool.Rent(request);
 
         Assert.That(handle.Graph, Is.SameAs(graphNew),
             "After a second UpdateSnapshot, Rent should return the latest graph");
@@ -382,7 +385,7 @@ public class CapacityGraphPoolTests
     {
         var pool = CreatePool();
         var baseGraph = BuildMinimalGraph();
-        var snap = new CapacityGraphSnapshot(42, baseGraph);
+        var snap = Snapshot(42, baseGraph);
 
         int alice = AddressIdPool.IdOf(AliceAddr);
         int bob = AddressIdPool.IdOf(BobAddr);
@@ -404,7 +407,6 @@ public class CapacityGraphPoolTests
 
         pool.UpdateSnapshot(snap, cachedGroups);
 
-        var (balances, trust) = BuildMinimalInputs();
 
         // Filtered request to trigger ad-hoc graph build
         var request = new FlowRequest
@@ -414,7 +416,7 @@ public class CapacityGraphPoolTests
             FromTokens = new List<string> { AliceAddr }
         };
 
-        using var handle = await pool.Rent(request, balances, trust);
+        using var handle = await pool.Rent(request);
         var filteredGraph = handle.Graph;
 
         // The filtered graph should contain the group from cached data
@@ -434,10 +436,23 @@ public class CapacityGraphPoolTests
     public void CapacityGraphSnapshot_ExposesBlockAndBase()
     {
         var graph = BuildMinimalGraph();
-        var snap = new CapacityGraphSnapshot(99, graph);
+        var (balances, trust) = BuildMinimalInputs();
+        var snap = new CapacityGraphSnapshot(99, graph, balances, trust);
 
         Assert.That(snap.Block, Is.EqualTo(99));
         Assert.That(snap.Base, Is.SameAs(graph));
+        Assert.That(snap.Balances, Is.SameAs(balances));
+        Assert.That(snap.Trust, Is.SameAs(trust));
+    }
+
+    [Test]
+    public void CapacityGraphSnapshot_RequiresTheBalancesAndTrustItWasBuiltFrom()
+    {
+        var graph = BuildMinimalGraph();
+        var (balances, trust) = BuildMinimalInputs();
+
+        Assert.Throws<ArgumentNullException>(() => _ = new CapacityGraphSnapshot(1, graph, null!, trust));
+        Assert.Throws<ArgumentNullException>(() => _ = new CapacityGraphSnapshot(1, graph, balances, null!));
     }
 
     // ----------------------------------------------------------------
