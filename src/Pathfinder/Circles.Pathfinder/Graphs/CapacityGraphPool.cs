@@ -53,9 +53,7 @@ public sealed class CapacityGraphPool(
     /* Renting                                                            */
     /* ------------------------------------------------------------------ */
 
-    public Task<CapacityGraphHandle> Rent(FlowRequest r,
-        BalanceGraph balances,
-        IReadOnlyDictionary<int, HashSet<int>> trust)
+    public Task<CapacityGraphHandle> Rent(FlowRequest r)
     {
         // Single volatile read — snapshot and groupData are always consistent.
         var state = _state;
@@ -75,8 +73,16 @@ public sealed class CapacityGraphPool(
                 // Fall through to ad-hoc build if wrapped snapshot not yet available
             }
 
-            // build ad-hoc filtered graph, using cached group/consent data to skip DB queries
-            var g = _gf.CreateCapacityGraph(balances, trust, r, state.GroupData);
+            // build ad-hoc filtered graph, using cached group/consent data to skip DB queries.
+            // Build it from the balances and trust the snapshot was built from, so the graph holds
+            // the state of the block it is labelled with. Do not take them from NetworkState: the
+            // updater replaces NetworkState before it replaces this snapshot, so during an update
+            // NetworkState is one block ahead of state.Snapshot.Block.
+            var g = _gf.CreateCapacityGraph(
+                state.Snapshot.Balances,
+                state.Snapshot.Trust,
+                r,
+                state.GroupData);
             g.Block = state.Snapshot.Block; // propagate block for replay logging
             return Task.FromResult(new CapacityGraphHandle(g));
         }
@@ -160,10 +166,26 @@ public sealed class CapacityGraphSnapshot
     public long Block { get; }
     public CapacityGraph Base { get; }
 
-    public CapacityGraphSnapshot(long block, CapacityGraph @base)
+    /// <summary>
+    /// The balance graph and trust lookup <see cref="Base"/> was built from.
+    /// <see cref="CapacityGraphPool.Rent"/> builds filtered graphs from these, so a filtered graph
+    /// always holds the balances and trust of the block it is labelled with.
+    /// </summary>
+    public BalanceGraph Balances { get; }
+    public IReadOnlyDictionary<int, HashSet<int>> Trust { get; }
+
+    public CapacityGraphSnapshot(
+        long block,
+        CapacityGraph @base,
+        BalanceGraph balances,
+        IReadOnlyDictionary<int, HashSet<int>> trust)
     {
+        ArgumentNullException.ThrowIfNull(balances);
+        ArgumentNullException.ThrowIfNull(trust);
         Block = block;
         Base = @base;
+        Balances = balances;
+        Trust = trust;
         // Stamp block on the graph so V2Pathfinder can log it without access to the snapshot
         @base.Block = block;
     }

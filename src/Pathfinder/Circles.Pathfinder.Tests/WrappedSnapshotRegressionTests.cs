@@ -56,6 +56,13 @@ public class WrappedSnapshotRegressionTests
         return (balances, trust);
     }
 
+    /// <summary>A snapshot of <paramref name="graph"/> built from <see cref="BuildMinimalInputs"/>.</summary>
+    private static CapacityGraphSnapshot Snapshot(long block, CapacityGraph graph)
+    {
+        var (balances, trust) = BuildMinimalInputs();
+        return new CapacityGraphSnapshot(block, graph, balances, trust);
+    }
+
     private static CachedGroupData BuildEmptyGroupData()
     {
         return new CachedGroupData(
@@ -225,7 +232,7 @@ public class WrappedSnapshotRegressionTests
     {
         var pool = CreatePool();
         var graph = BuildMinimalGraph();
-        var snap = new CapacityGraphSnapshot(42, graph);
+        var snap = Snapshot(42, graph);
 
         pool.UpdateWrappedSnapshot(snap);
 
@@ -241,8 +248,8 @@ public class WrappedSnapshotRegressionTests
         var graph1 = BuildMinimalGraph();
         var graph2 = BuildMinimalGraph();
 
-        pool.UpdateWrappedSnapshot(new CapacityGraphSnapshot(1, graph1));
-        pool.UpdateWrappedSnapshot(new CapacityGraphSnapshot(2, graph2));
+        pool.UpdateWrappedSnapshot(Snapshot(1, graph1));
+        pool.UpdateWrappedSnapshot(Snapshot(2, graph2));
 
         Assert.That(pool.CurrentWrappedSnapshot!.Block, Is.EqualTo(2));
         Assert.That(pool.CurrentWrappedSnapshot.Base, Is.SameAs(graph2));
@@ -261,13 +268,12 @@ public class WrappedSnapshotRegressionTests
         var baseGraph = BuildMinimalGraph();
         var wrappedGraph = BuildMinimalGraph();
 
-        pool.UpdateSnapshot(new CapacityGraphSnapshot(42, baseGraph), BuildEmptyGroupData());
-        pool.UpdateWrappedSnapshot(new CapacityGraphSnapshot(42, wrappedGraph));
+        pool.UpdateSnapshot(Snapshot(42, baseGraph), BuildEmptyGroupData());
+        pool.UpdateWrappedSnapshot(Snapshot(42, wrappedGraph));
 
-        var (balances, trust) = BuildMinimalInputs();
         var request = new FlowRequest { WithWrap = true };
 
-        using var handle = await pool.Rent(request, balances, trust);
+        using var handle = await pool.Rent(request);
 
         Assert.That(handle.Graph, Is.Not.SameAs(wrappedGraph),
             "Wrap-only request should NOT use pre-built snapshot (lacks source-specific wrapped edges).");
@@ -281,13 +287,12 @@ public class WrappedSnapshotRegressionTests
         var pool = CreatePool();
         var baseGraph = BuildMinimalGraph();
 
-        pool.UpdateSnapshot(new CapacityGraphSnapshot(42, baseGraph), BuildEmptyGroupData());
+        pool.UpdateSnapshot(Snapshot(42, baseGraph), BuildEmptyGroupData());
         // Deliberately NOT setting wrapped snapshot
 
-        var (balances, trust) = BuildMinimalInputs();
         var request = new FlowRequest { WithWrap = true };
 
-        using var handle = await pool.Rent(request, balances, trust);
+        using var handle = await pool.Rent(request);
 
         Assert.That(handle.Graph, Is.Not.SameAs(baseGraph),
             "Without wrapped snapshot, should build ad-hoc (not return base graph).");
@@ -300,10 +305,9 @@ public class WrappedSnapshotRegressionTests
         var baseGraph = BuildMinimalGraph();
         var wrappedGraph = BuildMinimalGraph();
 
-        pool.UpdateSnapshot(new CapacityGraphSnapshot(42, baseGraph), BuildEmptyGroupData());
-        pool.UpdateWrappedSnapshot(new CapacityGraphSnapshot(42, wrappedGraph));
+        pool.UpdateSnapshot(Snapshot(42, baseGraph), BuildEmptyGroupData());
+        pool.UpdateWrappedSnapshot(Snapshot(42, wrappedGraph));
 
-        var (balances, trust) = BuildMinimalInputs();
         var request = new FlowRequest
         {
             Source = AliceAddr,
@@ -312,7 +316,7 @@ public class WrappedSnapshotRegressionTests
             FromTokens = new List<string> { AliceAddr }
         };
 
-        using var handle = await pool.Rent(request, balances, trust);
+        using var handle = await pool.Rent(request);
 
         Assert.That(handle.Graph, Is.Not.SameAs(wrappedGraph),
             "WithWrap + FromTokens should build ad-hoc, not use wrapped snapshot.");
@@ -327,13 +331,12 @@ public class WrappedSnapshotRegressionTests
         var baseGraph = BuildMinimalGraph();
         var wrappedGraph = BuildMinimalGraph();
 
-        pool.UpdateSnapshot(new CapacityGraphSnapshot(42, baseGraph), BuildEmptyGroupData());
-        pool.UpdateWrappedSnapshot(new CapacityGraphSnapshot(42, wrappedGraph));
+        pool.UpdateSnapshot(Snapshot(42, baseGraph), BuildEmptyGroupData());
+        pool.UpdateWrappedSnapshot(Snapshot(42, wrappedGraph));
 
-        var (balances, trust) = BuildMinimalInputs();
         var request = new FlowRequest(); // no wrap
 
-        using var handle = await pool.Rent(request, balances, trust);
+        using var handle = await pool.Rent(request);
 
         Assert.That(handle.Graph, Is.SameAs(baseGraph),
             "Non-wrapped request should return base snapshot.");
