@@ -2,6 +2,7 @@ using System.Collections;
 using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Circles.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
@@ -70,88 +71,150 @@ public partial class CirclesRpcModule
     }
 
     /// <summary>
-    /// Converts a filter value to the CLR type Npgsql sends as its column's Postgres type.
+    /// A filter value sent as an untyped parameter (<see cref="NpgsqlDbType.Unknown"/>):
+    /// Postgres parses the text as the type of the column it is compared with.
+    /// </summary>
+    private sealed record UntypedFilterValue(string Text);
+
+    private static NpgsqlParameter CreateFilterParameter(string name, object? value) =>
+        value is UntypedFilterValue untyped
+            ? new NpgsqlParameter(name, NpgsqlDbType.Unknown) { Value = untyped.Text }
+            : new NpgsqlParameter(name, value ?? DBNull.Value);
+
+    /// <summary>
+    /// A uint256 has at most 78 digits. Longer numeric strings are rejected before any parsing.
+    /// </summary>
+    private const int MaxNumericFilterTextLength = 100;
+
+    /// <summary>
+    /// A plain decimal number in a form Postgres NUMERIC input accepts. The exponent has at most
+    /// three digits; Postgres 15 rejects values above 1e131071 or below 1e-16383 with an error.
+    /// </summary>
+    private static readonly Regex DecimalNumberPattern = new(
+        @"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]{1,3})?$",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// Returns true when <paramref name="tableName"/> (namespace, underscore, table) names a view.
+    /// PostgresDb creates every schema entry whose namespace starts with "V_" as a view.
+    /// </summary>
+    internal static bool IsViewTable(string tableName) =>
+        tableName.StartsWith("V_", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Converts a filter value for a column whose declared type is <paramref name="columnType"/>.
     /// Clients send uint256 amounts as JSON strings, and Postgres has no operator between
-    /// NUMERIC and TEXT, so an unconverted "0" against a NUMERIC column fails with 42883.
-    /// When <paramref name="columnTypesMatchDatabase"/> is true, a value the column cannot hold
-    /// throws <see cref="ArgumentException"/>, which the dispatcher answers with "invalid params";
-    /// when it is false, that value is sent unchanged. Other column types keep the value as sent.
+    /// NUMERIC and TEXT, so a string bound as text to a NUMERIC column fails with 42883.
+    /// <para>
+    /// When <paramref name="columnTypesMatchDatabase"/> is false (views), a string is sent untyped,
+    /// so Postgres reads it as the column's real type, and any other value is sent as it is.
+    /// </para>
+    /// <para>
+    /// When it is true (tables), a string on a BigInt (NUMERIC) column is sent untyped if it is a
+    /// plain decimal number, a string on an Int (BIGINT) column becomes a long or a decimal, and a
+    /// string on a Double column becomes a double. A JSON number on a String or Address column
+    /// becomes a string if it is an integer. A Boolean column takes a bool or "true"/"false".
+    /// Any other value on these column types throws <see cref="ArgumentException"/>, which the
+    /// dispatcher answers with "invalid params". Other column types keep the value as sent.
+    /// </para>
     /// </summary>
     internal static object? ConvertFilterValue(object? value, string column, string? columnType,
         bool columnTypesMatchDatabase)
     {
-        var normalized = value is JsonElement jsonElement
+        var clrValue = value is JsonElement jsonElement
             ? ConvertJsonElementToClr(jsonElement)
             : value;
 
-        if (normalized is null)
+        if (!columnTypesMatchDatabase)
+        {
+            return clrValue is string text ? new UntypedFilterValue(text) : clrValue;
+        }
+
+        if (clrValue is null)
         {
             return null;
         }
 
-        object? Unconvertible(string expected) => columnTypesMatchDatabase
-            ? throw new ArgumentException($"Filter value for column '{column}' must be {expected}.")
-            : normalized;
+        ArgumentException Rejected(string expected) =>
+            new($"Filter value for column '{column}' must be {expected}.");
+        ArgumentException NotANumber() => Rejected($"a number of at most {MaxNumericFilterTextLength} characters");
 
         switch (columnType)
         {
             case nameof(ValueTypes.BigInt):
-            case nameof(ValueTypes.Int):
-            case nameof(ValueTypes.Double):
-                return normalized switch
+                return clrValue switch
                 {
-                    int or long or double or decimal or BigInteger => normalized,
-                    string text => TryParseNumericFilterValue(text, columnType) ?? Unconvertible("a number"),
-                    _ => Unconvertible("a number")
+                    int or long or double or decimal or BigInteger => clrValue,
+                    string text when TrimNumericText(text) is { } trimmed && DecimalNumberPattern.IsMatch(trimmed) =>
+                        new UntypedFilterValue(trimmed),
+                    _ => throw NotANumber()
+                };
+
+            case nameof(ValueTypes.Int):
+                return clrValue switch
+                {
+                    int or long or double or decimal or BigInteger => clrValue,
+                    string text when TrimNumericText(text) is { } trimmed =>
+                        ParseLongOrDecimal(trimmed) ?? throw NotANumber(),
+                    _ => throw NotANumber()
+                };
+
+            case nameof(ValueTypes.Double):
+                return clrValue switch
+                {
+                    int or long or double or decimal or BigInteger => clrValue,
+                    string text when TrimNumericText(text) is { } trimmed &&
+                        double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var real) => real,
+                    _ => throw NotANumber()
                 };
 
             case nameof(ValueTypes.Boolean):
-                return normalized switch
+                return clrValue switch
                 {
-                    bool => normalized,
+                    bool => clrValue,
                     string text when bool.TryParse(text.Trim(), out var flag) => flag,
-                    _ => Unconvertible("true or false")
+                    _ => throw Rejected("true or false")
                 };
 
             case nameof(ValueTypes.String):
             case nameof(ValueTypes.Address):
-                return normalized switch
+                return clrValue switch
                 {
-                    bool flag => flag ? "true" : "false",
-                    IFormattable number => number.ToString(null, CultureInfo.InvariantCulture),
-                    _ => normalized
+                    string => clrValue,
+                    int number => number.ToString(CultureInfo.InvariantCulture),
+                    long number => number.ToString(CultureInfo.InvariantCulture),
+                    _ => throw Rejected("a string")
                 };
 
             default:
-                return normalized;
+                return clrValue;
         }
     }
 
-    private static object? TryParseNumericFilterValue(string text, string columnType)
+    /// <summary>
+    /// Returns the trimmed text, or null when it is longer than any number a filter needs.
+    /// </summary>
+    private static string? TrimNumericText(string text)
     {
         var trimmed = text.Trim();
+        return trimmed.Length <= MaxNumericFilterTextLength ? trimmed : null;
+    }
 
-        if (columnType == nameof(ValueTypes.Double))
-        {
-            return double.TryParse(trimmed, NumberStyles.Any, CultureInfo.InvariantCulture, out var real)
-                ? real
-                : null;
-        }
-
-        // BigInteger first: a uint256 has up to 78 digits, decimal holds 28.
-        if (BigInteger.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer))
+    /// <summary>
+    /// A long keeps a BIGINT comparison on the column's index; a decimal covers fractions
+    /// and values outside the long range.
+    /// </summary>
+    private static object? ParseLongOrDecimal(string text)
+    {
+        if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer))
         {
             return integer;
         }
 
-        return decimal.TryParse(trimmed, NumberStyles.Any, CultureInfo.InvariantCulture, out var fraction)
+        return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var fraction)
             ? fraction
             : null;
     }
-
-    private static List<object?> ConvertFilterValues(IEnumerable<object?> values, string column, string? columnType,
-        bool columnTypesMatchDatabase) =>
-        values.Select(v => ConvertFilterValue(v, column, columnType, columnTypesMatchDatabase)).ToList();
 
     /// <summary>
     /// Postgres has LIKE only for text, so LIKE on a NUMERIC, BIGINT, DOUBLE or BOOLEAN
@@ -190,7 +253,7 @@ public partial class CirclesRpcModule
         {
             var parameterName = $"{parameterPrefix}_{i}";
             placeholders.Add(parameterName);
-            parameters.Add(new NpgsqlParameter(parameterName, values[i] ?? DBNull.Value));
+            parameters.Add(CreateFilterParameter(parameterName, values[i]));
         }
 
         var @operator = negate ? "NOT IN" : "IN";
@@ -232,9 +295,26 @@ public partial class CirclesRpcModule
         var column = $"\"{validatedColumn}\"";
         var paramName = $"@p{parameters.Count}";
         columnTypes.TryGetValue(validatedColumn, out var columnType);
-        object? Convert(object? value) => ConvertFilterValue(value, validatedColumn, columnType, columnTypesMatchDatabase);
-        object? ConvertPattern(object? value) =>
-            ConvertFilterValue(value, validatedColumn, nameof(ValueTypes.String), columnTypesMatchDatabase);
+
+        object? ToColumnType(object? value) =>
+            ConvertFilterValue(value, validatedColumn, columnType, columnTypesMatchDatabase);
+
+        string Compare(string sqlOperator, object? value)
+        {
+            parameters.Add(CreateFilterParameter(paramName, value));
+            return $"{column} {sqlOperator} {paramName}";
+        }
+
+        string CompareLike(string sqlOperator)
+        {
+            if (columnTypesMatchDatabase) RejectLikeOnNonTextColumn(validatedColumn, columnType);
+            var pattern = ConvertFilterValue(predicate.Value, validatedColumn, nameof(ValueTypes.String),
+                columnTypesMatchDatabase);
+            return Compare(sqlOperator, pattern);
+        }
+
+        string CompareIn(IEnumerable<object?> values, bool negate) =>
+            BuildInClause(column, paramName, values.Select(ToColumnType).ToList(), parameters, negate);
 
         switch (predicate.FilterType)
         {
@@ -242,7 +322,7 @@ public partial class CirclesRpcModule
                 var equalsValues = TryExtractEnumerableFilterValues(predicate.Value);
                 if (equalsValues is { Count: > 0 })
                 {
-                    return BuildInClause(column, paramName, ConvertFilterValues(equalsValues, validatedColumn, columnType, columnTypesMatchDatabase), parameters, negate: false);
+                    return CompareIn(equalsValues, negate: false);
                 }
 
                 if (equalsValues is { Count: 0 })
@@ -250,14 +330,13 @@ public partial class CirclesRpcModule
                     return "1=0 /* empty equals-array filter */";
                 }
 
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} = {paramName}";
+                return Compare("=", ToColumnType(predicate.Value));
 
             case FilterType.NotEquals:
                 var notEqualsValues = TryExtractEnumerableFilterValues(predicate.Value);
                 if (notEqualsValues is { Count: > 0 })
                 {
-                    return BuildInClause(column, paramName, ConvertFilterValues(notEqualsValues, validatedColumn, columnType, columnTypesMatchDatabase), parameters, negate: true);
+                    return CompareIn(notEqualsValues, negate: true);
                 }
 
                 if (notEqualsValues is { Count: 0 })
@@ -265,39 +344,28 @@ public partial class CirclesRpcModule
                     return "1=1 /* empty not-equals-array filter */";
                 }
 
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} != {paramName}";
+                return Compare("!=", ToColumnType(predicate.Value));
 
             case FilterType.GreaterThan:
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} > {paramName}";
+                return Compare(">", ToColumnType(predicate.Value));
 
             case FilterType.GreaterThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} >= {paramName}";
+                return Compare(">=", ToColumnType(predicate.Value));
 
             case FilterType.LessThan:
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} < {paramName}";
+                return Compare("<", ToColumnType(predicate.Value));
 
             case FilterType.LessThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} <= {paramName}";
+                return Compare("<=", ToColumnType(predicate.Value));
 
             case FilterType.Like:
-                if (columnTypesMatchDatabase) RejectLikeOnNonTextColumn(validatedColumn, columnType);
-                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
-                return $"{column} LIKE {paramName}";
+                return CompareLike("LIKE");
 
             case FilterType.ILike:
-                if (columnTypesMatchDatabase) RejectLikeOnNonTextColumn(validatedColumn, columnType);
-                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
-                return $"{column} ILIKE {paramName}";
+                return CompareLike("ILIKE");
 
             case FilterType.NotLike:
-                if (columnTypesMatchDatabase) RejectLikeOnNonTextColumn(validatedColumn, columnType);
-                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
-                return $"{column} NOT LIKE {paramName}";
+                return CompareLike("NOT LIKE");
 
             case FilterType.In:
                 var inValues = TryExtractEnumerableFilterValues(predicate.Value);
@@ -311,7 +379,7 @@ public partial class CirclesRpcModule
                     return "1=0 /* empty 'in' filter */";
                 }
 
-                return BuildInClause(column, paramName, ConvertFilterValues(inValues, validatedColumn, columnType, columnTypesMatchDatabase), parameters, negate: false);
+                return CompareIn(inValues, negate: false);
 
             case FilterType.NotIn:
                 var notInValues = TryExtractEnumerableFilterValues(predicate.Value);
@@ -325,7 +393,7 @@ public partial class CirclesRpcModule
                     return "1=1 /* empty 'not in' excludes nothing */";
                 }
 
-                return BuildInClause(column, paramName, ConvertFilterValues(notInValues, validatedColumn, columnType, columnTypesMatchDatabase), parameters, negate: true);
+                return CompareIn(notInValues, negate: true);
 
             case FilterType.IsNull:
                 return $"{column} IS NULL";
@@ -502,9 +570,12 @@ public partial class CirclesRpcModule
         }
 
         // Tables are created from the schema's column types, so a filter value that does not
-        // fit is rejected. Views (V_*) declare their types by hand and some differ from the
-        // database: V_CrcV2_Transfers.id is declared BigInt but holds a token address.
-        var columnTypesMatchDatabase = !validatedNamespace.StartsWith('V');
+        // fit is rejected. Views declare their types by hand and some differ from the database:
+        // V_CrcV2_Transfers.id is declared BigInt but is text holding decimal token ids and
+        // wrapper addresses, and bucket views declare their timestamptz "timestamp" as BigInt
+        // or Int. A string filter value on a view is sent untyped, so Postgres reads it as
+        // the column's real type.
+        var columnTypesMatchDatabase = !IsViewTable(fullTableName);
 
         var parameters = new List<NpgsqlParameter>();
         var whereClauses = new List<string>();

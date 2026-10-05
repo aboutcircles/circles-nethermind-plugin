@@ -141,7 +141,7 @@ public partial class CirclesRpcModule
             // Skip System namespace and View tables (starting with V_) to match remote behavior
             // System tables are internal (Block, EventTableHead, PathfinderRequestLog, etc.)
             // View tables are virtual tables and should not be queried as events
-            if (tableNamespace == "System" || tableNamespace.StartsWith('V'))
+            if (tableNamespace == "System" || IsViewTable(table.Key))
             {
                 continue;
             }
@@ -421,51 +421,56 @@ public partial class CirclesRpcModule
         var paramName = $"@pred_{tablePrefix}_{parameters.Count}";
 
         columnTypes.TryGetValue(validatedColumn, out var columnType);
+
         // GetEvents skips views, and tables are created from the schema's column types.
-        object? Convert(object? value) => ConvertFilterValue(value, validatedColumn, columnType, columnTypesMatchDatabase: true);
-        object? ConvertPattern(object? value) =>
-            ConvertFilterValue(value, validatedColumn, nameof(ValueTypes.String), columnTypesMatchDatabase: true);
+        object? ToColumnType(object? value) =>
+            ConvertFilterValue(value, validatedColumn, columnType, columnTypesMatchDatabase: true);
+
+        string Compare(string sqlOperator, object? value)
+        {
+            parameters.Add(CreateFilterParameter(paramName, value));
+            return $"{column} {sqlOperator} {paramName}";
+        }
+
+        string CompareLike(string sqlOperator)
+        {
+            RejectLikeOnNonTextColumn(validatedColumn, columnType);
+            var pattern = ConvertFilterValue(predicate.Value, validatedColumn, nameof(ValueTypes.String),
+                columnTypesMatchDatabase: true);
+            return Compare(sqlOperator, pattern);
+        }
+
+        string CompareIn(IEnumerable<object?> values, bool negate) =>
+            BuildInClause(column, paramName, values.Select(ToColumnType).ToList(), parameters, negate);
 
         switch (predicate.FilterType)
         {
             case FilterType.Equals:
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} = {paramName}";
+                return Compare("=", ToColumnType(predicate.Value));
 
             case FilterType.NotEquals:
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} != {paramName}";
+                return Compare("!=", ToColumnType(predicate.Value));
 
             case FilterType.GreaterThan:
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} > {paramName}";
+                return Compare(">", ToColumnType(predicate.Value));
 
             case FilterType.GreaterThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} >= {paramName}";
+                return Compare(">=", ToColumnType(predicate.Value));
 
             case FilterType.LessThan:
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} < {paramName}";
+                return Compare("<", ToColumnType(predicate.Value));
 
             case FilterType.LessThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
-                return $"{column} <= {paramName}";
+                return Compare("<=", ToColumnType(predicate.Value));
 
             case FilterType.Like:
-                RejectLikeOnNonTextColumn(validatedColumn, columnType);
-                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
-                return $"{column} LIKE {paramName}";
+                return CompareLike("LIKE");
 
             case FilterType.ILike:
-                RejectLikeOnNonTextColumn(validatedColumn, columnType);
-                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
-                return $"{column} ILIKE {paramName}";
+                return CompareLike("ILIKE");
 
             case FilterType.NotLike:
-                RejectLikeOnNonTextColumn(validatedColumn, columnType);
-                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
-                return $"{column} NOT LIKE {paramName}";
+                return CompareLike("NOT LIKE");
 
             case FilterType.In:
                 {
@@ -476,7 +481,7 @@ public partial class CirclesRpcModule
                         return "1=0"; // empty IN matches nothing
                     if (inValues.Count > MaxInFilterElements)
                         throw new ArgumentException($"In filter exceeds maximum of {MaxInFilterElements} elements.");
-                    return BuildInClause(column, paramName, ConvertFilterValues(inValues, validatedColumn, columnType, columnTypesMatchDatabase: true), parameters, negate: false);
+                    return CompareIn(inValues, negate: false);
                 }
 
             case FilterType.NotIn:
@@ -488,7 +493,7 @@ public partial class CirclesRpcModule
                         return "1=1"; // empty NOT IN excludes nothing
                     if (notInValues.Count > MaxInFilterElements)
                         throw new ArgumentException($"NotIn filter exceeds maximum of {MaxInFilterElements} elements.");
-                    return BuildInClause(column, paramName, ConvertFilterValues(notInValues, validatedColumn, columnType, columnTypesMatchDatabase: true), parameters, negate: true);
+                    return CompareIn(notInValues, negate: true);
                 }
 
             case FilterType.IsNull:
