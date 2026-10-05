@@ -245,10 +245,7 @@ internal sealed class FindPathHandler(
         FindPathMetrics.InFlightRequestsGauge.Inc();
         try
         {
-            var balanceGraph = state.BalanceGraph;
-            var trustGraph = state.AccountTrusts;
-
-            if (balanceGraph is null)
+            if (state.BalanceGraph is null)
             {
                 // Transient warmup (post-restart / reorg / upstream not ready), not a
                 // client error — 503 so load balancers drain & clients retry.
@@ -270,7 +267,7 @@ internal sealed class FindPathHandler(
                     statusCode: StatusCodes.Status503ServiceUnavailable);
             }
 
-            using var h = await pool.Rent(request, balanceGraph, trustGraph);
+            using var h = await pool.Rent(request);
             graphBlock = h.Graph.Block; // use the rented graph's actual block
 
             var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
