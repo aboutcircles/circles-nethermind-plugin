@@ -1,6 +1,8 @@
 using System.Collections;
+using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
+using Circles.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
 using Npgsql;
@@ -16,13 +18,17 @@ public partial class CirclesRpcModule
 {
     /// <summary>
     /// Builds a WHERE clause for the Query method.
+    /// <paramref name="columnTypes"/> maps each column of the queried table to its
+    /// <see cref="Circles.Common.ValueTypes"/> name, as in <see cref="DatabaseSchemaMap.TableColumns"/>;
+    /// see <see cref="ConvertFilterValue"/> for <paramref name="columnTypesMatchDatabase"/>.
     /// </summary>
-    private string BuildQueryPredicateClause(IFilterPredicateDto predicate, List<NpgsqlParameter> parameters)
+    internal static string BuildQueryPredicateClause(IFilterPredicateDto predicate, List<NpgsqlParameter> parameters,
+        IReadOnlyDictionary<string, string> columnTypes, bool columnTypesMatchDatabase)
     {
         return predicate switch
         {
-            FilterPredicateDto fp => BuildQueryFilterPredicateClause(fp, parameters),
-            ConjunctionDto conj => BuildQueryConjunctionClause(conj, parameters),
+            FilterPredicateDto fp => BuildQueryFilterPredicateClause(fp, parameters, columnTypes, columnTypesMatchDatabase),
+            ConjunctionDto conj => BuildQueryConjunctionClause(conj, parameters, columnTypes, columnTypesMatchDatabase),
             _ => ""
         };
     }
@@ -63,20 +69,101 @@ public partial class CirclesRpcModule
         return null;
     }
 
-    private static object? NormalizeFilterValue(object? value, bool tryNumericParse = false)
+    /// <summary>
+    /// Converts a filter value to the CLR type Npgsql sends as its column's Postgres type.
+    /// Clients send uint256 amounts as JSON strings, and Postgres has no operator between
+    /// NUMERIC and TEXT, so an unconverted "0" against a NUMERIC column fails with 42883.
+    /// When <paramref name="columnTypesMatchDatabase"/> is true, a value the column cannot hold
+    /// throws <see cref="ArgumentException"/>, which the dispatcher answers with "invalid params";
+    /// when it is false, that value is sent unchanged. Other column types keep the value as sent.
+    /// </summary>
+    internal static object? ConvertFilterValue(object? value, string column, string? columnType,
+        bool columnTypesMatchDatabase)
     {
         var normalized = value is JsonElement jsonElement
             ? ConvertJsonElementToClr(jsonElement)
             : value;
 
-        if (tryNumericParse && normalized is string stringValue &&
-            decimal.TryParse(stringValue, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out var numericValue))
+        if (normalized is null)
         {
-            return numericValue;
+            return null;
         }
 
-        return normalized;
+        object? Unconvertible(string expected) => columnTypesMatchDatabase
+            ? throw new ArgumentException($"Filter value for column '{column}' must be {expected}.")
+            : normalized;
+
+        switch (columnType)
+        {
+            case nameof(ValueTypes.BigInt):
+            case nameof(ValueTypes.Int):
+            case nameof(ValueTypes.Double):
+                return normalized switch
+                {
+                    int or long or double or decimal or BigInteger => normalized,
+                    string text => TryParseNumericFilterValue(text, columnType) ?? Unconvertible("a number"),
+                    _ => Unconvertible("a number")
+                };
+
+            case nameof(ValueTypes.Boolean):
+                return normalized switch
+                {
+                    bool => normalized,
+                    string text when bool.TryParse(text.Trim(), out var flag) => flag,
+                    _ => Unconvertible("true or false")
+                };
+
+            case nameof(ValueTypes.String):
+            case nameof(ValueTypes.Address):
+                return normalized switch
+                {
+                    bool flag => flag ? "true" : "false",
+                    IFormattable number => number.ToString(null, CultureInfo.InvariantCulture),
+                    _ => normalized
+                };
+
+            default:
+                return normalized;
+        }
+    }
+
+    private static object? TryParseNumericFilterValue(string text, string columnType)
+    {
+        var trimmed = text.Trim();
+
+        if (columnType == nameof(ValueTypes.Double))
+        {
+            return double.TryParse(trimmed, NumberStyles.Any, CultureInfo.InvariantCulture, out var real)
+                ? real
+                : null;
+        }
+
+        // BigInteger first: a uint256 has up to 78 digits, decimal holds 28.
+        if (BigInteger.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer))
+        {
+            return integer;
+        }
+
+        return decimal.TryParse(trimmed, NumberStyles.Any, CultureInfo.InvariantCulture, out var fraction)
+            ? fraction
+            : null;
+    }
+
+    private static List<object?> ConvertFilterValues(IEnumerable<object?> values, string column, string? columnType,
+        bool columnTypesMatchDatabase) =>
+        values.Select(v => ConvertFilterValue(v, column, columnType, columnTypesMatchDatabase)).ToList();
+
+    /// <summary>
+    /// Postgres has LIKE only for text, so LIKE on a NUMERIC, BIGINT, DOUBLE or BOOLEAN
+    /// column fails with 42883 whatever the value.
+    /// </summary>
+    private static void RejectLikeOnNonTextColumn(string column, string? columnType)
+    {
+        if (columnType is nameof(ValueTypes.BigInt) or nameof(ValueTypes.Int)
+            or nameof(ValueTypes.Double) or nameof(ValueTypes.Boolean))
+        {
+            throw new ArgumentException($"Like filters need a text column; column '{column}' is {columnType}.");
+        }
     }
 
     private static IEnumerable<FilterPredicateDto> FlattenFilterPredicates(IEnumerable<IFilterPredicateDto> predicates)
@@ -134,7 +221,8 @@ public partial class CirclesRpcModule
         return false;
     }
 
-    private string BuildQueryFilterPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters)
+    private static string BuildQueryFilterPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters,
+        IReadOnlyDictionary<string, string> columnTypes, bool columnTypesMatchDatabase)
     {
         if (predicate.Column == null)
         {
@@ -143,6 +231,10 @@ public partial class CirclesRpcModule
         var validatedColumn = ValidateIdentifier(predicate.Column, "Filter column");
         var column = $"\"{validatedColumn}\"";
         var paramName = $"@p{parameters.Count}";
+        columnTypes.TryGetValue(validatedColumn, out var columnType);
+        object? Convert(object? value) => ConvertFilterValue(value, validatedColumn, columnType, columnTypesMatchDatabase);
+        object? ConvertPattern(object? value) =>
+            ConvertFilterValue(value, validatedColumn, nameof(ValueTypes.String), columnTypesMatchDatabase);
 
         switch (predicate.FilterType)
         {
@@ -150,7 +242,7 @@ public partial class CirclesRpcModule
                 var equalsValues = TryExtractEnumerableFilterValues(predicate.Value);
                 if (equalsValues is { Count: > 0 })
                 {
-                    return BuildInClause(column, paramName, equalsValues, parameters, negate: false);
+                    return BuildInClause(column, paramName, ConvertFilterValues(equalsValues, validatedColumn, columnType, columnTypesMatchDatabase), parameters, negate: false);
                 }
 
                 if (equalsValues is { Count: 0 })
@@ -158,14 +250,14 @@ public partial class CirclesRpcModule
                     return "1=0 /* empty equals-array filter */";
                 }
 
-                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value) ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} = {paramName}";
 
             case FilterType.NotEquals:
                 var notEqualsValues = TryExtractEnumerableFilterValues(predicate.Value);
                 if (notEqualsValues is { Count: > 0 })
                 {
-                    return BuildInClause(column, paramName, notEqualsValues, parameters, negate: true);
+                    return BuildInClause(column, paramName, ConvertFilterValues(notEqualsValues, validatedColumn, columnType, columnTypesMatchDatabase), parameters, negate: true);
                 }
 
                 if (notEqualsValues is { Count: 0 })
@@ -173,35 +265,38 @@ public partial class CirclesRpcModule
                     return "1=1 /* empty not-equals-array filter */";
                 }
 
-                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value) ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} != {paramName}";
 
             case FilterType.GreaterThan:
-                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value, true) ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} > {paramName}";
 
             case FilterType.GreaterThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value, true) ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} >= {paramName}";
 
             case FilterType.LessThan:
-                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value, true) ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} < {paramName}";
 
             case FilterType.LessThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value, true) ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} <= {paramName}";
 
             case FilterType.Like:
-                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value) ?? DBNull.Value));
+                if (columnTypesMatchDatabase) RejectLikeOnNonTextColumn(validatedColumn, columnType);
+                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
                 return $"{column} LIKE {paramName}";
 
             case FilterType.ILike:
-                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value) ?? DBNull.Value));
+                if (columnTypesMatchDatabase) RejectLikeOnNonTextColumn(validatedColumn, columnType);
+                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
                 return $"{column} ILIKE {paramName}";
 
             case FilterType.NotLike:
-                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value) ?? DBNull.Value));
+                if (columnTypesMatchDatabase) RejectLikeOnNonTextColumn(validatedColumn, columnType);
+                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
                 return $"{column} NOT LIKE {paramName}";
 
             case FilterType.In:
@@ -216,7 +311,7 @@ public partial class CirclesRpcModule
                     return "1=0 /* empty 'in' filter */";
                 }
 
-                return BuildInClause(column, paramName, inValues, parameters, negate: false);
+                return BuildInClause(column, paramName, ConvertFilterValues(inValues, validatedColumn, columnType, columnTypesMatchDatabase), parameters, negate: false);
 
             case FilterType.NotIn:
                 var notInValues = TryExtractEnumerableFilterValues(predicate.Value);
@@ -230,7 +325,7 @@ public partial class CirclesRpcModule
                     return "1=1 /* empty 'not in' excludes nothing */";
                 }
 
-                return BuildInClause(column, paramName, notInValues, parameters, negate: true);
+                return BuildInClause(column, paramName, ConvertFilterValues(notInValues, validatedColumn, columnType, columnTypesMatchDatabase), parameters, negate: true);
 
             case FilterType.IsNull:
                 return $"{column} IS NULL";
@@ -243,7 +338,8 @@ public partial class CirclesRpcModule
         }
     }
 
-    private string BuildQueryConjunctionClause(ConjunctionDto conjunction, List<NpgsqlParameter> parameters)
+    private static string BuildQueryConjunctionClause(ConjunctionDto conjunction, List<NpgsqlParameter> parameters,
+        IReadOnlyDictionary<string, string> columnTypes, bool columnTypesMatchDatabase)
     {
         if (conjunction.Predicates == null || conjunction.Predicates.Length == 0)
             return "";
@@ -251,7 +347,7 @@ public partial class CirclesRpcModule
         var clauses = new List<string>();
         foreach (var pred in conjunction.Predicates)
         {
-            var clause = BuildQueryPredicateClause(pred, parameters);
+            var clause = BuildQueryPredicateClause(pred, parameters, columnTypes, columnTypesMatchDatabase);
             if (!string.IsNullOrEmpty(clause))
             {
                 clauses.Add(clause);
@@ -405,13 +501,18 @@ public partial class CirclesRpcModule
             columns = string.Join(", ", quotedColumns);
         }
 
+        // Tables are created from the schema's column types, so a filter value that does not
+        // fit is rejected. Views (V_*) declare their types by hand and some differ from the
+        // database: V_CrcV2_Transfers.id is declared BigInt but holds a token address.
+        var columnTypesMatchDatabase = !validatedNamespace.StartsWith('V');
+
         var parameters = new List<NpgsqlParameter>();
         var whereClauses = new List<string>();
         if (query.Filter != null)
         {
             foreach (var filter in query.Filter)
             {
-                var clause = BuildQueryPredicateClause(filter, parameters);
+                var clause = BuildQueryPredicateClause(filter, parameters, tableColumns, columnTypesMatchDatabase);
                 if (!string.IsNullOrEmpty(clause))
                 {
                     whereClauses.Add(clause);

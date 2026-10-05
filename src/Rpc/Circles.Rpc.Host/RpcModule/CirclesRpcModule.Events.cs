@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
@@ -195,7 +196,7 @@ public partial class CirclesRpcModule
             {
                 foreach (var predicate in filterPredicates)
                 {
-                    var predicateClause = BuildPredicateClause(predicate, parameters, table.Key);
+                    var predicateClause = BuildPredicateClause(predicate, parameters, table.Key, tableColumns);
                     if (!string.IsNullOrEmpty(predicateClause))
                     {
                         whereClauses.Add(predicateClause);
@@ -397,17 +398,19 @@ public partial class CirclesRpcModule
     /// <summary>
     /// Builds a WHERE clause from an IFilterPredicateDto.
     /// </summary>
-    private string BuildPredicateClause(IFilterPredicateDto predicate, List<NpgsqlParameter> parameters, string tablePrefix)
+    internal static string BuildPredicateClause(IFilterPredicateDto predicate, List<NpgsqlParameter> parameters, string tablePrefix,
+        IReadOnlyDictionary<string, string> columnTypes)
     {
         return predicate switch
         {
-            FilterPredicateDto fp => BuildFilterPredicateClause(fp, parameters, tablePrefix),
-            ConjunctionDto conj => BuildConjunctionClause(conj, parameters, tablePrefix),
+            FilterPredicateDto fp => BuildFilterPredicateClause(fp, parameters, tablePrefix, columnTypes),
+            ConjunctionDto conj => BuildConjunctionClause(conj, parameters, tablePrefix, columnTypes),
             _ => ""
         };
     }
 
-    private string BuildFilterPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters, string tablePrefix)
+    private static string BuildFilterPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters, string tablePrefix,
+        IReadOnlyDictionary<string, string> columnTypes)
     {
         if (predicate.Column == null)
         {
@@ -417,52 +420,51 @@ public partial class CirclesRpcModule
         var column = $"t.\"{validatedColumn}\"";
         var paramName = $"@pred_{tablePrefix}_{parameters.Count}";
 
-        // Helper to convert string values to numeric when needed for comparison operators
-        object? ConvertValueForNumericComparison(object? value)
-        {
-            if (value is string strValue && decimal.TryParse(strValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var numericValue))
-            {
-                return numericValue;
-            }
-            return value;
-        }
+        columnTypes.TryGetValue(validatedColumn, out var columnType);
+        // GetEvents skips views, and tables are created from the schema's column types.
+        object? Convert(object? value) => ConvertFilterValue(value, validatedColumn, columnType, columnTypesMatchDatabase: true);
+        object? ConvertPattern(object? value) =>
+            ConvertFilterValue(value, validatedColumn, nameof(ValueTypes.String), columnTypesMatchDatabase: true);
 
         switch (predicate.FilterType)
         {
             case FilterType.Equals:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} = {paramName}";
 
             case FilterType.NotEquals:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} != {paramName}";
 
             case FilterType.GreaterThan:
-                parameters.Add(new NpgsqlParameter(paramName, ConvertValueForNumericComparison(predicate.Value) ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} > {paramName}";
 
             case FilterType.GreaterThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, ConvertValueForNumericComparison(predicate.Value) ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} >= {paramName}";
 
             case FilterType.LessThan:
-                parameters.Add(new NpgsqlParameter(paramName, ConvertValueForNumericComparison(predicate.Value) ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} < {paramName}";
 
             case FilterType.LessThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, ConvertValueForNumericComparison(predicate.Value) ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, Convert(predicate.Value) ?? DBNull.Value));
                 return $"{column} <= {paramName}";
 
             case FilterType.Like:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                RejectLikeOnNonTextColumn(validatedColumn, columnType);
+                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
                 return $"{column} LIKE {paramName}";
 
             case FilterType.ILike:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                RejectLikeOnNonTextColumn(validatedColumn, columnType);
+                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
                 return $"{column} ILIKE {paramName}";
 
             case FilterType.NotLike:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                RejectLikeOnNonTextColumn(validatedColumn, columnType);
+                parameters.Add(new NpgsqlParameter(paramName, ConvertPattern(predicate.Value) ?? DBNull.Value));
                 return $"{column} NOT LIKE {paramName}";
 
             case FilterType.In:
@@ -474,7 +476,7 @@ public partial class CirclesRpcModule
                         return "1=0"; // empty IN matches nothing
                     if (inValues.Count > MaxInFilterElements)
                         throw new ArgumentException($"In filter exceeds maximum of {MaxInFilterElements} elements.");
-                    return BuildInClause(column, paramName, inValues, parameters, negate: false);
+                    return BuildInClause(column, paramName, ConvertFilterValues(inValues, validatedColumn, columnType, columnTypesMatchDatabase: true), parameters, negate: false);
                 }
 
             case FilterType.NotIn:
@@ -486,7 +488,7 @@ public partial class CirclesRpcModule
                         return "1=1"; // empty NOT IN excludes nothing
                     if (notInValues.Count > MaxInFilterElements)
                         throw new ArgumentException($"NotIn filter exceeds maximum of {MaxInFilterElements} elements.");
-                    return BuildInClause(column, paramName, notInValues, parameters, negate: true);
+                    return BuildInClause(column, paramName, ConvertFilterValues(notInValues, validatedColumn, columnType, columnTypesMatchDatabase: true), parameters, negate: true);
                 }
 
             case FilterType.IsNull:
@@ -500,7 +502,8 @@ public partial class CirclesRpcModule
         }
     }
 
-    private string BuildConjunctionClause(ConjunctionDto conjunction, List<NpgsqlParameter> parameters, string tablePrefix)
+    private static string BuildConjunctionClause(ConjunctionDto conjunction, List<NpgsqlParameter> parameters, string tablePrefix,
+        IReadOnlyDictionary<string, string> columnTypes)
     {
         if (conjunction.Predicates == null || conjunction.Predicates.Length == 0)
             return "";
@@ -508,7 +511,7 @@ public partial class CirclesRpcModule
         var clauses = new List<string>();
         foreach (var pred in conjunction.Predicates)
         {
-            var clause = BuildPredicateClause(pred, parameters, tablePrefix);
+            var clause = BuildPredicateClause(pred, parameters, tablePrefix, columnTypes);
             if (!string.IsNullOrEmpty(clause))
             {
                 clauses.Add(clause);
