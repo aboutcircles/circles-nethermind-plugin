@@ -1,3 +1,4 @@
+using Circles.Metrics.Exporter;
 using Circles.Metrics.Exporter.Services;
 using Prometheus;
 
@@ -16,6 +17,9 @@ var repScoreConnectionString = builder.Configuration.GetConnectionString("RepSco
 // Register services
 builder.Services.AddSingleton(sp =>
     new KpiRepository(connectionString, sp.GetRequiredService<ILogger<KpiRepository>>()));
+
+// Every outgoing request carries a User-Agent: CoinGecko answers 403 without one
+builder.Services.AddHttpClientUserAgent();
 
 // Register HttpClient and PriceService for CoinGecko integration
 builder.Services.AddHttpClient<PriceService>();
