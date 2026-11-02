@@ -1,7 +1,7 @@
 -- COLUMNS:
 -- group:ValueTypes.Address:true
--- timestamp:ValueTypes.Int:true
--- value:ValueTypes.Int:true
+-- timestamp:ValueTypes.String:true
+-- value:ValueTypes.BigInt:true
 
 create or replace view "V_CrcV2_AffiliateMembersCount_1h" ("group", "timestamp", "value") as
 

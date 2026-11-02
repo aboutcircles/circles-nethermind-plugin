@@ -7,8 +7,8 @@
 -- version:ValueTypes.Int:false
 -- trustee:ValueTypes.String:false
 -- truster:ValueTypes.String:false
--- expiryTime:ValueTypes.Int:false
--- limit:ValueTypes.Int:false
+-- expiryTime:ValueTypes.BigInt:false
+-- limit:ValueTypes.BigInt:false
 
 create or replace view public."V_Crc_TrustRelations"
     ("blockNumber", timestamp, "transactionIndex", "logIndex", "transactionHash", 

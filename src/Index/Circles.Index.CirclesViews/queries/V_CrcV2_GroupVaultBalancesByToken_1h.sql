@@ -1,7 +1,7 @@
 -- COLUMNS:
 -- vault:ValueTypes.Address:true
 -- group:ValueTypes.Address:true
--- timestamp:ValueTypes.Timestamp:true
+-- timestamp:ValueTypes.Int:true
 -- balance:ValueTypes.BigInt:true
 
 -- Hourly aggregated group vault balances for time-series analysis and drain detection.
