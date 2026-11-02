@@ -229,6 +229,19 @@ public partial class CirclesRpcModule
         }
     }
 
+    /// <summary>
+    /// Every value in an IN / NOT IN list becomes one bind parameter, so the list length sets the
+    /// size of the SQL statement. Checked before the values are converted.
+    /// </summary>
+    private static void RejectTooManyFilterValues(int count, string column)
+    {
+        if (count > MaxInFilterElements)
+        {
+            throw new ArgumentException(
+                $"Filter on column '{column}' has {count} values; the maximum is {MaxInFilterElements}.");
+        }
+    }
+
     private static IEnumerable<FilterPredicateDto> FlattenFilterPredicates(IEnumerable<IFilterPredicateDto> predicates)
     {
         foreach (var p in predicates)
@@ -313,8 +326,11 @@ public partial class CirclesRpcModule
             return Compare(sqlOperator, pattern);
         }
 
-        string CompareIn(IEnumerable<object?> values, bool negate) =>
-            BuildInClause(column, paramName, values.Select(ToColumnType).ToList(), parameters, negate);
+        string CompareIn(IReadOnlyCollection<object?> values, bool negate)
+        {
+            RejectTooManyFilterValues(values.Count, validatedColumn);
+            return BuildInClause(column, paramName, values.Select(ToColumnType).ToList(), parameters, negate);
+        }
 
         switch (predicate.FilterType)
         {

@@ -440,8 +440,11 @@ public partial class CirclesRpcModule
             return Compare(sqlOperator, pattern);
         }
 
-        string CompareIn(IEnumerable<object?> values, bool negate) =>
-            BuildInClause(column, paramName, values.Select(ToColumnType).ToList(), parameters, negate);
+        string CompareIn(IReadOnlyCollection<object?> values, bool negate)
+        {
+            RejectTooManyFilterValues(values.Count, validatedColumn);
+            return BuildInClause(column, paramName, values.Select(ToColumnType).ToList(), parameters, negate);
+        }
 
         switch (predicate.FilterType)
         {
@@ -479,8 +482,6 @@ public partial class CirclesRpcModule
                         throw new ArgumentException($"Value for 'In' filter on column '{predicate.Column}' must be an array.");
                     if (inValues.Count == 0)
                         return "1=0"; // empty IN matches nothing
-                    if (inValues.Count > MaxInFilterElements)
-                        throw new ArgumentException($"In filter exceeds maximum of {MaxInFilterElements} elements.");
                     return CompareIn(inValues, negate: false);
                 }
 
@@ -491,8 +492,6 @@ public partial class CirclesRpcModule
                         throw new ArgumentException($"Value for 'NotIn' filter on column '{predicate.Column}' must be an array.");
                     if (notInValues.Count == 0)
                         return "1=1"; // empty NOT IN excludes nothing
-                    if (notInValues.Count > MaxInFilterElements)
-                        throw new ArgumentException($"NotIn filter exceeds maximum of {MaxInFilterElements} elements.");
                     return CompareIn(notInValues, negate: true);
                 }
 
