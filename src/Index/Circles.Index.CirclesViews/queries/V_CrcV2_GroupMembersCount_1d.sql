@@ -1,7 +1,7 @@
 -- COLUMNS:
 -- group:ValueTypes.Address:true
--- timestamp:ValueTypes.BigInt:true
--- value:ValueTypes.Int:true
+-- timestamp:ValueTypes.String:true
+-- value:ValueTypes.BigInt:true
 
 create or replace view public."V_CrcV2_GroupMembersCount_1d"("group","timestamp",value) as
 with groups_trusts as (

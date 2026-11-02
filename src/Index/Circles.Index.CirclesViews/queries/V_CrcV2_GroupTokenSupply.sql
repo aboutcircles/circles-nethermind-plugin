@@ -1,6 +1,6 @@
 -- COLUMNS:
 -- group:ValueTypes.Address:true
--- totalBalance:ValueTypes.BigInt:true
+-- totalSupply:ValueTypes.BigInt:true
 -- demurragedTotalSupply:ValueTypes.BigInt:true
 
 create or replace view "V_CrcV2_GroupTokenSupply"
