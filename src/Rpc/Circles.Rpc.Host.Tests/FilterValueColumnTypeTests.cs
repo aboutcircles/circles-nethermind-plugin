@@ -403,6 +403,62 @@ public class FilterValueColumnTypeUnitTests
         Assert.That(stopwatch.ElapsedMilliseconds, Is.LessThan(500));
     }
 
+    private static JsonElement NumberList(int count) =>
+        FilterValueColumnTypeTests.JsonArray($"[{string.Join(", ", Enumerable.Range(1, count))}]");
+
+    // Every list element becomes one bind parameter, so the list length sets the size of the SQL
+    // statement. circles_query turns an Equals or NotEquals with an array into IN / NOT IN as well.
+    [TestCase(FilterType.In, true)]
+    [TestCase(FilterType.NotIn, true)]
+    [TestCase(FilterType.Equals, true)]
+    [TestCase(FilterType.NotEquals, true)]
+    [TestCase(FilterType.In, false)]
+    [TestCase(FilterType.Equals, false)]
+    public void Query_filter_rejects_a_list_of_more_than_1000_values(FilterType type, bool table)
+    {
+        var column = table ? "blockNumber" : "id";
+        var columnTypes = table ? ColumnTypes : FilterValueColumnTypeTests.ViewColumnTypes;
+        var filter = Filter(column, type, NumberList(1001));
+
+        Assert.That(() => CirclesRpcModule.BuildQueryPredicateClause(filter, new List<NpgsqlParameter>(), columnTypes,
+                columnTypesMatchDatabase: table),
+            Throws.ArgumentException.With.Message.Contains($"'{column}'").And.Message.Contains("1000"));
+    }
+
+    [TestCase(FilterType.In)]
+    [TestCase(FilterType.NotIn)]
+    public void Events_filter_rejects_a_list_of_more_than_1000_values(FilterType type)
+    {
+        var filter = Filter("blockNumber", type, NumberList(1001));
+
+        Assert.That(() => CirclesRpcModule.BuildPredicateClause(filter, new List<NpgsqlParameter>(), "Filtered", ColumnTypes),
+            Throws.ArgumentException.With.Message.Contains($"'blockNumber'").And.Message.Contains("1000"));
+    }
+
+    [TestCase(FilterType.In)]
+    [TestCase(FilterType.NotIn)]
+    [TestCase(FilterType.Equals)]
+    [TestCase(FilterType.NotEquals)]
+    public void Query_filter_accepts_a_list_of_1000_values(FilterType type)
+    {
+        var parameters = new List<NpgsqlParameter>();
+        CirclesRpcModule.BuildQueryPredicateClause(Filter("blockNumber", type, NumberList(1000)), parameters, ColumnTypes,
+            columnTypesMatchDatabase: true);
+
+        Assert.That(parameters, Has.Count.EqualTo(1000));
+    }
+
+    [TestCase(FilterType.In)]
+    [TestCase(FilterType.NotIn)]
+    public void Events_filter_accepts_a_list_of_1000_values(FilterType type)
+    {
+        var parameters = new List<NpgsqlParameter>();
+        CirclesRpcModule.BuildPredicateClause(Filter("blockNumber", type, NumberList(1000)), parameters, "Filtered",
+            ColumnTypes);
+
+        Assert.That(parameters, Has.Count.EqualTo(1000));
+    }
+
     private static IEnumerable<TestCaseData> ConvertedValueCases()
     {
         yield return new TestCaseData("3", "Int", 3L).SetName("A numeric string on Int becomes a long");
