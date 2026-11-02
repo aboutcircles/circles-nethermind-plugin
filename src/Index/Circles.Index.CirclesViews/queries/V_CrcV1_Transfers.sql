@@ -9,6 +9,7 @@
 -- amount:ValueTypes.BigInt:false
 -- type:ValueTypes.String:true
 -- tokenType:ValueTypes.String:true
+-- tokenAddress:ValueTypes.Address:false
 
 create or replace view public."V_CrcV1_Transfers" (
     "blockNumber", timestamp, "transactionIndex", 

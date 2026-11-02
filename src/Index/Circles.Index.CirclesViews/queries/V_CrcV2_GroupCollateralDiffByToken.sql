@@ -1,5 +1,5 @@
 -- COLUMNS:
--- timestamp:ValueTypes.BigInt:true
+-- timestamp:ValueTypes.Int:true
 -- group:ValueTypes.Address:true
 -- id:ValueTypes.BigInt:true
 -- amountLocked:ValueTypes.BigInt:true

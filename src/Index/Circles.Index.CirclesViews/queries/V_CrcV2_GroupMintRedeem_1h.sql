@@ -1,6 +1,6 @@
 -- COLUMNS:
 -- group:ValueTypes.Address:true
--- timestamp:ValueTypes.BigInt:true
+-- timestamp:ValueTypes.String:true
 -- minted:ValueTypes.BigInt:true
 -- burned:ValueTypes.BigInt:true
 -- supply:ValueTypes.BigInt:true

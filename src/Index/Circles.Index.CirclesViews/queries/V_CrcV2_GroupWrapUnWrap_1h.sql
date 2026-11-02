@@ -1,8 +1,8 @@
 -- COLUMNS:
 -- group:ValueTypes.Address:true
--- timestamp:ValueTypes.BigInt:true
+-- timestamp:ValueTypes.String:true
 -- tokenAddress:ValueTypes.Address:true
--- tokenType:ValueTypes.Address:true
+-- tokenType:ValueTypes.String:true
 -- wrapAmount:ValueTypes.BigInt:true
 -- unwrapAmount:ValueTypes.BigInt:true
 -- wrapSupply:ValueTypes.BigInt:true

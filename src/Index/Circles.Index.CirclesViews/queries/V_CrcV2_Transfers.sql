@@ -8,10 +8,11 @@
 -- operator:ValueTypes.Address:true
 -- from:ValueTypes.Address:true
 -- to:ValueTypes.Address:true
--- id:ValueTypes.BigInt:true
+-- id:ValueTypes.String:true
 -- value:ValueTypes.BigInt:false
 -- type:ValueTypes.String:true
 -- tokenType:ValueTypes.String:true
+-- tokenAddress:ValueTypes.Address:false
 
 create or replace view public."V_CrcV2_Transfers"
         ("blockNumber", timestamp, "transactionIndex", "logIndex", 

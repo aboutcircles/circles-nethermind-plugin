@@ -586,11 +586,10 @@ public partial class CirclesRpcModule
         }
 
         // Tables are created from the schema's column types, so a filter value that does not
-        // fit is rejected. Views declare their types by hand and some differ from the database:
-        // V_CrcV2_Transfers.id is declared BigInt but is text holding decimal token ids and
-        // wrapper addresses, and bucket views declare their timestamptz "timestamp" as BigInt
-        // or Int. A string filter value on a view is sent untyped, so Postgres reads it as
-        // the column's real type.
+        // fit is rejected. Views declare their types by hand in a comment, apart from the SQL,
+        // and a declaration says what a client receives, not the database type: the bucket
+        // views declare their timestamptz "timestamp" as String. A string filter value on a
+        // view is sent untyped, so Postgres reads it as the column's real type.
         var columnTypesMatchDatabase = !IsViewTable(fullTableName);
 
         var parameters = new List<NpgsqlParameter>();
