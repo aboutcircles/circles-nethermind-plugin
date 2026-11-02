@@ -1,7 +1,7 @@
 -- COLUMNS:
--- timestamp:ValueTypes.BigInt:true
+-- timestamp:ValueTypes.String:true
 -- tokenAddress:ValueTypes.Address:true
--- vaultBalance:ValueTypes.BigInt:true
+-- value:ValueTypes.BigInt:true
 
 
 create or replace view public."V_CrcV2_Erc20BalancerVaultBalance_1d"

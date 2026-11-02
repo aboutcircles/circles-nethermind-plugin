@@ -1,5 +1,5 @@
 -- COLUMNS:
--- timestamp:ValueTypes.BigInt:true
+-- timestamp:ValueTypes.String:true
 -- tokenAddress:ValueTypes.Address:true
 -- value:ValueTypes.BigInt:true
 

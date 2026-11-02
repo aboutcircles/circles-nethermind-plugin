@@ -3,11 +3,10 @@
 -- timestamp:ValueTypes.Int:true
 -- transactionIndex:ValueTypes.Int:true
 -- logIndex:ValueTypes.Int:true
--- batchIndex:ValueTypes.Int:true:true
 -- transactionHash:ValueTypes.String:true
 -- user:ValueTypes.Address:true
 -- canSendTo:ValueTypes.Address:true
--- limit:ValueTypes.Int:false
+-- limit:ValueTypes.BigInt:false
 
 create or replace view public."V_CrcV1_TrustRelations"
                 ("blockNumber", timestamp, "transactionIndex", "logIndex", "transactionHash", "user", "canSendTo",
