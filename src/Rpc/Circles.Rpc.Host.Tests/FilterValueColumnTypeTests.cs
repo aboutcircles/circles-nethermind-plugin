@@ -16,9 +16,10 @@ namespace Circles.Rpc.Host.Tests;
 /// NUMERIC column gets "0" or "1000000000000000000000".
 /// Postgres has no operator between NUMERIC and TEXT, so a string bound as text to a
 /// NUMERIC column fails with 42883 and the client gets "Internal server error".
-/// "FilteredView" stands for a view whose declared column types differ from the database.
-/// V_CrcV2_Transfers.id is declared BigInt but is text holding decimal token ids and
-/// wrapper addresses. Bucket views declare their timestamptz "timestamp" column as BigInt or Int.
+/// "FilteredView" stands for a view whose declared column types differ from the database, as
+/// they did before the declarations were corrected: V_CrcV2_Transfers.id was declared BigInt but
+/// is text holding decimal token ids and wrapper addresses, and bucket views declared their
+/// timestamptz "timestamp" column as BigInt or Int.
 /// </summary>
 [TestFixture]
 [Category("RequiresDocker")]
