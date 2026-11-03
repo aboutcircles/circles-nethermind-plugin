@@ -148,4 +148,37 @@ public class ViewColumnTypeTests
 
         Assert.That(mismatches, Is.Empty, string.Join("\n", mismatches));
     }
+
+    /// <summary>
+    /// circles_query reads an unconstrained numeric column as a whole number, so a numeric view
+    /// column that holds a fraction fails the whole query. fractionLocked divides one token's
+    /// collateral by the group's total.
+    /// </summary>
+    [Test]
+    public async Task GroupCollateralByToken_fractionLocked_reads_as_a_fraction()
+    {
+        await using var conn = new NpgsqlConnection(_postgres!.GetConnectionString());
+        await conn.OpenAsync();
+        await using var transaction = await conn.BeginTransactionAsync();
+
+        await using (var insert = new NpgsqlCommand("""
+            INSERT INTO "CrcV2_CollateralLockedSingle" ("timestamp", "group", "id", "value")
+            VALUES (1700000000, '0x1000000000000000000000000000000000000001', 1, 1),
+                   (1700000000, '0x1000000000000000000000000000000000000001', 2, 3)
+            """, conn, transaction))
+        {
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await using var select = new NpgsqlCommand(
+            """SELECT "fractionLocked" FROM "V_CrcV2_GroupCollateralByToken" ORDER BY "id" """, conn, transaction);
+        await using var reader = await select.ExecuteReaderAsync();
+        var readColumn = CirclesRpcModule.BuildQueryColumnReaders(reader)[0];
+
+        var values = new List<object?>();
+        while (await reader.ReadAsync())
+            values.Add(readColumn(reader, 0));
+
+        Assert.That(values, Is.EqualTo(new object[] { 0.25, 0.75 }));
+    }
 }

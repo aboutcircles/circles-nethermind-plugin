@@ -3,8 +3,10 @@
 -- id:ValueTypes.BigInt:true
 -- amountLocked:ValueTypes.BigInt:true
 -- demurragedAmountLocked:ValueTypes.BigInt:true
--- fractionLocked:ValueTypes.BigInt:true
+-- fractionLocked:ValueTypes.Double:true
 
+-- "create or replace" cannot change a column's type, and fractionLocked changed from numeric.
+drop view if exists public."V_CrcV2_GroupCollateralByToken";
 
 create or replace view public."V_CrcV2_GroupCollateralByToken"
     ( "group", "id", "amountLocked", "demurragedAmountLocked", "fractionLocked") as
@@ -14,7 +16,7 @@ SELECT
     ,"id"
     ,"amountLocked"
     ,"demurragedAmountLocked"
-    ,COALESCE("amountLocked" / NULLIF(SUM("amountLocked") OVER (PARTITION BY "group"),0),0) AS "fractionLocked"
+    ,(COALESCE("amountLocked" / NULLIF(SUM("amountLocked") OVER (PARTITION BY "group"),0),0))::double precision AS "fractionLocked"
 FROM (
     SELECT
         "group"
