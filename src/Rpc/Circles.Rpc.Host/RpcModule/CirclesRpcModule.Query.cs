@@ -465,7 +465,7 @@ public partial class CirclesRpcModule
         return value;
     }
 
-    private static Func<NpgsqlDataReader, int, object?>[] BuildQueryColumnReaders(NpgsqlDataReader reader)
+    internal static Func<NpgsqlDataReader, int, object?>[] BuildQueryColumnReaders(NpgsqlDataReader reader)
     {
         var resultSchema = reader.GetColumnSchema();
         var columnReaders = new Func<NpgsqlDataReader, int, object?>[resultSchema.Count];
