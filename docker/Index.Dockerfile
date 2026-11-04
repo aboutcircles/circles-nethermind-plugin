@@ -46,7 +46,26 @@ RUN dotnet publish \
     -o /circles-nethermind-plugin \
     --no-restore
 
-FROM nethermind/nethermind:1.39.3 AS base
+FROM nethermind/nethermind:1.39.3 AS nethermind
+
+# nethermind/nethermind:1.39.3 is built on aspnet:10.0.10-resolute, which is
+# several .NET security releases behind. Nethermind publishes framework-
+# dependent (--no-self-contained), so its files run unchanged on a current
+# 10.0 runtime of the same Ubuntu release. The lines below repeat the final
+# stage of Nethermind's own Dockerfile at the 1.39.3 tag, on that runtime.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-resolute AS base
+
+WORKDIR /nethermind
+
+VOLUME /nethermind/keystore
+VOLUME /nethermind/logs
+VOLUME /nethermind/nethermind_db
+
+EXPOSE 8545 8551 30303
+
+COPY --from=nethermind /nethermind/ .
+
+ENTRYPOINT ["./entrypoint.sh"]
 
 # Install psql for manual DB operations (runs as root, compose sets runtime user)
 RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
