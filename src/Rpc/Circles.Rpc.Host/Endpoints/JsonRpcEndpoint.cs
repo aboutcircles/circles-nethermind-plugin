@@ -58,7 +58,8 @@ public static class JsonRpcEndpoint
 
             try
             {
-                var result = await RpcDispatcher.DispatchSingleRequest(request, rpcModule, nethermindClient, logger, remoteIp);
+                var result = await RpcDispatcher.DispatchSingleRequest(request, rpcModule, nethermindClient, logger, remoteIp,
+                    ProxyCallLog.ClientIp(context), ProxyCallLog.UserAgent(context));
                 return Results.Json(result);
             }
             finally
