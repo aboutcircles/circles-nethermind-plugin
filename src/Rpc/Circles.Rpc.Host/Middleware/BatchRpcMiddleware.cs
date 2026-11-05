@@ -56,6 +56,8 @@ public static class BatchRpcMiddleware
                     var nethermindClient = context.RequestServices.GetRequiredService<NethermindRpcClient>();
                     var rpcModule = context.RequestServices.GetRequiredService<CirclesRpcModule>();
                     var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                    var clientIp = ProxyCallLog.ClientIp(context);
+                    var userAgent = ProxyCallLog.UserAgent(context);
                     var startTimestamp = Stopwatch.GetTimestamp();
 
                     // Enforce body size limit
@@ -218,7 +220,7 @@ public static class BatchRpcMiddleware
                                 try
                                 {
                                     responses[i] = await RpcDispatcher.DispatchSingleRequest(
-                                        req, rpcModule, nethermindClient, logger, remoteIp);
+                                        req, rpcModule, nethermindClient, logger, remoteIp, clientIp, userAgent);
                                 }
                                 finally
                                 {
@@ -237,7 +239,17 @@ public static class BatchRpcMiddleware
                             {
                                 var subBatch = nethermindItems.Select(x => x.Raw).ToArray();
                                 var subBatchBytes = JsonSerializer.SerializeToUtf8Bytes(subBatch);
+                                var proxyStart = Stopwatch.GetTimestamp();
                                 var result = await nethermindClient.ForwardRawRequest(subBatchBytes);
+                                var proxyMs = Stopwatch.GetElapsedTime(proxyStart).TotalMilliseconds;
+                                foreach (var (_, raw) in nethermindItems)
+                                {
+                                    var itemMethod = raw.TryGetProperty("method", out var m) && m.ValueKind == JsonValueKind.String
+                                        ? m.GetString() : null;
+                                    var itemParams = raw.TryGetProperty("params", out var p) ? p : default;
+                                    ProxyCallLog.Write(logger, RpcMethodClassifier.SafeMetricLabel(itemMethod), itemParams,
+                                        proxyMs, clientIp, userAgent, nethermindItems.Count);
+                                }
 
                                 if (result.ValueKind == JsonValueKind.Array)
                                 {
