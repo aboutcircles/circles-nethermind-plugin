@@ -20,13 +20,18 @@ public static class RpcDispatcher
     /// Dispatches a single JSON-RPC request. Handles circles_* locally, proxies eth_*/net_*/web3_* to Nethermind.
     /// Returns JsonRpcResponse, JsonRpcErrorResponse, or JsonElement (for proxied responses).
     /// Tracks per-method metrics. Does NOT manage the concurrency semaphore.
+    /// <paramref name="remoteIp"/> is the TCP peer (Caddy for public traffic);
+    /// <paramref name="clientIp"/> and <paramref name="userAgent"/> only feed the
+    /// <see cref="ProxyCallLog"/> line written for each forwarded call.
     /// </summary>
     public static async Task<object> DispatchSingleRequest(
         JsonRpcRequest request,
         CirclesRpcModule rpcModule,
         NethermindRpcClient nethermindClient,
         ILogger logger,
-        string remoteIp)
+        string remoteIp,
+        string clientIp,
+        string userAgent)
     {
         var methodName = request.Method ?? "<unknown>";
         var metricLabel = RpcMethodClassifier.SafeMetricLabel(request.Method);
@@ -131,6 +136,8 @@ public static class RpcDispatcher
                     request.Method!, request.Id, request.Params);
                 var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
                 RpcMetrics.ProxyDuration.WithLabels(metricLabel).Observe(elapsed.TotalSeconds);
+                ProxyCallLog.Write(logger, metricLabel, request.Params, elapsed.TotalMilliseconds,
+                    clientIp, userAgent, batchSize: 1);
                 return proxyResult; // JsonElement — already a complete JSON-RPC response
             }
             catch (Exception proxyEx)
