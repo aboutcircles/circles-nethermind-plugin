@@ -46,7 +46,7 @@ RUN dotnet publish \
     -o /circles-nethermind-plugin \
     --no-restore
 
-FROM nethermind/nethermind:1.39.3 AS nethermind
+FROM nethermind/nethermind:2.2.2 AS nethermind
 
 # nethermind/nethermind:1.39.3 is built on aspnet:10.0.10-resolute, which is
 # several .NET security releases behind. Nethermind publishes framework-
