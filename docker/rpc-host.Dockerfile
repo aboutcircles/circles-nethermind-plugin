@@ -1,4 +1,4 @@
-﻿FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Detect target architecture (amd64/arm64)
@@ -28,7 +28,7 @@ RUN dotnet restore ./Rpc/Circles.Rpc.Host/Circles.Rpc.Host.csproj
 WORKDIR /src/Rpc/Circles.Rpc.Host
 RUN dotnet publish -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS final
 WORKDIR /app
 
 # Install psql for manual DB operations

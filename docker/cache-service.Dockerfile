@@ -23,7 +23,7 @@ WORKDIR /src/Cache/Circles.Cache.Service
 RUN dotnet publish -c Release -o /app/publish --no-restore
 
 # Runtime image
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS runtime
 WORKDIR /app
 
 # Install curl for health checks and psql for manual DB operations

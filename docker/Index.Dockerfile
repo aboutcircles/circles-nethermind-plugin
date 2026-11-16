@@ -53,7 +53,7 @@ FROM nethermind/nethermind:1.39.3 AS nethermind
 # dependent (--no-self-contained), so its files run unchanged on a current
 # 10.0 runtime of the same Ubuntu release. The lines below repeat the final
 # stage of Nethermind's own Dockerfile at the 1.39.3 tag, on that runtime.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-resolute AS base
+FROM mcr.microsoft.com/dotnet/aspnet:11.0-resolute AS base
 
 WORKDIR /nethermind
 

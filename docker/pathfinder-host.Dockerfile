@@ -21,7 +21,7 @@ RUN dotnet restore ./Pathfinder/Circles.Pathfinder.Host/Circles.Pathfinder.Host.
 WORKDIR /src/Pathfinder/Circles.Pathfinder.Host
 RUN dotnet publish -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS final
 WORKDIR /app
 
 # Install psql for manual DB operations
