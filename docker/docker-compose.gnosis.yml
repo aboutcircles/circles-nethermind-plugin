@@ -107,7 +107,7 @@ services:
     # needs the v8.3.0 binary's downgrade command, possible on Gnosis until the
     # Gloas fork). v8.3.0 fixes the data-column backfill OOM on Gnosis, v8.3.1
     # distrusts the compromised eMudhra CA (high priority). No CLI flags removed.
-    image: sigp/lighthouse:v8.3.2
+    image: sigp/lighthouse:v8.3.3
     restart: always
     depends_on:
       nethermind-gnosis:
